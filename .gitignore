@@ -4,4 +4,17 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+*.zip
 .data
+.ai-runs
+.deployments
+.env
+.cache
+.local
+.upm
+.config
+.agents
+.breakpoints
+.pythonlibs
+attached_assets
+output
