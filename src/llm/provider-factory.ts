@@ -64,3 +64,21 @@ export function getCoderProvider() {
     process.env.OPENAI_CODER_MODEL || "gpt-5.2"
   );
 }
+
+export function getIntentProvider() {
+  return getOpenAiOrFallback(
+    process.env.OPENAI_CODER_MODEL || "gpt-5.2"
+  );
+}
+
+export function getDebuggerProvider() {
+  return getAnthropicOrFallback(
+    process.env.ANTHROPIC_REVIEWER_MODEL || process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514"
+  );
+}
+
+export function getSecurityAiProvider() {
+  return getAnthropicOrFallback(
+    process.env.ANTHROPIC_REVIEWER_MODEL || process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514"
+  );
+}
