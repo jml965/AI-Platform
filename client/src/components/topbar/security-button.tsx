@@ -12,6 +12,7 @@ type SecurityButtonProps = {
   onMonitoringResult?: (monitoring: SecurityMonitoringResult | null) => void;
   onFeedResult?: (feed: SecurityFeedEvent[]) => void;
   onLoadingChange?: (loading: boolean) => void;
+  onAiAnalysis?: (analysis: any) => void;
 };
 
 export default function SecurityButton({
@@ -19,7 +20,8 @@ export default function SecurityButton({
   onResult,
   onMonitoringResult,
   onFeedResult,
-  onLoadingChange
+  onLoadingChange,
+  onAiAnalysis
 }: SecurityButtonProps) {
   const [loading, setLoading] = useState(false);
 
@@ -36,6 +38,7 @@ export default function SecurityButton({
 
       onMonitoringResult?.(result?.monitoring ?? null);
       onFeedResult?.(result?.feed ?? []);
+      onAiAnalysis?.((result as any)?.aiAnalysis ?? null);
     } catch (error) {
       console.error(error);
       alert("Security scan failed");
