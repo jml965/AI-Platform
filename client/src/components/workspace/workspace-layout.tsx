@@ -127,6 +127,7 @@ export default function WorkspaceLayout({ projectId }: Props) {
   const [securityMonitoring, setSecurityMonitoring] = useState<SecurityMonitoringResult | null>(null);
   const [securityLoading, setSecurityLoading] = useState(false);
   const [securityFeed, setSecurityFeed] = useState<SecurityFeedEvent[]>([]);
+  const [securityAiAnalysis, setSecurityAiAnalysis] = useState<any>(null);
   const [devopsResult, setDevopsResult] = useState<DevopsResult | null>(null);
   const [devopsFixResult, setDevopsFixResult] = useState<DevopsFixResult | null>(null);
   const [devopsMonitoring, setDevopsMonitoring] = useState<DevopsMonitoringResult | null>(null);
@@ -453,9 +454,10 @@ export default function WorkspaceLayout({ projectId }: Props) {
                   onMonitoringResult={setSecurityMonitoring}
                   onFeedResult={setSecurityFeed}
                   onLoadingChange={setSecurityLoading}
+                  onAiAnalysis={setSecurityAiAnalysis}
                 />
               </div>
-              <SecurityResultsPanel result={securityResult} monitoring={securityMonitoring} feed={securityFeed} loading={securityLoading} />
+              <SecurityResultsPanel result={securityResult} monitoring={securityMonitoring} feed={securityFeed} loading={securityLoading} aiAnalysis={securityAiAnalysis} />
             </div>
           )}
 
