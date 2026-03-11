@@ -2,6 +2,7 @@ import express from "express";
 import { SecurityAgent } from "../../src/security/security-agent";
 import { SecurityMonitorAgent } from "../../src/security/security-monitor-agent";
 import { SecurityMonitorFeedAgent } from "../../src/security/security-monitor-feed-agent";
+import { analyzeSecurityWithAI } from "../../src/security/security-ai-analyzer";
 
 const router = express.Router();
 
@@ -22,6 +23,7 @@ router.post("/security-scan", async (req, res) => {
     let monitoring = null;
     let latestEvent = null;
     let feed: any[] = [];
+    let aiAnalysis = null;
 
     try {
       const monitorAgent = new SecurityMonitorAgent();
@@ -34,12 +36,19 @@ router.post("/security-scan", async (req, res) => {
       console.error("Security monitoring failed:", monitorError);
     }
 
+    try {
+      aiAnalysis = await analyzeSecurityWithAI(result);
+    } catch (aiError) {
+      console.error("Security AI analysis failed:", aiError);
+    }
+
     return res.json({
       status: "success",
       security: result,
       monitoring,
       latestEvent,
-      feed
+      feed,
+      aiAnalysis
     });
   } catch (error) {
     console.error("Security scan failed:", error);
