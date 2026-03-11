@@ -63,7 +63,7 @@ export class AIEngine {
     const loop = new LoopController(3);
     const feed = this.feed;
 
-    const intent = this.intentClassifier.classify(prompt);
+    const intent = await this.intentClassifier.classify(prompt);
     console.log("[AIEngine] Intent classified:", intent);
     if (options) console.log("[AIEngine] Project options:", options);
 
@@ -715,9 +715,12 @@ export class AIEngine {
       feed.startStage("intent", "فهم الطلب");
       const intentStreamId = feed.startStream("intent", "تحليل الطلب وتصنيف المهمة...", { finalType: "thought" });
       this.log(logs, "PLANNING_STARTED")
-      const intent = this.intentClassifier.classify(prompt);
+      const intent = await this.intentClassifier.classify(prompt);
       feed.appendStream(intentStreamId, `تم التعرف على نوع المشروع: ${intent.type}\n`);
       feed.appendStream(intentStreamId, `مستوى الثقة: ${Math.round(intent.confidence * 100)}%\n`);
+      if ((intent as any).aiClassified) {
+        feed.appendStream(intentStreamId, `تم التصنيف بواسطة: ${(intent as any).aiModel || 'AI'}\n`);
+      }
       feed.finishStream(intentStreamId);
       feed.completeStage("intent", `تم تصنيف المشروع: ${intent.type}`);
       var classifiedIntent = intent;
@@ -725,7 +728,7 @@ export class AIEngine {
       if (projectId) this.emitStageStart(projectId, "intent");
       if (projectId) this.pushThought(projectId, "intent", "تحليل الطلب وتصنيف المهمة...");
       this.log(logs, "PLANNING_STARTED")
-      var classifiedIntent = this.intentClassifier.classify(prompt);
+      var classifiedIntent = await this.intentClassifier.classify(prompt);
       if (projectId) this.pushStatus(projectId, "intent", `تم التعرف على المهمة: ${classifiedIntent.type}`, { intentType: classifiedIntent.type, confidence: classifiedIntent.confidence });
       if (projectId) this.emitStageComplete(projectId, "intent");
     }
