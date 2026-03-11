@@ -17,4 +17,6 @@ export interface ProductIntentResult {
   signals: string[];
   rtl: boolean;
   language: "ar" | "en";
+  aiClassified?: boolean;
+  aiModel?: string;
 }
