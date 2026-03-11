@@ -64,7 +64,7 @@ export class CoderAgent {
 
     const result = await provider.generate({
       messages: buildCoderMessages(prompt, plan, intent, options),
-      maxTokens: 16000,
+      maxTokens: 32000,
       temperature: 0.2,
       jsonMode: false,
     });
