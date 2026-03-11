@@ -1,4 +1,18 @@
+FROM node:20-alpine
 
-FROM nginx:alpine
-COPY . /usr/share/nginx/html
-EXPOSE 80
+WORKDIR /app
+
+COPY package*.json ./
+
+RUN npm ci
+
+COPY . .
+
+ENV NODE_ENV=production
+ENV PORT=3000
+
+RUN npm run build || true
+
+EXPOSE 3000
+
+CMD ["npm", "run", "start"]
