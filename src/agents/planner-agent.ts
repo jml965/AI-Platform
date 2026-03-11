@@ -62,7 +62,7 @@ export class PlannerAgent {
 
     const result = await provider.generate({
       messages: buildPlannerMessages(prompt, intent, options),
-      maxTokens: 1800,
+      maxTokens: 4000,
       temperature: 0.2,
       jsonMode: false,
     });
