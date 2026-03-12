@@ -21,21 +21,20 @@ export class FileManagerAgent {
     const savedFiles: string[] = [];
     const errors: string[] = [];
 
-    const existingCount = await db
-      .select({ count: sql<number>`count(*)::int` })
+    const existingFiles = await db
+      .select({ filePath: projectFilesTable.filePath })
       .from(projectFilesTable)
       .where(eq(projectFilesTable.projectId, projectId));
-    const currentFileCount = existingCount[0]?.count ?? 0;
-    const newFileCount = files.filter(
-      (f) => !files.some((ef) => ef.filePath === f.filePath)
-    ).length;
+    const existingPaths = new Set(existingFiles.map((f) => f.filePath));
+    const newPaths = files.filter((f) => !existingPaths.has(f.filePath));
+    const totalAfterSave = existingPaths.size + newPaths.length;
 
-    if (currentFileCount + newFileCount > this.constitution.maxFilesPerProject) {
+    if (totalAfterSave > this.constitution.maxFilesPerProject) {
       return {
         success: false,
         tokensUsed: 0,
         durationMs: Date.now() - startTime,
-        error: `Project file limit exceeded (max: ${this.constitution.maxFilesPerProject}, current: ${currentFileCount}, adding: ${newFileCount})`,
+        error: `Project file limit exceeded (max: ${this.constitution.maxFilesPerProject}, current: ${existingPaths.size}, adding: ${newPaths.length})`,
         data: { savedFiles: [], errors: [`File limit exceeded`] },
       };
     }
