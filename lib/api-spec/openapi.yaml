@@ -3,13 +3,30 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: AI Website Builder Platform API — bilingual (AR/EN)
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication operations
+  - name: projects
+    description: Project management
+  - name: build
+    description: Website building via AI agents
+  - name: agents
+    description: Agent status and task tracking
+  - name: tokens
+    description: Token usage and cost management
+  - name: billing
+    description: Billing, subscriptions, and credits
+  - name: teams
+    description: Team management and permissions
+  - name: preview
+    description: Live preview of generated websites
+
 paths:
   /healthz:
     get:
@@ -24,7 +41,788 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /auth/login:
+    get:
+      operationId: authLogin
+      tags: [auth]
+      summary: Start login flow
+      description: Redirects to Replit OIDC login
+      responses:
+        "302":
+          description: Redirect to Replit Auth
+
+  /auth/callback:
+    get:
+      operationId: authCallback
+      tags: [auth]
+      summary: Auth callback
+      description: Receives callback from Replit Auth after login
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to dashboard
+
+  /auth/logout:
+    post:
+      operationId: authLogout
+      tags: [auth]
+      summary: Logout
+      description: Ends the user session
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current user
+      description: Returns the authenticated user profile
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateMe
+      tags: [auth]
+      summary: Update profile
+      description: Update display name or locale preference
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileRequest"
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /projects:
+    get:
+      operationId: listProjects
+      tags: [projects]
+      summary: List projects
+      description: Returns all projects for the authenticated user
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Project list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectListResponse"
+    post:
+      operationId: createProject
+      tags: [projects]
+      summary: Create project
+      description: Create a new website project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectRequest"
+      responses:
+        "201":
+          description: Project created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "403":
+          description: Max projects reached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /projects/{projectId}:
+    get:
+      operationId: getProject
+      tags: [projects]
+      summary: Get project
+      description: Returns project details
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: Project details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateProject
+      tags: [projects]
+      summary: Update project
+      description: Update project name or description
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProjectRequest"
+      responses:
+        "200":
+          description: Updated project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+    delete:
+      operationId: deleteProject
+      tags: [projects]
+      summary: Delete project
+      description: Delete a project and all its files
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /projects/{projectId}/files:
+    get:
+      operationId: listProjectFiles
+      tags: [projects]
+      summary: List project files
+      description: Returns all files in a project
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: File list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectFileListResponse"
+
+  /projects/{projectId}/files/{fileId}:
+    get:
+      operationId: getProjectFile
+      tags: [projects]
+      summary: Get file content
+      description: Returns content of a specific project file
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - name: fileId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: File content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectFile"
+
+  /build/start:
+    post:
+      operationId: startBuild
+      tags: [build]
+      summary: Start building
+      description: Submit a build request to generate a website via AI agents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartBuildRequest"
+      responses:
+        "202":
+          description: Build started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BuildStatus"
+        "402":
+          description: Insufficient credits
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Build already in progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Token limit reached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /build/{buildId}/status:
+    get:
+      operationId: getBuildStatus
+      tags: [build]
+      summary: Build status
+      description: Returns the current status of a build
+      parameters:
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Build status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BuildStatus"
+
+  /build/{buildId}/cancel:
+    post:
+      operationId: cancelBuild
+      tags: [build]
+      summary: Cancel build
+      description: Cancel a build in progress
+      parameters:
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Build cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /build/{buildId}/logs:
+    get:
+      operationId: getBuildLogs
+      tags: [build]
+      summary: Build execution logs
+      description: Returns the execution log for a build
+      parameters:
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Execution logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExecutionLogListResponse"
+
+  /agents/status:
+    get:
+      operationId: getAgentsStatus
+      tags: [agents]
+      summary: All agents status
+      description: Returns the status of all agents
+      responses:
+        "200":
+          description: Agent statuses
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentsStatusResponse"
+
+  /agents/tasks/{taskId}:
+    get:
+      operationId: getAgentTask
+      tags: [agents]
+      summary: Agent task status
+      description: Returns the status of a specific agent task
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Task details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BuildTask"
+
+  /tokens/usage:
+    get:
+      operationId: getTokenUsage
+      tags: [tokens]
+      summary: Token usage
+      description: Returns token usage filtered by date range and project
+      parameters:
+        - name: projectId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: groupBy
+          in: query
+          schema:
+            type: string
+            enum: [day, project, agent]
+      responses:
+        "200":
+          description: Usage data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenUsageResponse"
+
+  /tokens/limits:
+    get:
+      operationId: getTokenLimits
+      tags: [tokens]
+      summary: Get limits
+      description: Returns the user's current spending limits
+      responses:
+        "200":
+          description: Current limits
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenLimits"
+    patch:
+      operationId: updateTokenLimits
+      tags: [tokens]
+      summary: Update limits
+      description: Update daily or monthly spending limits
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTokenLimitsRequest"
+      responses:
+        "200":
+          description: Updated limits
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenLimits"
+
+  /tokens/summary:
+    get:
+      operationId: getTokenSummary
+      tags: [tokens]
+      summary: Usage summary
+      description: Returns a summary of token consumption and costs
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenSummary"
+
+  /billing/plans:
+    get:
+      operationId: listPlans
+      tags: [billing]
+      summary: List subscription plans
+      description: Returns all available subscription plans
+      responses:
+        "200":
+          description: Plan list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanListResponse"
+
+  /billing/subscription:
+    get:
+      operationId: getSubscription
+      tags: [billing]
+      summary: Current subscription
+      description: Returns the user's current subscription
+      responses:
+        "200":
+          description: Subscription details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Subscription"
+
+  /billing/checkout:
+    post:
+      operationId: createCheckout
+      tags: [billing]
+      summary: Create checkout session
+      description: Creates a Stripe checkout session for subscribing or upgrading
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCheckoutRequest"
+      responses:
+        "200":
+          description: Checkout URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutResponse"
+
+  /billing/webhook:
+    post:
+      operationId: stripeWebhook
+      tags: [billing]
+      summary: Stripe webhook
+      description: Receives webhook events from Stripe
+      responses:
+        "200":
+          description: Webhook processed
+
+  /billing/invoices:
+    get:
+      operationId: listInvoices
+      tags: [billing]
+      summary: List invoices
+      description: Returns the user's invoice history
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Invoice list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvoiceListResponse"
+
+  /billing/credits:
+    get:
+      operationId: getCredits
+      tags: [billing]
+      summary: Current credits
+      description: Returns the user's current credit balance
+      responses:
+        "200":
+          description: Credit balance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreditBalance"
+
+  /billing/topup:
+    post:
+      operationId: topupCredits
+      tags: [billing]
+      summary: Top up credits
+      description: Create a payment session to add credits
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TopupRequest"
+      responses:
+        "200":
+          description: Checkout URL for topup
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutResponse"
+
+  /teams:
+    get:
+      operationId: listTeams
+      tags: [teams]
+      summary: List teams
+      description: Returns teams the user belongs to
+      responses:
+        "200":
+          description: Team list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamListResponse"
+    post:
+      operationId: createTeam
+      tags: [teams]
+      summary: Create team
+      description: Create a new team
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTeamRequest"
+      responses:
+        "201":
+          description: Team created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Team"
+
+  /teams/{teamId}:
+    get:
+      operationId: getTeam
+      tags: [teams]
+      summary: Get team
+      description: Returns team details
+      parameters:
+        - $ref: "#/components/parameters/TeamId"
+      responses:
+        "200":
+          description: Team details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Team"
+    patch:
+      operationId: updateTeam
+      tags: [teams]
+      summary: Update team
+      description: Update team name
+      parameters:
+        - $ref: "#/components/parameters/TeamId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTeamRequest"
+      responses:
+        "200":
+          description: Updated team
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Team"
+    delete:
+      operationId: deleteTeam
+      tags: [teams]
+      summary: Delete team
+      description: Delete a team (admin only)
+      parameters:
+        - $ref: "#/components/parameters/TeamId"
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /teams/{teamId}/members:
+    get:
+      operationId: listTeamMembers
+      tags: [teams]
+      summary: List team members
+      description: Returns all members of a team
+      parameters:
+        - $ref: "#/components/parameters/TeamId"
+      responses:
+        "200":
+          description: Member list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamMemberListResponse"
+
+  /teams/{teamId}/invite:
+    post:
+      operationId: inviteTeamMember
+      tags: [teams]
+      summary: Invite member
+      description: Send an invitation to join the team
+      parameters:
+        - $ref: "#/components/parameters/TeamId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteMemberRequest"
+      responses:
+        "200":
+          description: Invitation sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /teams/{teamId}/members/{userId}:
+    patch:
+      operationId: updateTeamMemberRole
+      tags: [teams]
+      summary: Update member role
+      description: Change a team member's role
+      parameters:
+        - $ref: "#/components/parameters/TeamId"
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMemberRoleRequest"
+      responses:
+        "200":
+          description: Role updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamMember"
+    delete:
+      operationId: removeTeamMember
+      tags: [teams]
+      summary: Remove member
+      description: Remove a member from the team
+      parameters:
+        - $ref: "#/components/parameters/TeamId"
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Member removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /teams/accept/{token}:
+    post:
+      operationId: acceptTeamInvite
+      tags: [teams]
+      summary: Accept invitation
+      description: Accept a team invitation using the invite token
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Joined team
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Team"
+
+  /preview/{projectId}:
+    get:
+      operationId: getPreview
+      tags: [preview]
+      summary: Live preview
+      description: Returns the preview URL for a generated website
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: Preview data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreviewResponse"
+
 components:
+  parameters:
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    TeamId:
+      name: teamId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
   schemas:
     HealthStatus:
       type: object
@@ -34,3 +832,688 @@ components:
       required:
         - status
 
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+      required:
+        - success
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            message_ar:
+              type: string
+          required:
+            - code
+            - message
+      required:
+        - error
+
+    PaginationMeta:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+      required:
+        - page
+        - limit
+        - total
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        displayName:
+          type: string
+        avatarUrl:
+          type: string
+        locale:
+          type: string
+          enum: [ar, en]
+        dailyLimitUsd:
+          type: number
+        monthlyLimitUsd:
+          type: number
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - email
+        - displayName
+        - locale
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        displayName:
+          type: string
+        locale:
+          type: string
+          enum: [ar, en]
+
+    Project:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        teamId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [draft, building, ready, failed]
+        totalTokensUsed:
+          type: integer
+        totalCostUsd:
+          type: number
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - userId
+        - name
+        - status
+        - createdAt
+
+    CreateProjectRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        teamId:
+          type: string
+          format: uuid
+      required:
+        - name
+
+    UpdateProjectRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+
+    ProjectListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Project"
+        meta:
+          $ref: "#/components/schemas/PaginationMeta"
+      required:
+        - data
+        - meta
+
+    ProjectFile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        filePath:
+          type: string
+        content:
+          type: string
+        fileType:
+          type: string
+        version:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - projectId
+        - filePath
+        - content
+        - fileType
+
+    ProjectFileListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectFile"
+      required:
+        - data
+
+    StartBuildRequest:
+      type: object
+      properties:
+        projectId:
+          type: string
+          format: uuid
+        prompt:
+          type: string
+      required:
+        - projectId
+        - prompt
+
+    BuildStatus:
+      type: object
+      properties:
+        buildId:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, in_progress, completed, failed, cancelled]
+        tasksTotal:
+          type: integer
+        tasksCompleted:
+          type: integer
+        totalTokensUsed:
+          type: integer
+        totalCostUsd:
+          type: number
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - buildId
+        - projectId
+        - status
+
+    BuildTask:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        agentType:
+          type: string
+          enum: [codegen, reviewer, fixer, filemanager]
+        status:
+          type: string
+          enum: [pending, in_progress, completed, failed]
+        targetFile:
+          type: string
+        tokensUsed:
+          type: integer
+        costUsd:
+          type: number
+        retryCount:
+          type: integer
+        durationMs:
+          type: integer
+        errorMessage:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - projectId
+        - agentType
+        - status
+
+    ExecutionLog:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        taskId:
+          type: string
+          format: uuid
+        agentType:
+          type: string
+        action:
+          type: string
+        status:
+          type: string
+        details:
+          type: object
+        tokensUsed:
+          type: integer
+        durationMs:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - projectId
+        - agentType
+        - action
+        - status
+
+    ExecutionLogListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExecutionLog"
+      required:
+        - data
+
+    AgentsStatusResponse:
+      type: object
+      properties:
+        agents:
+          type: array
+          items:
+            type: object
+            properties:
+              agentType:
+                type: string
+                enum: [codegen, reviewer, fixer, filemanager]
+              activeTasks:
+                type: integer
+              totalCompleted:
+                type: integer
+              totalFailed:
+                type: integer
+            required:
+              - agentType
+              - activeTasks
+      required:
+        - agents
+
+    TokenUsageEntry:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        projectId:
+          type: string
+          format: uuid
+        projectName:
+          type: string
+        agentType:
+          type: string
+        tokensInput:
+          type: integer
+        tokensOutput:
+          type: integer
+        costUsd:
+          type: number
+      required:
+        - tokensInput
+        - tokensOutput
+        - costUsd
+
+    TokenUsageResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/TokenUsageEntry"
+        totalTokens:
+          type: integer
+        totalCostUsd:
+          type: number
+      required:
+        - data
+        - totalTokens
+        - totalCostUsd
+
+    TokenLimits:
+      type: object
+      properties:
+        dailyLimitUsd:
+          type: number
+        monthlyLimitUsd:
+          type: number
+        perProjectLimitUsd:
+          type: number
+        dailyUsedUsd:
+          type: number
+        monthlyUsedUsd:
+          type: number
+      required:
+        - dailyLimitUsd
+        - monthlyLimitUsd
+        - dailyUsedUsd
+        - monthlyUsedUsd
+
+    UpdateTokenLimitsRequest:
+      type: object
+      properties:
+        dailyLimitUsd:
+          type: number
+        monthlyLimitUsd:
+          type: number
+        perProjectLimitUsd:
+          type: number
+
+    TokenSummary:
+      type: object
+      properties:
+        todayTokens:
+          type: integer
+        todayCostUsd:
+          type: number
+        monthTokens:
+          type: integer
+        monthCostUsd:
+          type: number
+        totalTokens:
+          type: integer
+        totalCostUsd:
+          type: number
+        remainingDailyUsd:
+          type: number
+        remainingMonthlyUsd:
+          type: number
+      required:
+        - todayTokens
+        - todayCostUsd
+        - monthTokens
+        - monthCostUsd
+
+    Plan:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        nameAr:
+          type: string
+        priceMonthlyUsd:
+          type: number
+        maxProjects:
+          type: integer
+        monthlyTokenLimit:
+          type: integer
+        features:
+          type: object
+        isActive:
+          type: boolean
+      required:
+        - id
+        - name
+        - nameAr
+        - priceMonthlyUsd
+        - maxProjects
+        - monthlyTokenLimit
+
+    PlanListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Plan"
+      required:
+        - data
+
+    Subscription:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        plan:
+          $ref: "#/components/schemas/Plan"
+        status:
+          type: string
+          enum: [active, cancelled, past_due, trialing]
+        currentPeriodStart:
+          type: string
+          format: date-time
+        currentPeriodEnd:
+          type: string
+          format: date-time
+      required:
+        - id
+        - userId
+        - plan
+        - status
+
+    CreateCheckoutRequest:
+      type: object
+      properties:
+        planId:
+          type: string
+          format: uuid
+      required:
+        - planId
+
+    CheckoutResponse:
+      type: object
+      properties:
+        checkoutUrl:
+          type: string
+          format: uri
+      required:
+        - checkoutUrl
+
+    Invoice:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        amountUsd:
+          type: number
+        status:
+          type: string
+          enum: [paid, pending, failed]
+        description:
+          type: string
+        paidAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - amountUsd
+        - status
+        - createdAt
+
+    InvoiceListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Invoice"
+        meta:
+          $ref: "#/components/schemas/PaginationMeta"
+      required:
+        - data
+        - meta
+
+    CreditBalance:
+      type: object
+      properties:
+        balanceUsd:
+          type: number
+        reserveUsd:
+          type: number
+      required:
+        - balanceUsd
+
+    TopupRequest:
+      type: object
+      properties:
+        amountUsd:
+          type: number
+      required:
+        - amountUsd
+
+    Team:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        ownerId:
+          type: string
+          format: uuid
+        memberCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - ownerId
+
+    CreateTeamRequest:
+      type: object
+      properties:
+        name:
+          type: string
+      required:
+        - name
+
+    UpdateTeamRequest:
+      type: object
+      properties:
+        name:
+          type: string
+      required:
+        - name
+
+    TeamListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Team"
+      required:
+        - data
+
+    TeamMember:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum: [admin, developer, reviewer, viewer]
+        joinedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - userId
+        - role
+
+    TeamMemberListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeamMember"
+      required:
+        - data
+
+    InviteMemberRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [admin, developer, reviewer, viewer]
+      required:
+        - email
+        - role
+
+    UpdateMemberRoleRequest:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [admin, developer, reviewer, viewer]
+      required:
+        - role
+
+    PreviewResponse:
+      type: object
+      properties:
+        projectId:
+          type: string
+          format: uuid
+        previewUrl:
+          type: string
+          format: uri
+        status:
+          type: string
+          enum: [ready, building, not_available]
+      required:
+        - projectId
+        - status
