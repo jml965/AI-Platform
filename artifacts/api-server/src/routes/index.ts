@@ -10,6 +10,7 @@ import teamsRouter from "./teams";
 import qaRouter from "./qa";
 import sandboxRouter from "./sandbox";
 import monitoringRouter from "./monitoring";
+import plannerRouter from "./planner";
 import { requireAuth } from "../middlewares/authSession";
 
 const router: IRouter = Router();
@@ -27,5 +28,6 @@ router.use(teamsRouter);
 router.use(qaRouter);
 router.use(sandboxRouter);
 router.use(monitoringRouter);
+router.use(plannerRouter);
 
 export default router;

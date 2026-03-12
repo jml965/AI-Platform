@@ -17,6 +17,7 @@ import { FixerAgent } from "./fixer-agent";
 import { FileManagerAgent } from "./filemanager-agent";
 import { SurgicalEditAgent, isModificationRequest } from "./surgical-edit-agent";
 import { PackageRunnerAgent, setRunner, removeRunner } from "./package-runner-agent";
+import { PlannerAgent, classifyComplexity } from "./planner-agent";
 import { checkSpendingLimits, checkAndNotifyLimits } from "../token-limits";
 import { runQaWithRetry } from "./qa-pipeline";
 import type {
@@ -24,6 +25,7 @@ import type {
   BuildStatus,
   GeneratedFile,
   CodeIssue,
+  ProjectPlan,
 } from "./types";
 
 interface ActiveBuild {
@@ -195,6 +197,76 @@ export async function startBuild(
   );
 
   return buildId;
+}
+
+export async function startBuildWithPlan(
+  projectId: string,
+  userId: string,
+  prompt: string,
+  plan: ProjectPlan
+): Promise<string> {
+  const buildId = uuidv4();
+  const constitution = getConstitution();
+
+  const activeBuild: ActiveBuild = {
+    buildId,
+    projectId,
+    userId,
+    status: "pending",
+    cancelRequested: false,
+  };
+  activeBuilds.set(buildId, activeBuild);
+
+  await db
+    .update(projectsTable)
+    .set({ status: "building", prompt, updatedAt: new Date() })
+    .where(eq(projectsTable.id, projectId));
+
+  executeBuildPipelineWithPlan(buildId, projectId, userId, prompt, plan, constitution).catch(
+    (err) => {
+      console.error(`Build ${buildId} (with plan) pipeline error:`, err);
+    }
+  );
+
+  return buildId;
+}
+
+export async function generatePlan(
+  projectId: string,
+  userId: string,
+  prompt: string
+): Promise<{ buildId: string; plan: ProjectPlan; tokensUsed: number }> {
+  const buildId = uuidv4();
+  const constitution = getConstitution();
+
+  const plannerAgent = new PlannerAgent(constitution);
+  const context: BuildContext = {
+    buildId,
+    projectId,
+    userId,
+    prompt,
+    existingFiles: [],
+    tokensUsedSoFar: 0,
+  };
+
+  const result = await plannerAgent.execute(context);
+  if (!result.success) {
+    throw new Error(result.error || "Planning failed");
+  }
+
+  const plan = result.data?.plan as ProjectPlan;
+  if (!plan) {
+    throw new Error("Planner produced no plan");
+  }
+
+  await logExecution(buildId, projectId, null, "planner", "generate_plan", "completed", {
+    plan,
+    tokensUsed: result.tokensUsed,
+  }, result.tokensUsed, result.durationMs);
+
+  await recordTokenUsage(userId, projectId, buildId, "planner", plannerAgent.modelConfig.model, result.tokensUsed, estimateCost(result.tokensUsed, plannerAgent.modelConfig.model));
+
+  return { buildId, plan, tokensUsed: result.tokensUsed };
 }
 
 async function executeBuildPipeline(
@@ -695,6 +767,304 @@ async function savePatchedFilesAndRun(
 
   const finalStatus = !saveResult.success ? "failed" : runnerFailed ? "failed" : "completed";
   await finalizeBuild(buildId, projectId, finalStatus, totalTokens, totalCost);
+}
+
+async function executeBuildPipelineWithPlan(
+  buildId: string,
+  projectId: string,
+  userId: string,
+  prompt: string,
+  plan: ProjectPlan,
+  constitution: ReturnType<typeof getConstitution>
+) {
+  const build = activeBuilds.get(buildId)!;
+  build.status = "in_progress";
+
+  const codegenAgent = new CodeGenAgent(constitution);
+  const reviewerAgent = new ReviewerAgent(constitution);
+  const fixerAgent = new FixerAgent(constitution);
+  const fileManager = new FileManagerAgent(constitution);
+
+  let totalTokens = 0;
+  let totalCost = 0;
+
+  try {
+    await logExecution(buildId, projectId, null, "system", "build_started_with_plan", "in_progress", { prompt, plan });
+
+    const limitCheck = await checkSpendingLimits(userId, projectId);
+    if (!limitCheck.allowed) {
+      await logExecution(buildId, projectId, null, "system", "limit_exceeded", "failed", { reason: limitCheck.reason });
+      await finalizeBuild(buildId, projectId, "failed", totalTokens, totalCost);
+      return;
+    }
+
+    if (build.cancelRequested) {
+      await finalizeBuild(buildId, projectId, "cancelled", totalTokens, totalCost);
+      return;
+    }
+
+    const existingFiles = await fileManager.getProjectFiles(projectId);
+
+    const planContext = `
+Approved Project Plan:
+- Framework: ${plan.framework}
+- Files to create: ${plan.files.join(", ")}
+- Packages: ${plan.packages.join(", ")}
+- Directory structure: ${plan.directoryStructure.join(", ")}
+- Phases:
+${plan.phases.map((p, i) => `  ${i + 1}. ${p.name}: ${p.description}`).join("\n")}
+
+User's original request:
+${prompt}`;
+
+    const context: BuildContext = {
+      buildId,
+      projectId,
+      userId,
+      prompt: planContext,
+      existingFiles,
+      tokensUsedSoFar: 0,
+      approvedPlan: plan,
+    };
+
+    const codegenTaskId = await createTask(buildId, projectId, "codegen", planContext);
+    await logExecution(buildId, projectId, codegenTaskId, "codegen", "generate_code", "in_progress");
+
+    const codegenResult = await codegenAgent.execute(context);
+    totalTokens += codegenResult.tokensUsed;
+    const codegenCost = estimateCost(codegenResult.tokensUsed, codegenAgent.modelConfig.model);
+    totalCost += codegenCost;
+
+    await recordTokenUsage(userId, projectId, buildId, "codegen", codegenAgent.modelConfig.model, codegenResult.tokensUsed, codegenCost);
+
+    if (codegenResult.success) {
+      await completeTask(codegenTaskId, codegenResult.tokensUsed, codegenCost, codegenResult.durationMs);
+    } else {
+      await failTask(codegenTaskId, codegenResult.error ?? "Unknown error", codegenResult.durationMs);
+    }
+
+    await logExecution(
+      buildId, projectId, codegenTaskId, "codegen", "generate_code",
+      codegenResult.success ? "completed" : "failed",
+      { tokensUsed: codegenResult.tokensUsed, error: codegenResult.error },
+      codegenResult.tokensUsed,
+      codegenResult.durationMs
+    );
+
+    if (!codegenResult.success) {
+      console.error(`Build ${buildId} codegen failed:`, codegenResult.error);
+      await finalizeBuild(buildId, projectId, "failed", totalTokens, totalCost);
+      return;
+    }
+
+    const postCodegenLimit = await checkSpendingLimits(userId, projectId);
+    if (!postCodegenLimit.allowed) {
+      await logExecution(buildId, projectId, null, "system", "limit_exceeded_mid_build", "failed", {
+        reason: postCodegenLimit.reason,
+        after_agent: "codegen",
+      });
+      await finalizeBuild(buildId, projectId, "failed", totalTokens, totalCost);
+      return;
+    }
+
+    let generatedFiles = codegenResult.data?.files as GeneratedFile[];
+    context.tokensUsedSoFar = totalTokens;
+    context.existingFiles = generatedFiles.map((f) => ({
+      filePath: f.filePath,
+      content: f.content,
+    }));
+
+    if (build.cancelRequested) {
+      await finalizeBuild(buildId, projectId, "cancelled", totalTokens, totalCost);
+      return;
+    }
+
+    const reviewTaskId = await createTask(buildId, projectId, "reviewer");
+    await logExecution(buildId, projectId, reviewTaskId, "reviewer", "review_code", "in_progress");
+
+    const reviewResult = await reviewerAgent.execute(context);
+    totalTokens += reviewResult.tokensUsed;
+    const reviewCost = estimateCost(reviewResult.tokensUsed, reviewerAgent.modelConfig.model);
+    totalCost += reviewCost;
+
+    await recordTokenUsage(userId, projectId, buildId, "reviewer", reviewerAgent.modelConfig.model, reviewResult.tokensUsed, reviewCost);
+
+    if (reviewResult.success) {
+      await completeTask(reviewTaskId, reviewResult.tokensUsed, reviewCost, reviewResult.durationMs);
+    } else {
+      await failTask(reviewTaskId, reviewResult.error ?? "Unknown error", reviewResult.durationMs);
+    }
+
+    await logExecution(
+      buildId, projectId, reviewTaskId, "reviewer", "review_code",
+      reviewResult.success ? "completed" : "failed",
+      reviewResult.data,
+      reviewResult.tokensUsed,
+      reviewResult.durationMs
+    );
+
+    if (!reviewResult.success) {
+      await finalizeBuild(buildId, projectId, "failed", totalTokens, totalCost);
+      return;
+    }
+
+    const postReviewLimit = await checkSpendingLimits(userId, projectId);
+    if (!postReviewLimit.allowed) {
+      await logExecution(buildId, projectId, null, "system", "limit_exceeded_mid_build", "failed", {
+        reason: postReviewLimit.reason,
+        after_agent: "reviewer",
+      });
+      await finalizeBuild(buildId, projectId, "failed", totalTokens, totalCost);
+      return;
+    }
+
+    const review = reviewResult.data?.review as
+      | { approved: boolean; issues: CodeIssue[] }
+      | undefined;
+
+    if (review && !review.approved && review.issues.length > 0) {
+      if (build.cancelRequested) {
+        await finalizeBuild(buildId, projectId, "cancelled", totalTokens, totalCost);
+        return;
+      }
+
+      const errorIssues = review.issues.filter((i) => i.severity === "error");
+      if (errorIssues.length > 0) {
+        const fixTaskId = await createTask(buildId, projectId, "fixer");
+        await logExecution(buildId, projectId, fixTaskId, "fixer", "fix_code", "in_progress", { issueCount: errorIssues.length });
+
+        context.tokensUsedSoFar = totalTokens;
+        const fixResult = await fixerAgent.executeWithIssues(context, errorIssues);
+        totalTokens += fixResult.tokensUsed;
+        const fixCost = estimateCost(fixResult.tokensUsed, fixerAgent.modelConfig.model);
+        totalCost += fixCost;
+
+        await recordTokenUsage(userId, projectId, buildId, "fixer", fixerAgent.modelConfig.model, fixResult.tokensUsed, fixCost);
+
+        if (fixResult.success) {
+          await completeTask(fixTaskId, fixResult.tokensUsed, fixCost, fixResult.durationMs);
+        } else {
+          await failTask(fixTaskId, fixResult.error ?? "Unknown error", fixResult.durationMs);
+        }
+
+        await logExecution(
+          buildId, projectId, fixTaskId, "fixer", "fix_code",
+          fixResult.success ? "completed" : "failed",
+          { tokensUsed: fixResult.tokensUsed },
+          fixResult.tokensUsed,
+          fixResult.durationMs
+        );
+
+        if (!fixResult.success) {
+          await finalizeBuild(buildId, projectId, "failed", totalTokens, totalCost);
+          return;
+        }
+
+        const postFixerLimit = await checkSpendingLimits(userId, projectId);
+        if (!postFixerLimit.allowed) {
+          await logExecution(buildId, projectId, null, "system", "limit_exceeded_mid_build", "failed", {
+            reason: postFixerLimit.reason,
+            after_agent: "fixer",
+          });
+          await finalizeBuild(buildId, projectId, "failed", totalTokens, totalCost);
+          return;
+        }
+
+        if (fixResult.data?.files) {
+          generatedFiles = fixResult.data.files as GeneratedFile[];
+        }
+      }
+    }
+
+    if (build.cancelRequested) {
+      await finalizeBuild(buildId, projectId, "cancelled", totalTokens, totalCost);
+      return;
+    }
+
+    const saveTaskId = await createTask(buildId, projectId, "filemanager");
+    await logExecution(buildId, projectId, saveTaskId, "filemanager", "save_files", "in_progress", { fileCount: generatedFiles.length });
+
+    const saveResult = await fileManager.saveFiles(projectId, generatedFiles);
+
+    if (saveResult.success) {
+      await completeTask(saveTaskId, 0, 0, saveResult.durationMs);
+    } else {
+      await failTask(saveTaskId, "Failed to save some files", saveResult.durationMs);
+    }
+
+    await logExecution(
+      buildId, projectId, saveTaskId, "filemanager", "save_files",
+      saveResult.success ? "completed" : "failed",
+      saveResult.data,
+      0,
+      saveResult.durationMs
+    );
+
+    if (saveResult.success) {
+      if (build.cancelRequested) {
+        await finalizeBuild(buildId, projectId, "cancelled", totalTokens, totalCost);
+        return;
+      }
+
+      const runnerTaskId = await createTask(buildId, projectId, "package_runner");
+      await logExecution(buildId, projectId, runnerTaskId, "package_runner", "install_and_run", "in_progress", { fileCount: generatedFiles.length });
+
+      const runnerStartTime = Date.now();
+      const packageRunner = new PackageRunnerAgent(constitution);
+      setRunner(buildId, packageRunner);
+
+      try {
+        const runnerResult = await packageRunner.executeWithFiles(projectId, generatedFiles);
+        const runnerDuration = Date.now() - runnerStartTime;
+
+        if (runnerResult.success) {
+          await completeTask(runnerTaskId, 0, 0, runnerDuration);
+        } else {
+          await failTask(runnerTaskId, runnerResult.error ?? "Package runner failed", runnerDuration);
+        }
+
+        await logExecution(
+          buildId, projectId, runnerTaskId, "package_runner", "install_and_run",
+          runnerResult.success ? "completed" : "failed",
+          runnerResult.data,
+          0,
+          runnerDuration
+        );
+      } catch (runnerError) {
+        const runnerDuration = Date.now() - runnerStartTime;
+        const errMsg = runnerError instanceof Error ? runnerError.message : String(runnerError);
+        await failTask(runnerTaskId, errMsg, runnerDuration);
+        await logExecution(buildId, projectId, runnerTaskId, "package_runner", "install_and_run", "failed", { error: errMsg }, 0, runnerDuration);
+      }
+
+      try {
+        await logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "in_progress");
+        const qaReportId = await runQaWithRetry(buildId, projectId, userId);
+        await logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "completed", { qaReportId });
+      } catch (qaError) {
+        console.error(`Build ${buildId} QA pipeline error:`, qaError);
+        await logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "failed", {
+          error: qaError instanceof Error ? qaError.message : String(qaError),
+        });
+      }
+    }
+
+    const runnerFailed = saveResult.success &&
+      (await db.select({ status: buildTasksTable.status })
+        .from(buildTasksTable)
+        .where(and(eq(buildTasksTable.buildId, buildId), eq(buildTasksTable.agentType, "package_runner")))
+        .limit(1)
+        .then(rows => rows.length > 0 && rows[0].status === "failed"));
+
+    const finalStatus = !saveResult.success ? "failed" : runnerFailed ? "failed" : "completed";
+    await finalizeBuild(buildId, projectId, finalStatus, totalTokens, totalCost);
+  } catch (error) {
+    console.error(`Build ${buildId} (with plan) error:`, error);
+    await logExecution(buildId, projectId, null, "system", "build_error", "failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    await finalizeBuild(buildId, projectId, "failed", totalTokens, totalCost);
+  }
 }
 
 async function finalizeBuild(
