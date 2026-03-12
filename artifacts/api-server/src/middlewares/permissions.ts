@@ -75,7 +75,14 @@ export async function getUserTeamRole(userId: string, teamId: string): Promise<T
 
 export function requireTeamPermission(permission: Permission) {
   return async (req: Request, res: Response, next: NextFunction) => {
-    const userId = getUserId(req);
+    if (!req.user) {
+      return res.status(401).json({
+        error: "Authentication required",
+        errorAr: "يجب تسجيل الدخول",
+      });
+    }
+
+    const userId = req.user.id;
     const teamId = req.params.teamId;
 
     if (!teamId) {

@@ -6,7 +6,7 @@ import {
   teamInvitationsTable,
   usersTable,
 } from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray, sql, count } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import {
   getUserId,
@@ -33,16 +33,27 @@ router.get("/teams", async (req, res) => {
     }
 
     const teamIds = memberships.map((m) => m.teamId);
-    const teams = await db.select().from(teamsTable);
-    const userTeams = teams.filter((t) => teamIds.includes(t.id));
+    const userTeams = await db
+      .select()
+      .from(teamsTable)
+      .where(inArray(teamsTable.id, teamIds));
 
-    const allMembers = await db.select().from(teamMembersTable);
+    const memberCounts = await db
+      .select({
+        teamId: teamMembersTable.teamId,
+        count: count(),
+      })
+      .from(teamMembersTable)
+      .where(inArray(teamMembersTable.teamId, teamIds))
+      .groupBy(teamMembersTable.teamId);
+
+    const countMap = new Map(memberCounts.map((mc) => [mc.teamId, mc.count]));
 
     const data = userTeams.map((team) => ({
       id: team.id,
       name: team.name,
       ownerId: team.ownerId,
-      memberCount: allMembers.filter((m) => m.teamId === team.id).length,
+      memberCount: countMap.get(team.id) ?? 0,
       createdAt: team.createdAt.toISOString(),
     }));
 
@@ -448,65 +459,72 @@ router.post("/teams/accept/:token", async (req, res) => {
       });
     }
 
-    const [alreadyMember] = await db
-      .select()
-      .from(teamMembersTable)
-      .where(
-        and(
-          eq(teamMembersTable.teamId, invitation.teamId),
-          eq(teamMembersTable.userId, userId)
-        )
-      )
-      .limit(1);
-
-    if (alreadyMember) {
-      await db
+    const result = await db.transaction(async (tx) => {
+      const [updatedInvitation] = await tx
         .update(teamInvitationsTable)
         .set({ status: "accepted" })
-        .where(eq(teamInvitationsTable.id, invitation.id));
+        .where(
+          and(
+            eq(teamInvitationsTable.id, invitation.id),
+            eq(teamInvitationsTable.status, "pending")
+          )
+        )
+        .returning();
 
-      const [team] = await db
+      if (!updatedInvitation) {
+        return { alreadyProcessed: true };
+      }
+
+      const [alreadyMember] = await tx
+        .select()
+        .from(teamMembersTable)
+        .where(
+          and(
+            eq(teamMembersTable.teamId, invitation.teamId),
+            eq(teamMembersTable.userId, userId)
+          )
+        )
+        .limit(1);
+
+      if (!alreadyMember) {
+        await tx.insert(teamMembersTable).values({
+          teamId: invitation.teamId,
+          userId,
+          role: invitation.role,
+        });
+      }
+
+      const [team] = await tx
         .select()
         .from(teamsTable)
         .where(eq(teamsTable.id, invitation.teamId))
         .limit(1);
 
-      return res.json({
-        id: team?.id ?? invitation.teamId,
-        name: team?.name ?? "",
-        ownerId: team?.ownerId ?? "",
-        createdAt: team?.createdAt?.toISOString() ?? new Date().toISOString(),
+      const members = await tx
+        .select()
+        .from(teamMembersTable)
+        .where(eq(teamMembersTable.teamId, invitation.teamId));
+
+      return {
+        alreadyProcessed: false,
+        team,
+        memberCount: members.length,
+      };
+    });
+
+    if (result.alreadyProcessed) {
+      return res.status(409).json({
+        error: "Invitation has already been processed",
+        errorAr: "تمت معالجة الدعوة بالفعل",
       });
     }
 
-    await db.insert(teamMembersTable).values({
-      teamId: invitation.teamId,
-      userId,
-      role: invitation.role,
-    });
-
-    await db
-      .update(teamInvitationsTable)
-      .set({ status: "accepted" })
-      .where(eq(teamInvitationsTable.id, invitation.id));
-
-    const [team] = await db
-      .select()
-      .from(teamsTable)
-      .where(eq(teamsTable.id, invitation.teamId))
-      .limit(1);
-
-    const members = await db
-      .select()
-      .from(teamMembersTable)
-      .where(eq(teamMembersTable.teamId, invitation.teamId));
-
     return res.json({
-      id: team?.id ?? invitation.teamId,
-      name: team?.name ?? "",
-      ownerId: team?.ownerId ?? "",
-      memberCount: members.length,
-      createdAt: team?.createdAt?.toISOString() ?? new Date().toISOString(),
+      id: result.team?.id ?? invitation.teamId,
+      name: result.team?.name ?? "",
+      ownerId: result.team?.ownerId ?? "",
+      memberCount: result.memberCount,
+      createdAt: result.team?.createdAt?.toISOString() ?? new Date().toISOString(),
     });
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
