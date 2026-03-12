@@ -11,7 +11,7 @@ import {
 import { eq, and, desc, sql, count } from "drizzle-orm";
 import { getStripeClient, isStripeConfigured } from "../lib/stripeClient";
 import { getAppBaseUrl } from "../lib/appDomain";
-import { getUserId } from "../middlewares/permissions";
+import { getUserId, requireBillingAccess } from "../middlewares/permissions";
 
 const router: IRouter = Router();
 
@@ -99,7 +99,7 @@ router.get("/billing/plans", async (_req, res) => {
   }
 });
 
-router.get("/billing/subscription", async (req, res) => {
+router.get("/billing/subscription", requireBillingAccess("billing.view"), async (req, res) => {
   try {
     const userId = getUserId(req);
     const [sub] = await db
@@ -186,7 +186,7 @@ router.get("/billing/subscription", async (req, res) => {
   }
 });
 
-router.post("/billing/checkout", async (req, res) => {
+router.post("/billing/checkout", requireBillingAccess("billing.manage"), async (req, res) => {
   try {
     const { planId } = req.body;
     if (!planId) {
@@ -318,7 +318,7 @@ router.post("/billing/checkout", async (req, res) => {
   }
 });
 
-router.get("/billing/invoices", async (req, res) => {
+router.get("/billing/invoices", requireBillingAccess("billing.view"), async (req, res) => {
   try {
     const userId = getUserId(req);
     const page = Math.max(1, parseInt(req.query.page as string) || 1);
@@ -364,7 +364,7 @@ router.get("/billing/invoices", async (req, res) => {
   }
 });
 
-router.get("/billing/credits", async (req, res) => {
+router.get("/billing/credits", requireBillingAccess("billing.view"), async (req, res) => {
   try {
     const userId = getUserId(req);
     const [user] = await db
@@ -391,7 +391,7 @@ router.get("/billing/credits", async (req, res) => {
   }
 });
 
-router.post("/billing/subscription/cancel", async (req, res) => {
+router.post("/billing/subscription/cancel", requireBillingAccess("billing.manage"), async (req, res) => {
   try {
     const userId = getUserId(req);
 
@@ -447,7 +447,7 @@ router.post("/billing/subscription/cancel", async (req, res) => {
   }
 });
 
-router.post("/billing/topup", async (req, res) => {
+router.post("/billing/topup", requireBillingAccess("billing.manage"), async (req, res) => {
   try {
     const { amountUsd } = req.body;
     if (!amountUsd || typeof amountUsd !== "number" || amountUsd <= 0) {

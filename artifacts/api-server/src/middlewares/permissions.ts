@@ -109,6 +109,41 @@ export function requireTeamPermission(permission: Permission) {
   };
 }
 
+export function requireBillingAccess(permission: "billing.view" | "billing.manage") {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return res.status(401).json({
+        error: "Authentication required",
+        errorAr: "يجب تسجيل الدخول",
+      });
+    }
+
+    const userId = req.user.id;
+
+    const memberships = await db
+      .select({ role: teamMembersTable.role })
+      .from(teamMembersTable)
+      .where(eq(teamMembersTable.userId, userId));
+
+    if (memberships.length === 0) {
+      return next();
+    }
+
+    const hasAccess = memberships.some((m) =>
+      hasPermission(m.role as TeamRole, permission)
+    );
+
+    if (!hasAccess) {
+      return res.status(403).json({
+        error: "You do not have permission to access billing",
+        errorAr: "ليس لديك صلاحية للوصول إلى الفوترة",
+      });
+    }
+
+    next();
+  };
+}
+
 export function requireProjectAccess(permission: Permission) {
   return async (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) {

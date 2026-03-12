@@ -6,7 +6,7 @@ import {
   CreateProjectBody,
   UpdateProjectBody,
 } from "@workspace/api-zod";
-import { requireProjectAccess, getUserId } from "../middlewares/permissions";
+import { requireProjectAccess, getUserId, getUserTeamRole, hasPermission } from "../middlewares/permissions";
 
 const router: IRouter = Router();
 
@@ -57,6 +57,22 @@ router.post("/projects", async (req, res) => {
   try {
     const userId = getUserId(req);
     const body = CreateProjectBody.parse(req.body);
+
+    if (body.teamId) {
+      const role = await getUserTeamRole(userId, body.teamId);
+      if (!role) {
+        res.status(403).json({
+          error: { code: "FORBIDDEN", message: "You are not a member of this team" },
+        });
+        return;
+      }
+      if (!hasPermission(role, "project.create")) {
+        res.status(403).json({
+          error: { code: "FORBIDDEN", message: "You do not have permission to create projects in this team" },
+        });
+        return;
+      }
+    }
 
     const [project] = await db
       .insert(projectsTable)
