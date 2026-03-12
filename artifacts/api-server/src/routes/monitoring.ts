@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
 import {
   usersTable,
@@ -15,7 +15,25 @@ const router: IRouter = Router();
 
 const SERVER_START_TIME = Date.now();
 
-router.get("/monitoring/health", async (_req, res) => {
+async function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  if (!req.user) {
+    res.status(401).json({ error: { code: "UNAUTHORIZED", message: "Not authenticated" } });
+    return;
+  }
+  const [user] = await db
+    .select({ role: usersTable.role })
+    .from(usersTable)
+    .where(eq(usersTable.id, req.user.id))
+    .limit(1);
+
+  if (!user || user.role !== "admin") {
+    res.status(403).json({ error: { code: "FORBIDDEN", message: "Admin access required", message_ar: "يتطلب صلاحيات مدير" } });
+    return;
+  }
+  next();
+}
+
+router.get("/monitoring/health", requireAdmin, async (_req, res) => {
   try {
     const dbStart = Date.now();
     await db.execute(sql`SELECT 1`);
@@ -50,7 +68,7 @@ router.get("/monitoring/health", async (_req, res) => {
   }
 });
 
-router.get("/monitoring/stats", async (_req, res) => {
+router.get("/monitoring/stats", requireAdmin, async (_req, res) => {
   try {
     const now = new Date();
     const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -152,7 +170,7 @@ router.get("/monitoring/stats", async (_req, res) => {
   }
 });
 
-router.get("/monitoring/performance", async (_req, res) => {
+router.get("/monitoring/performance", requireAdmin, async (_req, res) => {
   try {
     const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
@@ -258,7 +276,7 @@ router.get("/monitoring/performance", async (_req, res) => {
   }
 });
 
-router.get("/monitoring/alerts", async (_req, res) => {
+router.get("/monitoring/alerts", requireAdmin, async (_req, res) => {
   try {
     const alerts: Array<{ level: string; service: string; message: string; messageAr: string; timestamp: string }> = [];
 

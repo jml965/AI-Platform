@@ -11,7 +11,8 @@ import {
   useCreateProject, 
   useDeleteProject, 
   useGetTokenSummary,
-  useAuthLogout
+  useAuthLogout,
+  useGetMe,
 } from "@workspace/api-client-react";
 
 export default function Dashboard() {
@@ -20,6 +21,8 @@ export default function Dashboard() {
   
   const { data: projectsData, isLoading: loadingProjects, refetch } = useListProjects();
   const { data: tokenSummary } = useGetTokenSummary();
+  const { data: me } = useGetMe({ query: { queryKey: ["getMe"], retry: false } });
+  const isAdmin = (me as any)?.role === "admin";
   const logout = useAuthLogout();
 
   const handleLogout = async () => {
@@ -53,10 +56,12 @@ export default function Dashboard() {
             <ShieldCheck className="w-4 h-4" />
             {t.qa_title}
           </Link>
-          <Link href="/monitoring" className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/10 text-sm text-muted-foreground hover:text-foreground hover:border-white/20 transition-all">
-            <Activity className="w-4 h-4" />
-            {t.monitoring}
-          </Link>
+          {isAdmin && (
+            <Link href="/monitoring" className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/10 text-sm text-muted-foreground hover:text-foreground hover:border-white/20 transition-all">
+              <Activity className="w-4 h-4" />
+              {t.monitoring}
+            </Link>
+          )}
           <Link href="/billing" className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/10 text-sm text-muted-foreground hover:text-foreground hover:border-white/20 transition-all">
             <CreditCard className="w-4 h-4" />
             {t.billing}

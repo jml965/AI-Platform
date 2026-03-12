@@ -2,7 +2,7 @@ import * as oidc from "openid-client";
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { usersTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { hashPassword, verifyPassword } from "../lib/password";
 import { setSessionCookie, clearSessionCookie } from "../lib/session";
 import { requireAuth } from "../middlewares/authSession";
@@ -82,9 +82,12 @@ async function upsertReplitUser(claims: Record<string, unknown>) {
     return updated;
   }
 
+  const [userCount] = await db.select({ cnt: sql<number>`count(*)::int` }).from(usersTable);
+  const isFirstUser = (userCount?.cnt ?? 0) === 0;
+
   const [user] = await db
     .insert(usersTable)
-    .values({ replitId, email, displayName, avatarUrl })
+    .values({ replitId, email, displayName, avatarUrl, role: isFirstUser ? "admin" : "user" })
     .returning();
   return user;
 }
@@ -108,6 +111,7 @@ router.get("/auth/me", async (req, res) => {
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
       locale: user.locale,
+      role: user.role,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     });
@@ -174,12 +178,16 @@ router.post("/auth/register", async (req, res) => {
 
     const hashed = await hashPassword(password);
 
+    const [userCount] = await db.select({ cnt: sql<number>`count(*)::int` }).from(usersTable);
+    const isFirstUser = (userCount?.cnt ?? 0) === 0;
+
     const [user] = await db
       .insert(usersTable)
       .values({
         email,
         passwordHash: hashed,
         displayName: displayName || email.split("@")[0],
+        role: isFirstUser ? "admin" : "user",
       })
       .returning();
 
