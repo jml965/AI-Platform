@@ -1,5 +1,21 @@
 # Workspace
 
+## Project
+
+AI Website Builder Platform — users describe websites in natural language (Arabic or English) and AI agents generate, review, and fix the code automatically. Bilingual (AR/EN) with RTL/LTR support.
+
+## Architecture Documentation
+
+Full technical architecture is in `docs/architecture/`:
+- `00-index.md` — Master index with summary of all documents
+- `01-system-architecture.md` — Layered architecture diagram
+- `02-technology-decisions.md` — ADR for every technology choice
+- `03-agent-architecture.md` — Agent system design (4 agents + execution engine)
+- `04-data-flow.md` — 6 main data flows
+- `05-database-schema.md` — 12 tables with columns and relationships
+- `06-api-spec-structural.md` — 41 API endpoints with permissions
+- `07-project-roadmap.md` — 8 phases with weighted progress tracking
+
 ## Overview
 
 pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.
