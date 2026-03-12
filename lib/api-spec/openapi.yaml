@@ -1381,6 +1381,9 @@ components:
           type: object
         isActive:
           type: boolean
+        supportType:
+          type: string
+          description: Support tier (community, priority, dedicated)
       required:
         - id
         - name

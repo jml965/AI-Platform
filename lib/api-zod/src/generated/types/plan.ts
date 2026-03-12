@@ -16,4 +16,6 @@ export interface Plan {
   monthlyTokenLimit: number;
   features?: PlanFeatures;
   isActive?: boolean;
+  /** Support tier (community, priority, dedicated) */
+  supportType?: string;
 }

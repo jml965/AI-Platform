@@ -444,6 +444,10 @@ export const ListPlansResponse = zod.object({
       monthlyTokenLimit: zod.number(),
       features: zod.object({}).passthrough().optional(),
       isActive: zod.boolean().optional(),
+      supportType: zod
+        .string()
+        .optional()
+        .describe("Support tier (community, priority, dedicated)"),
     }),
   ),
 });
@@ -464,6 +468,10 @@ export const GetSubscriptionResponse = zod.object({
     monthlyTokenLimit: zod.number(),
     features: zod.object({}).passthrough().optional(),
     isActive: zod.boolean().optional(),
+    supportType: zod
+      .string()
+      .optional()
+      .describe("Support tier (community, priority, dedicated)"),
   }),
   status: zod.enum(["active", "cancelled", "past_due", "trialing"]),
   currentPeriodStart: zod.date().optional(),

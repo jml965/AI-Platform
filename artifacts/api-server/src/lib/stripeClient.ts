@@ -11,5 +11,9 @@ export function getStripeClient(): Stripe | null {
 }
 
 export function isStripeConfigured(): boolean {
+  return !!process.env.STRIPE_SECRET_KEY;
+}
+
+export function isWebhookConfigured(): boolean {
   return !!(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET);
 }

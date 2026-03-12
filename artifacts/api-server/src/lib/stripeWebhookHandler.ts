@@ -9,23 +9,20 @@ import {
   notificationsTable,
 } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
-import { getStripeClient } from "./stripeClient";
+import { getStripeClient, isWebhookConfigured } from "./stripeClient";
 
 export async function processStripeWebhook(
   rawBody: Buffer,
   signature: string
 ): Promise<void> {
-  const stripe = getStripeClient();
-  if (!stripe) {
-    throw new Error("Stripe is not configured. Set STRIPE_SECRET_KEY.");
-  }
-
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!webhookSecret) {
+  if (!isWebhookConfigured()) {
     throw new Error(
-      "Stripe webhook secret is not configured. Set STRIPE_WEBHOOK_SECRET."
+      "Stripe webhook is not configured. Set STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET."
     );
   }
+
+  const stripe = getStripeClient()!;
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
 
   const event = stripe.webhooks.constructEvent(
     rawBody,

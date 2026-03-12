@@ -92,6 +92,7 @@ router.get("/billing/plans", async (_req, res) => {
         monthlyTokenLimit: p.monthlyTokenLimit,
         features: p.features,
         isActive: p.isActive,
+        supportType: p.supportType,
       })),
     });
   } catch (error) {
@@ -137,6 +138,7 @@ router.get("/billing/subscription", async (req, res) => {
               maxProjects: freePlan.maxProjects,
               monthlyTokenLimit: freePlan.monthlyTokenLimit,
               features: freePlan.features,
+              supportType: freePlan.supportType,
             }
           : {
               id: "00000000-0000-0000-0000-000000000000",
@@ -145,6 +147,7 @@ router.get("/billing/subscription", async (req, res) => {
               priceMonthlyUsd: 0,
               maxProjects: 3,
               monthlyTokenLimit: 100000,
+              supportType: "community",
             },
         status: "active",
         currentPeriodStart: new Date().toISOString(),
@@ -172,6 +175,7 @@ router.get("/billing/subscription", async (req, res) => {
             maxProjects: plan.maxProjects,
             monthlyTokenLimit: plan.monthlyTokenLimit,
             features: plan.features,
+            supportType: plan.supportType,
           }
         : null,
       status: sub.status,
