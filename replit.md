@@ -56,7 +56,7 @@ artifacts-monorepo/
 
 ## Database Schema
 
-14 tables in `lib/db/src/schema/`:
+15 tables in `lib/db/src/schema/`:
 - `users` — User accounts with locale preference, spending limits, credit balance, and active plan
 - `projects` — Website projects with status tracking
 - `project_files` — Generated files (HTML, CSS, JS) per project
@@ -72,6 +72,7 @@ artifacts-monorepo/
 - `team_members` — Team membership with role (admin/developer/reviewer/viewer)
 - `team_invitations` — Pending email invitations with token and expiry
 - `sessions` — OIDC session storage for Replit Auth (sid, session data, expiry)
+- `qa_reports` — QA validation reports with 3-phase checks (lint/runtime/functional), scores, retry tracking, cost tracking, fix attempts JSONB
 
 ## Agent Engine
 
@@ -85,7 +86,9 @@ Located in `artifacts/api-server/src/lib/agents/`:
 - `execution-engine.ts` — Orchestrates the build pipeline (codegen → review → fix → save)
 - `types.ts` — Shared type definitions
 
-Build pipeline flow: CodeGen → Review → (Fix if issues) → FileManager save
+- `qa-pipeline.ts` — 3-phase QA validation (lint → runtime → functional), auto-fix retry logic (max 3 attempts), integrated into build pipeline after file save
+
+Build pipeline flow: CodeGen → Review → (Fix if issues) → FileManager save → QA Pipeline (lint/runtime/functional validation)
 
 ## API Routes
 
@@ -98,12 +101,13 @@ Routes in `artifacts/api-server/src/routes/`:
 - `tokens.ts` — Usage/limits/summary/notifications for token tracking
 - `billing.ts` — Plans, subscriptions, checkout, invoices, credits, top-up
 - `teams.ts` — CRUD for teams, members, invitations, role changes
+- `qa.ts` — QA reports listing, latest report, run QA, stats summary
 
 ## Website Builder UI
 
 Frontend artifact at `artifacts/website-builder/` (React + Vite + TailwindCSS):
 - Bilingual AR/EN with RTL/LTR support via i18n context (`src/lib/i18n.tsx`)
-- Pages: Login, Dashboard, Builder (project workspace), Billing, Teams
+- Pages: Login, Dashboard, Builder (project workspace), Billing, Teams, QualityAssurance
 - Dashboard: project list with status badges, token usage indicator, new project modal, Billing link
 - Builder: chat prompt, live preview (sandboxed iframe with CSS/JS inlining), execution log panel
 - Billing: current subscription, credit balance + top-up, plan comparison, invoice history

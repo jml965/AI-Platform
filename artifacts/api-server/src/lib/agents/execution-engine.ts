@@ -16,6 +16,7 @@ import { ReviewerAgent } from "./reviewer-agent";
 import { FixerAgent } from "./fixer-agent";
 import { FileManagerAgent } from "./filemanager-agent";
 import { checkSpendingLimits, checkAndNotifyLimits } from "../token-limits";
+import { runQaWithRetry } from "./qa-pipeline";
 import type {
   BuildContext,
   BuildStatus,
@@ -419,6 +420,19 @@ async function executeBuildPipeline(
       0,
       saveResult.durationMs
     );
+
+    if (saveResult.success) {
+      try {
+        await logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "in_progress");
+        const qaReportId = await runQaWithRetry(buildId, projectId, userId);
+        await logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "completed", { qaReportId });
+      } catch (qaError) {
+        console.error(`Build ${buildId} QA pipeline error:`, qaError);
+        await logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "failed", {
+          error: qaError instanceof Error ? qaError.message : String(qaError),
+        });
+      }
+    }
 
     const finalStatus = saveResult.success ? "completed" : "failed";
     await finalizeBuild(buildId, projectId, finalStatus, totalTokens, totalCost);

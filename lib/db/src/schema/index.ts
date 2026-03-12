@@ -14,4 +14,5 @@ export * from "./team-members";
 export * from "./team-invitations";
 export * from "./roles";
 export * from "./permissions";
+export * from "./qa-reports";
 export * from "./sessions";
