@@ -1,0 +1,15 @@
+packages:
+  "framer-motion": "Used for polished page transitions, micro-interactions, and log list animations"
+  "date-fns": "For human-readable date formatting in dashboard and logs"
+  "clsx": "Utility for constructing conditional class names"
+  "tailwind-merge": "Utility for merging Tailwind classes safely"
+  "lucide-react": "Beautiful consistent icons for the UI"
+
+images:
+  - path: "artifacts/website-builder/public/images/auth-bg.png"
+    description: "Abstract minimal dark geometric background with subtle deep indigo and violet light leaks, highly professional and modern"
+    aspect_ratio: "16:9"
+
+notes:
+  - Assumes React Query hooks are exported from @workspace/api-client-react
+  - i18n implemented via Context with dynamic HTML dir attribute for RTL support

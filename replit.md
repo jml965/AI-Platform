@@ -38,7 +38,8 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 ```text
 artifacts-monorepo/
 ├── artifacts/              # Deployable applications
-│   └── api-server/         # Express API server
+│   ├── api-server/         # Express API server
+│   └── website-builder/    # React+Vite frontend (bilingual AR/EN)
 ├── lib/                    # Shared libraries
 │   ├── api-spec/           # OpenAPI spec + Orval codegen config
 │   ├── api-client-react/   # Generated React Query hooks
@@ -81,9 +82,22 @@ Build pipeline flow: CodeGen → Review → (Fix if issues) → FileManager save
 
 Routes in `artifacts/api-server/src/routes/`:
 - `health.ts` — `GET /api/healthz`
+- `auth.ts` — `GET /api/auth/me`, `POST /api/auth/logout`, `GET /api/auth/login`
 - `projects.ts` — CRUD for projects + file listing
 - `build.ts` — Start/status/cancel/logs for builds
 - `agents.ts` — Agent status and task details
+- `tokens.ts` — `GET /api/tokens/summary`
+
+## Website Builder UI
+
+Frontend artifact at `artifacts/website-builder/` (React + Vite + TailwindCSS):
+- Bilingual AR/EN with RTL/LTR support via i18n context (`src/lib/i18n.tsx`)
+- Pages: Login, Dashboard, Builder (project workspace)
+- Dashboard: project list with status badges, token usage indicator, new project modal
+- Builder: chat prompt, live preview (sandboxed iframe with CSS/JS inlining), execution log panel
+- Language toggle in header on every page
+- Uses `@workspace/api-client-react` generated hooks for API integration
+- Polling for build status during active builds
 
 ## TypeScript & Composite Projects
 
