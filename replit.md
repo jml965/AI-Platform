@@ -28,6 +28,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **TypeScript version**: 5.9
 - **API framework**: Express 5
 - **Database**: PostgreSQL + Drizzle ORM
+- **AI**: OpenAI via Replit AI Integrations (gpt-5.2 model)
 - **Validation**: Zod (`zod/v4`), `drizzle-zod`
 - **API codegen**: Orval (from OpenAPI spec)
 - **Build**: esbuild (CJS bundle)
@@ -42,14 +43,47 @@ artifacts-monorepo/
 │   ├── api-spec/           # OpenAPI spec + Orval codegen config
 │   ├── api-client-react/   # Generated React Query hooks
 │   ├── api-zod/            # Generated Zod schemas from OpenAPI
-│   └── db/                 # Drizzle ORM schema + DB connection
+│   ├── db/                 # Drizzle ORM schema + DB connection
+│   └── integrations-openai-ai-server/  # OpenAI AI integration
 ├── scripts/                # Utility scripts (single workspace package)
-│   └── src/                # Individual .ts scripts, run via `pnpm --filter @workspace/scripts run <script>`
-├── pnpm-workspace.yaml     # pnpm workspace (artifacts/*, lib/*, lib/integrations/*, scripts)
-├── tsconfig.base.json      # Shared TS options (composite, bundler resolution, es2022)
+│   └── src/                # Individual .ts scripts
+├── pnpm-workspace.yaml     # pnpm workspace
+├── tsconfig.base.json      # Shared TS options
 ├── tsconfig.json           # Root TS project references
 └── package.json            # Root package with hoisted devDeps
 ```
+
+## Database Schema
+
+6 tables in `lib/db/src/schema/`:
+- `users` — User accounts with locale preference and spending limits
+- `projects` — Website projects with status tracking
+- `project_files` — Generated files (HTML, CSS, JS) per project
+- `build_tasks` — Individual agent tasks within a build
+- `execution_logs` — Detailed execution log entries per agent action
+- `token_usage` — Token consumption records for cost tracking
+
+## Agent Engine
+
+Located in `artifacts/api-server/src/lib/agents/`:
+- `constitution.ts` — Token limits, file permissions, allowed extensions
+- `base-agent.ts` — Abstract base class with LLM calling via OpenAI
+- `codegen-agent.ts` — CodeGenerator: generates website files from prompts
+- `reviewer-agent.ts` — CodeReviewer: reviews generated code for quality/security
+- `fixer-agent.ts` — FixAgent: fixes issues found during review
+- `filemanager-agent.ts` — FileManager: saves/manages files in the database
+- `execution-engine.ts` — Orchestrates the build pipeline (codegen → review → fix → save)
+- `types.ts` — Shared type definitions
+
+Build pipeline flow: CodeGen → Review → (Fix if issues) → FileManager save
+
+## API Routes
+
+Routes in `artifacts/api-server/src/routes/`:
+- `health.ts` — `GET /api/healthz`
+- `projects.ts` — CRUD for projects + file listing
+- `build.ts` — Start/status/cancel/logs for builds
+- `agents.ts` — Agent status and task details
 
 ## TypeScript & Composite Projects
 
@@ -72,8 +106,8 @@ Express 5 API server. Routes live in `src/routes/` and use `@workspace/api-zod` 
 
 - Entry: `src/index.ts` — reads `PORT`, starts Express
 - App setup: `src/app.ts` — mounts CORS, JSON/urlencoded parsing, routes at `/api`
-- Routes: `src/routes/index.ts` mounts sub-routers; `src/routes/health.ts` exposes `GET /healthz` (full path: `/api/healthz`)
-- Depends on: `@workspace/db`, `@workspace/api-zod`
+- Routes: `src/routes/index.ts` mounts sub-routers
+- Depends on: `@workspace/db`, `@workspace/api-zod`, `@workspace/integrations-openai-ai-server`
 - `pnpm --filter @workspace/api-server run dev` — run the dev server
 - `pnpm --filter @workspace/api-server run build` — production esbuild bundle (`dist/index.cjs`)
 - Build bundles an allowlist of deps (express, cors, pg, drizzle-orm, zod, etc.) and externalizes the rest
@@ -84,7 +118,7 @@ Database layer using Drizzle ORM with PostgreSQL. Exports a Drizzle client insta
 
 - `src/index.ts` — creates a `Pool` + Drizzle instance, exports schema
 - `src/schema/index.ts` — barrel re-export of all models
-- `src/schema/<modelname>.ts` — table definitions with `drizzle-zod` insert schemas (no models definitions exist right now)
+- `src/schema/<modelname>.ts` — table definitions with `drizzle-zod` insert schemas
 - `drizzle.config.ts` — Drizzle Kit config (requires `DATABASE_URL`, automatically provided by Replit)
 - Exports: `.` (pool, db, schema), `./schema` (schema only)
 
@@ -106,6 +140,10 @@ Generated Zod schemas from the OpenAPI spec (e.g. `HealthCheckResponse`). Used b
 ### `lib/api-client-react` (`@workspace/api-client-react`)
 
 Generated React Query hooks and fetch client from the OpenAPI spec (e.g. `useHealthCheck`, `healthCheck`).
+
+### `lib/integrations-openai-ai-server` (`@workspace/integrations-openai-ai-server`)
+
+OpenAI AI integration via Replit AI Integrations proxy. Provides pre-configured OpenAI SDK client, image generation, audio utilities, and batch processing helpers. No API key required — auto-provisioned.
 
 ### `scripts` (`@workspace/scripts`)
 

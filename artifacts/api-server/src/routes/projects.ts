@@ -1,0 +1,193 @@
+import { Router, type IRouter } from "express";
+import { db } from "@workspace/db";
+import { projectsTable, projectFilesTable } from "@workspace/db/schema";
+import { eq, and, desc, sql } from "drizzle-orm";
+import {
+  CreateProjectBody,
+  UpdateProjectBody,
+} from "@workspace/api-zod";
+
+const router: IRouter = Router();
+
+router.get("/projects", async (req, res) => {
+  try {
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
+    const offset = (page - 1) * limit;
+
+    const [projects, countResult] = await Promise.all([
+      db
+        .select()
+        .from(projectsTable)
+        .orderBy(desc(projectsTable.createdAt))
+        .limit(limit)
+        .offset(offset),
+      db.select({ count: sql<number>`count(*)::int` }).from(projectsTable),
+    ]);
+
+    const total = countResult[0]?.count ?? 0;
+
+    res.json({
+      data: projects.map(mapProject),
+      meta: { page, limit, total },
+    });
+  } catch (error) {
+    res.status(500).json({ error: { code: "INTERNAL", message: "Failed to list projects" } });
+  }
+});
+
+router.post("/projects", async (req, res) => {
+  try {
+    const body = CreateProjectBody.parse(req.body);
+
+    const [project] = await db
+      .insert(projectsTable)
+      .values({
+        userId: getDefaultUserId(),
+        name: body.name,
+        description: body.description,
+        teamId: body.teamId,
+      })
+      .returning();
+
+    res.status(201).json(mapProject(project));
+  } catch (error) {
+    res.status(400).json({ error: { code: "VALIDATION", message: "Invalid project data" } });
+  }
+});
+
+router.get("/projects/:projectId", async (req, res) => {
+  try {
+    const [project] = await db
+      .select()
+      .from(projectsTable)
+      .where(eq(projectsTable.id, req.params.projectId))
+      .limit(1);
+
+    if (!project) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "Project not found" } });
+      return;
+    }
+
+    res.json(mapProject(project));
+  } catch (error) {
+    res.status(500).json({ error: { code: "INTERNAL", message: "Failed to get project" } });
+  }
+});
+
+router.patch("/projects/:projectId", async (req, res) => {
+  try {
+    const body = UpdateProjectBody.parse(req.body);
+
+    const [project] = await db
+      .update(projectsTable)
+      .set({
+        ...(body.name !== undefined && { name: body.name }),
+        ...(body.description !== undefined && { description: body.description }),
+        updatedAt: new Date(),
+      })
+      .where(eq(projectsTable.id, req.params.projectId))
+      .returning();
+
+    if (!project) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "Project not found" } });
+      return;
+    }
+
+    res.json(mapProject(project));
+  } catch (error) {
+    res.status(400).json({ error: { code: "VALIDATION", message: "Invalid update data" } });
+  }
+});
+
+router.delete("/projects/:projectId", async (req, res) => {
+  try {
+    const [project] = await db
+      .delete(projectsTable)
+      .where(eq(projectsTable.id, req.params.projectId))
+      .returning();
+
+    if (!project) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "Project not found" } });
+      return;
+    }
+
+    res.json({ success: true, message: "Project deleted" });
+  } catch (error) {
+    res.status(500).json({ error: { code: "INTERNAL", message: "Failed to delete project" } });
+  }
+});
+
+router.get("/projects/:projectId/files", async (req, res) => {
+  try {
+    const files = await db
+      .select()
+      .from(projectFilesTable)
+      .where(eq(projectFilesTable.projectId, req.params.projectId))
+      .orderBy(projectFilesTable.filePath);
+
+    res.json({
+      data: files.map(mapFile),
+    });
+  } catch (error) {
+    res.status(500).json({ error: { code: "INTERNAL", message: "Failed to list files" } });
+  }
+});
+
+router.get("/projects/:projectId/files/:fileId", async (req, res) => {
+  try {
+    const [file] = await db
+      .select()
+      .from(projectFilesTable)
+      .where(
+        and(
+          eq(projectFilesTable.id, req.params.fileId),
+          eq(projectFilesTable.projectId, req.params.projectId)
+        )
+      )
+      .limit(1);
+
+    if (!file) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "File not found" } });
+      return;
+    }
+
+    res.json(mapFile(file));
+  } catch (error) {
+    res.status(500).json({ error: { code: "INTERNAL", message: "Failed to get file" } });
+  }
+});
+
+function getDefaultUserId(): string {
+  return "00000000-0000-0000-0000-000000000001";
+}
+
+function mapProject(p: typeof projectsTable.$inferSelect) {
+  return {
+    id: p.id,
+    userId: p.userId,
+    teamId: p.teamId,
+    name: p.name,
+    description: p.description,
+    status: p.status,
+    totalTokensUsed: p.totalTokensUsed ?? 0,
+    totalCostUsd: Number(p.totalCostUsd) || 0,
+    createdAt: p.createdAt.toISOString(),
+    updatedAt: p.updatedAt.toISOString(),
+  };
+}
+
+function mapFile(f: typeof projectFilesTable.$inferSelect) {
+  return {
+    id: f.id,
+    projectId: f.projectId,
+    filePath: f.filePath,
+    content: f.content,
+    fileType: f.fileType,
+    version: f.version ?? 1,
+    createdAt: f.createdAt.toISOString(),
+    updatedAt: f.updatedAt.toISOString(),
+  };
+}
+
+export default router;
