@@ -15,6 +15,7 @@ import { CodeGenAgent } from "./codegen-agent";
 import { ReviewerAgent } from "./reviewer-agent";
 import { FixerAgent } from "./fixer-agent";
 import { FileManagerAgent } from "./filemanager-agent";
+import { SurgicalEditAgent, isModificationRequest } from "./surgical-edit-agent";
 import { PackageRunnerAgent, setRunner, removeRunner } from "./package-runner-agent";
 import { checkSpendingLimits, checkAndNotifyLimits } from "../token-limits";
 import { runQaWithRetry } from "./qa-pipeline";
@@ -210,6 +211,7 @@ async function executeBuildPipeline(
   const reviewerAgent = new ReviewerAgent(constitution);
   const fixerAgent = new FixerAgent(constitution);
   const fileManager = new FileManagerAgent(constitution);
+  const surgicalEditAgent = new SurgicalEditAgent(constitution);
 
   let totalTokens = 0;
   let totalCost = 0;
@@ -240,6 +242,58 @@ async function executeBuildPipeline(
       existingFiles,
       tokensUsedSoFar: 0,
     };
+
+    const isSurgicalEdit = isModificationRequest(prompt, existingFiles.length > 0);
+
+    if (isSurgicalEdit) {
+      const surgicalTaskId = await createTask(buildId, projectId, "surgical_edit", prompt);
+      await logExecution(buildId, projectId, surgicalTaskId, "surgical_edit", "surgical_edit", "in_progress", {
+        existingFileCount: existingFiles.length,
+      });
+
+      const surgicalResult = await surgicalEditAgent.execute(context);
+      totalTokens += surgicalResult.tokensUsed;
+      const surgicalCost = estimateCost(surgicalResult.tokensUsed, surgicalEditAgent.modelConfig.model);
+      totalCost += surgicalCost;
+
+      await recordTokenUsage(userId, projectId, buildId, "surgical_edit", surgicalEditAgent.modelConfig.model, surgicalResult.tokensUsed, surgicalCost);
+
+      if (surgicalResult.success) {
+        await completeTask(surgicalTaskId, surgicalResult.tokensUsed, surgicalCost, surgicalResult.durationMs);
+        await logExecution(
+          buildId, projectId, surgicalTaskId, "surgical_edit", "surgical_edit", "completed",
+          { tokensUsed: surgicalResult.tokensUsed, summary: surgicalResult.data?.summary },
+          surgicalResult.tokensUsed, surgicalResult.durationMs
+        );
+
+        const patchedFiles = surgicalResult.data?.files as GeneratedFile[];
+        const allFiles = mergeFiles(existingFiles, patchedFiles);
+
+        await savePatchedFilesAndRun(
+          buildId, projectId, userId, allFiles, fileManager, constitution,
+          totalTokens, totalCost, build
+        );
+        return;
+      }
+
+      await failTask(surgicalTaskId, surgicalResult.error ?? "Unknown error", surgicalResult.durationMs);
+      await logExecution(
+        buildId, projectId, surgicalTaskId, "surgical_edit", "surgical_edit", "failed",
+        {
+          tokensUsed: surgicalResult.tokensUsed,
+          error: surgicalResult.error,
+          requiresFullRegeneration: surgicalResult.data?.requiresFullRegeneration,
+        },
+        surgicalResult.tokensUsed, surgicalResult.durationMs
+      );
+
+      console.log(`Build ${buildId}: surgical edit failed, falling back to full codegen. Reason: ${surgicalResult.error}`);
+      await logExecution(buildId, projectId, null, "system", "surgical_fallback_to_codegen", "in_progress", {
+        reason: surgicalResult.error,
+      });
+
+      context.tokensUsedSoFar = totalTokens;
+    }
 
     const codegenTaskId = await createTask(buildId, projectId, "codegen", prompt);
     await logExecution(buildId, projectId, codegenTaskId, "codegen", "generate_code", "in_progress");
@@ -508,6 +562,139 @@ async function executeBuildPipeline(
     });
     await finalizeBuild(buildId, projectId, "failed", totalTokens, totalCost);
   }
+}
+
+function mergeFiles(
+  existingFiles: { filePath: string; content: string }[],
+  patchedFiles: GeneratedFile[]
+): GeneratedFile[] {
+  const fileMap = new Map<string, GeneratedFile>();
+
+  for (const f of existingFiles) {
+    fileMap.set(f.filePath, {
+      filePath: f.filePath,
+      content: f.content,
+      fileType: f.filePath.split(".").pop() || "txt",
+    });
+  }
+
+  for (const f of patchedFiles) {
+    fileMap.set(f.filePath, f);
+  }
+
+  return Array.from(fileMap.values());
+}
+
+async function savePatchedFilesAndRun(
+  buildId: string,
+  projectId: string,
+  userId: string,
+  allFiles: GeneratedFile[],
+  fileManager: FileManagerAgent,
+  constitution: ReturnType<typeof getConstitution>,
+  totalTokens: number,
+  totalCost: number,
+  build: ActiveBuild
+) {
+  if (build.cancelRequested) {
+    await finalizeBuild(buildId, projectId, "cancelled", totalTokens, totalCost);
+    return;
+  }
+
+  const saveTaskId = await createTask(buildId, projectId, "filemanager");
+  await logExecution(buildId, projectId, saveTaskId, "filemanager", "save_files", "in_progress", {
+    fileCount: allFiles.length,
+  });
+
+  const saveResult = await fileManager.saveFiles(projectId, allFiles);
+
+  if (saveResult.success) {
+    await completeTask(saveTaskId, 0, 0, saveResult.durationMs);
+  } else {
+    await failTask(saveTaskId, "Failed to save some files", saveResult.durationMs);
+  }
+
+  await logExecution(
+    buildId, projectId, saveTaskId, "filemanager", "save_files",
+    saveResult.success ? "completed" : "failed",
+    saveResult.data, 0, saveResult.durationMs
+  );
+
+  if (saveResult.success) {
+    if (build.cancelRequested) {
+      await finalizeBuild(buildId, projectId, "cancelled", totalTokens, totalCost);
+      return;
+    }
+
+    const runnerTaskId = await createTask(buildId, projectId, "package_runner");
+    await logExecution(buildId, projectId, runnerTaskId, "package_runner", "install_and_run", "in_progress", {
+      fileCount: allFiles.length,
+    });
+
+    const runnerStartTime = Date.now();
+    const packageRunner = new PackageRunnerAgent(constitution);
+    setRunner(buildId, packageRunner);
+
+    const outputLogs: { type: string; message: string; timestamp: string }[] = [];
+    packageRunner.onOutput((output) => {
+      outputLogs.push(output);
+    });
+
+    try {
+      const runnerResult = await packageRunner.executeWithFiles(projectId, allFiles);
+      const runnerDuration = Date.now() - runnerStartTime;
+
+      if (runnerResult.success) {
+        await completeTask(runnerTaskId, 0, 0, runnerDuration);
+      } else {
+        await failTask(runnerTaskId, runnerResult.error ?? "Package runner failed", runnerDuration);
+      }
+
+      await logExecution(
+        buildId, projectId, runnerTaskId, "package_runner", "install_and_run",
+        runnerResult.success ? "completed" : "failed",
+        {
+          ...runnerResult.data,
+          outputLogCount: outputLogs.length,
+          lastOutput: outputLogs.slice(-5).map((l) => l.message).join("\n"),
+        },
+        0, runnerDuration
+      );
+
+      if (!runnerResult.success) {
+        console.error(`Build ${buildId} package runner failed:`, runnerResult.error);
+      }
+    } catch (runnerError) {
+      const runnerDuration = Date.now() - runnerStartTime;
+      const errMsg = runnerError instanceof Error ? runnerError.message : String(runnerError);
+      await failTask(runnerTaskId, errMsg, runnerDuration);
+      await logExecution(buildId, projectId, runnerTaskId, "package_runner", "install_and_run", "failed", {
+        error: errMsg,
+      }, 0, runnerDuration);
+      console.error(`Build ${buildId} package runner error:`, runnerError);
+    }
+
+    try {
+      await logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "in_progress");
+      const qaReportId = await runQaWithRetry(buildId, projectId, userId);
+      await logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "completed", { qaReportId });
+    } catch (qaError) {
+      console.error(`Build ${buildId} QA pipeline error:`, qaError);
+      await logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "failed", {
+        error: qaError instanceof Error ? qaError.message : String(qaError),
+      });
+    }
+  }
+
+  const runnerFailed = saveResult.success &&
+    (await db.select({ status: buildTasksTable.status })
+      .from(buildTasksTable)
+      .where(and(eq(buildTasksTable.buildId, buildId), eq(buildTasksTable.agentType, "package_runner")))
+      .limit(1)
+      .then(rows => rows.length > 0 && rows[0].status === "failed"));
+
+  const finalStatus = !saveResult.success ? "failed" : runnerFailed ? "failed" : "completed";
+  await finalizeBuild(buildId, projectId, finalStatus, totalTokens, totalCost);
 }
 
 async function finalizeBuild(
