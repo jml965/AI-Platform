@@ -119,24 +119,24 @@ export function requireBillingAccess(permission: "billing.view" | "billing.manag
     }
 
     const userId = req.user.id;
+    const teamId = req.query.teamId as string | undefined;
 
-    const memberships = await db
-      .select({ role: teamMembersTable.role })
-      .from(teamMembersTable)
-      .where(eq(teamMembersTable.userId, userId));
-
-    if (memberships.length === 0) {
+    if (!teamId) {
       return next();
     }
 
-    const hasAccess = memberships.some((m) =>
-      hasPermission(m.role as TeamRole, permission)
-    );
-
-    if (!hasAccess) {
+    const role = await getUserTeamRole(userId, teamId);
+    if (!role) {
       return res.status(403).json({
-        error: "You do not have permission to access billing",
-        errorAr: "ليس لديك صلاحية للوصول إلى الفوترة",
+        error: "You are not a member of this team",
+        errorAr: "لست عضواً في هذا الفريق",
+      });
+    }
+
+    if (!hasPermission(role, permission)) {
+      return res.status(403).json({
+        error: "You do not have permission to access billing for this team",
+        errorAr: "ليس لديك صلاحية للوصول إلى فوترة هذا الفريق",
       });
     }
 

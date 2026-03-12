@@ -1,10 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Users, Plus, Trash2, Shield, UserPlus, ChevronRight,
   Loader2, LayoutTemplate, LogOut, ArrowLeft, Mail,
-  Crown, Eye, Code, Search, UserMinus, ChevronDown,
+  Crown, Eye, Code, Search, UserMinus, ChevronDown, CheckCircle, XCircle,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { LanguageToggle } from "@/components/LanguageToggle";
@@ -16,6 +16,7 @@ import {
   useInviteTeamMember,
   useUpdateTeamMemberRole,
   useRemoveTeamMember,
+  useAcceptTeamInvite,
   useAuthLogout,
 } from "@workspace/api-client-react";
 
@@ -38,14 +39,44 @@ const ROLE_COLORS: Record<Role, string> = {
 export default function Teams() {
   const { t, lang } = useI18n();
   const logout = useAuthLogout();
-
   const { data: teamsData, isLoading: loadingTeams, refetch: refetchTeams } = useListTeams();
   const createTeamMut = useCreateTeam();
   const deleteTeamMut = useDeleteTeam();
+  const acceptInviteMut = useAcceptTeamInvite();
 
   const [showCreate, setShowCreate] = useState(false);
   const [teamName, setTeamName] = useState("");
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+  const [inviteStatus, setInviteStatus] = useState<{
+    type: "loading" | "success" | "error";
+    message: string;
+  } | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const inviteToken = params.get("invite");
+    if (!inviteToken) return;
+
+    setInviteStatus({ type: "loading", message: lang === "ar" ? "جاري قبول الدعوة..." : "Accepting invitation..." });
+
+    acceptInviteMut.mutateAsync({ token: inviteToken })
+      .then(() => {
+        setInviteStatus({
+          type: "success",
+          message: lang === "ar" ? "تم قبول الدعوة بنجاح! أنت الآن عضو في الفريق." : "Invitation accepted! You are now a team member.",
+        });
+        refetchTeams();
+        window.history.replaceState({}, "", "/teams");
+      })
+      .catch((err: any) => {
+        const msg = err?.message || err?.error || "Failed to accept invitation";
+        setInviteStatus({
+          type: "error",
+          message: lang === "ar" ? `فشل قبول الدعوة: ${msg}` : `Failed to accept invitation: ${msg}`,
+        });
+        window.history.replaceState({}, "", "/teams");
+      });
+  }, []);
 
   const handleLogout = async () => {
     await logout.mutateAsync();
@@ -101,6 +132,36 @@ export default function Teams() {
       </header>
 
       <main className="max-w-5xl mx-auto px-6 py-8">
+        <AnimatePresence>
+          {inviteStatus && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className={`mb-6 p-4 rounded-2xl border flex items-center gap-3 ${
+                inviteStatus.type === "loading"
+                  ? "bg-violet-500/10 border-violet-500/30 text-violet-300"
+                  : inviteStatus.type === "success"
+                  ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+                  : "bg-red-500/10 border-red-500/30 text-red-300"
+              }`}
+            >
+              {inviteStatus.type === "loading" && <Loader2 className="w-5 h-5 animate-spin flex-shrink-0" />}
+              {inviteStatus.type === "success" && <CheckCircle className="w-5 h-5 flex-shrink-0" />}
+              {inviteStatus.type === "error" && <XCircle className="w-5 h-5 flex-shrink-0" />}
+              <span className="text-sm">{inviteStatus.message}</span>
+              {inviteStatus.type !== "loading" && (
+                <button
+                  onClick={() => setInviteStatus(null)}
+                  className="ml-auto text-white/40 hover:text-white/70 transition-colors"
+                >
+                  <XCircle className="w-4 h-4" />
+                </button>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <div className="flex items-center justify-between mb-8">
           <div>
             <h2 className="text-2xl font-bold">{t.team_management}</h2>
