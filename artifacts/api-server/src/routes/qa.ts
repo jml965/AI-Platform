@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { qaReportsTable, buildTasksTable, projectsTable } from "@workspace/db/schema";
 import { eq, and, desc, sql, count } from "drizzle-orm";
 import { getUserId, requireProjectAccess } from "../middlewares/permissions";
-import { runQaPipeline } from "../lib/agents";
+import { runQaWithRetry } from "../lib/agents";
 
 const router: IRouter = Router();
 
@@ -103,7 +103,7 @@ router.post("/projects/:projectId/qa/run", requireProjectAccess("project.edit"),
       return;
     }
 
-    const reportId = await runQaPipeline(buildId, projectId);
+    const reportId = await runQaWithRetry(buildId, projectId, userId);
 
     res.status(202).json({
       reportId,

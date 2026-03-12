@@ -5,6 +5,7 @@ import {
   executionLogsTable,
 } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
+import { JSDOM, VirtualConsole } from "jsdom";
 import { FixerAgent } from "./fixer-agent";
 import { FileManagerAgent } from "./filemanager-agent";
 import { getConstitution } from "./constitution";
@@ -335,53 +336,149 @@ function runtimeCheck(files: { filePath: string; content: string }[]): QaCheckRe
       messageAr: "ملف index.html موجود",
     });
 
-    if (indexHtml.content.includes("<body") && indexHtml.content.includes("</body>")) {
-      checks.push({
-        name: "Body content",
-        nameAr: "محتوى الصفحة",
-        passed: true,
-        severity: "info",
-        message: "Body tag with content present",
-        messageAr: "وسم body مع محتوى موجود",
-      });
-    } else {
-      checks.push({
-        name: "Body content",
-        nameAr: "محتوى الصفحة",
-        passed: false,
-        severity: "error",
-        message: "Missing or empty body tag",
-        messageAr: "وسم body مفقود أو فارغ",
-      });
-      totalScore -= 20;
-    }
-
+    let fullHtml = indexHtml.content;
     for (const css of cssFiles) {
-      const linkRef = css.filePath.split("/").pop();
-      if (indexHtml.content.includes(linkRef!)) {
-        checks.push({
-          name: `CSS linked: ${css.filePath}`,
-          nameAr: `CSS مربوط: ${css.filePath}`,
-          passed: true,
-          severity: "info",
-          message: `CSS file ${css.filePath} is linked in HTML`,
-          messageAr: `ملف CSS ${css.filePath} مربوط في HTML`,
-        });
+      const fileName = css.filePath.split("/").pop()!;
+      if (fullHtml.includes(fileName)) {
+        fullHtml = fullHtml.replace(
+          new RegExp(`<link[^>]*href=["']([^"']*${fileName.replace(/\./g, "\\.")})[^"']*["'][^>]*>`, "gi"),
+          `<style>${css.content}</style>`
+        );
       }
     }
 
     for (const js of jsFiles) {
-      const scriptRef = js.filePath.split("/").pop();
-      if (indexHtml.content.includes(scriptRef!)) {
+      const fileName = js.filePath.split("/").pop()!;
+      if (fullHtml.includes(fileName)) {
+        fullHtml = fullHtml.replace(
+          new RegExp(`<script[^>]*src=["']([^"']*${fileName.replace(/\./g, "\\.")})[^"']*["'][^>]*>\\s*</script>`, "gi"),
+          `<script>${js.content}</script>`
+        );
+      }
+    }
+
+    const consoleErrors: string[] = [];
+    const consoleWarnings: string[] = [];
+
+    const virtualConsole = new VirtualConsole();
+    virtualConsole.on("error", (msg: string) => consoleErrors.push(String(msg)));
+    virtualConsole.on("warn", (msg: string) => consoleWarnings.push(String(msg)));
+    virtualConsole.on("jsdomError", (err: Error) => consoleErrors.push(err.message));
+
+    let dom: JSDOM | null = null;
+    let domParsed = false;
+
+    try {
+      dom = new JSDOM(fullHtml, {
+        runScripts: "dangerously",
+        virtualConsole,
+        pretendToBeVisual: true,
+        url: "http://localhost/",
+      });
+      domParsed = true;
+    } catch (parseError) {
+      checks.push({
+        name: "HTML parse & execute",
+        nameAr: "تحليل وتنفيذ HTML",
+        passed: false,
+        severity: "error",
+        message: `Failed to parse/execute HTML: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
+        messageAr: `فشل في تحليل/تنفيذ HTML: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
+      });
+      totalScore -= 30;
+    }
+
+    if (domParsed && dom) {
+      checks.push({
+        name: "HTML parse & execute",
+        nameAr: "تحليل وتنفيذ HTML",
+        passed: true,
+        severity: "info",
+        message: "HTML parsed and scripts executed successfully",
+        messageAr: "تم تحليل HTML وتنفيذ البرامج النصية بنجاح",
+      });
+
+      const doc = dom.window.document;
+
+      const bodyContent = doc.body?.innerHTML?.trim() || "";
+      if (bodyContent.length > 0) {
         checks.push({
-          name: `JS linked: ${js.filePath}`,
-          nameAr: `JS مربوط: ${js.filePath}`,
+          name: "Body renders content",
+          nameAr: "محتوى الصفحة يُعرض",
           passed: true,
           severity: "info",
-          message: `JS file ${js.filePath} is linked in HTML`,
-          messageAr: `ملف JS ${js.filePath} مربوط في HTML`,
+          message: `Body rendered with ${bodyContent.length} chars of content`,
+          messageAr: `تم عرض محتوى الصفحة بـ ${bodyContent.length} حرف`,
+        });
+      } else {
+        checks.push({
+          name: "Body renders content",
+          nameAr: "محتوى الصفحة يُعرض",
+          passed: false,
+          severity: "error",
+          message: "Body is empty after rendering — page shows nothing",
+          messageAr: "محتوى الصفحة فارغ بعد العرض — الصفحة لا تظهر شيئاً",
+        });
+        totalScore -= 25;
+      }
+
+      const visibleElements = doc.querySelectorAll("h1, h2, h3, p, div, span, button, a, img, form, input, nav, header, footer, section, main");
+      if (visibleElements.length > 0) {
+        checks.push({
+          name: "Visible DOM elements",
+          nameAr: "عناصر DOM مرئية",
+          passed: true,
+          severity: "info",
+          message: `${visibleElements.length} visible DOM elements found after execution`,
+          messageAr: `${visibleElements.length} عنصر DOM مرئي بعد التنفيذ`,
+        });
+      } else {
+        checks.push({
+          name: "Visible DOM elements",
+          nameAr: "عناصر DOM مرئية",
+          passed: false,
+          severity: "error",
+          message: "No visible DOM elements found after execution",
+          messageAr: "لم يتم العثور على عناصر DOM مرئية بعد التنفيذ",
+        });
+        totalScore -= 20;
+      }
+
+      if (consoleErrors.length > 0) {
+        const uniqueErrors = [...new Set(consoleErrors)].slice(0, 5);
+        checks.push({
+          name: "No runtime errors",
+          nameAr: "عدم وجود أخطاء تشغيل",
+          passed: false,
+          severity: "error",
+          message: `${consoleErrors.length} runtime error(s): ${uniqueErrors.join("; ")}`,
+          messageAr: `${consoleErrors.length} خطأ أثناء التشغيل: ${uniqueErrors.join("; ")}`,
+        });
+        totalScore -= Math.min(30, consoleErrors.length * 10);
+      } else {
+        checks.push({
+          name: "No runtime errors",
+          nameAr: "عدم وجود أخطاء تشغيل",
+          passed: true,
+          severity: "info",
+          message: "No JavaScript runtime errors detected",
+          messageAr: "لم يتم اكتشاف أخطاء JavaScript أثناء التشغيل",
         });
       }
+
+      if (consoleWarnings.length > 0) {
+        checks.push({
+          name: "Console warnings",
+          nameAr: "تحذيرات وحدة التحكم",
+          passed: false,
+          severity: "warning",
+          message: `${consoleWarnings.length} console warning(s)`,
+          messageAr: `${consoleWarnings.length} تحذير في وحدة التحكم`,
+        });
+        totalScore -= Math.min(10, consoleWarnings.length * 3);
+      }
+
+      dom.window.close();
     }
   }
 
@@ -396,23 +493,6 @@ function runtimeCheck(files: { filePath: string; content: string }[]): QaCheckRe
         message: `Unbalanced braces in ${css.filePath} (${unclosedBraces > 0 ? "unclosed" : "extra closing"})`,
         messageAr: `أقواس غير متوازنة في ${css.filePath}`,
         file: css.filePath,
-      });
-      totalScore -= 15;
-    }
-  }
-
-  for (const js of jsFiles) {
-    const braces = (js.content.match(/{/g) || []).length - (js.content.match(/}/g) || []).length;
-    const parens = (js.content.match(/\(/g) || []).length - (js.content.match(/\)/g) || []).length;
-    if (braces !== 0 || parens !== 0) {
-      checks.push({
-        name: "JS syntax",
-        nameAr: "بنية JavaScript",
-        passed: false,
-        severity: "error",
-        message: `Syntax issue in ${js.filePath}: unbalanced ${braces !== 0 ? "braces" : "parentheses"}`,
-        messageAr: `مشكلة في بنية ${js.filePath}: أقواس غير متوازنة`,
-        file: js.filePath,
       });
       totalScore -= 15;
     }
@@ -438,77 +518,187 @@ function functionalCheck(files: { filePath: string; content: string }[]): QaChec
   let totalScore = 100;
 
   const htmlFiles = files.filter((f) => f.filePath.endsWith(".html"));
-  const allContent = files.map((f) => f.content).join("\n");
+  const cssFiles = files.filter((f) => f.filePath.endsWith(".css"));
+  const jsFiles = files.filter((f) => f.filePath.endsWith(".js"));
 
-  if (htmlFiles.length > 0) {
-    const hasNavigation = allContent.includes("<nav") || allContent.includes("<header");
+  const indexHtml = htmlFiles.find(
+    (f) => f.filePath === "index.html" || f.filePath.endsWith("/index.html")
+  );
+
+  if (!indexHtml) {
     checks.push({
-      name: "Navigation present",
-      nameAr: "التنقل موجود",
-      passed: hasNavigation,
-      severity: hasNavigation ? "info" : "warning",
-      message: hasNavigation ? "Navigation/header element found" : "No navigation element found",
-      messageAr: hasNavigation ? "عنصر التنقل موجود" : "عنصر التنقل غير موجود",
+      name: "Entry page available",
+      nameAr: "الصفحة الرئيسية متاحة",
+      passed: false,
+      severity: "error",
+      message: "No index.html — site cannot load",
+      messageAr: "لا يوجد index.html — لا يمكن تحميل الموقع",
     });
-    if (!hasNavigation) totalScore -= 5;
+    totalScore -= 30;
 
-    const hasLinks = /<a\s+[^>]*href/i.test(allContent);
-    checks.push({
-      name: "Interactive links",
-      nameAr: "روابط تفاعلية",
-      passed: hasLinks,
-      severity: hasLinks ? "info" : "warning",
-      message: hasLinks ? "Interactive links found" : "No interactive links found",
-      messageAr: hasLinks ? "روابط تفاعلية موجودة" : "لا توجد روابط تفاعلية",
-    });
-    if (!hasLinks) totalScore -= 3;
+    const score = Math.max(0, totalScore);
+    return {
+      status: "failed",
+      score,
+      details: {
+        checks,
+        summary: `Functional check: 0/1 passed. 1 error.`,
+        summaryAr: `الفحص الوظيفي: 0/1 ناجح. 1 خطأ.`,
+      },
+    };
+  }
 
-    const hasSemanticTags = /<(main|section|article|aside|footer)/i.test(allContent);
-    checks.push({
-      name: "Semantic HTML",
-      nameAr: "HTML دلالي",
-      passed: hasSemanticTags,
-      severity: hasSemanticTags ? "info" : "warning",
-      message: hasSemanticTags ? "Semantic HTML tags used" : "No semantic HTML tags found",
-      messageAr: hasSemanticTags ? "وسوم HTML دلالية مستخدمة" : "لا توجد وسوم HTML دلالية",
-    });
-    if (!hasSemanticTags) totalScore -= 5;
-
-    const hasRtlSupport = /dir\s*=\s*["']rtl/i.test(allContent) || /direction\s*:\s*rtl/i.test(allContent);
-    checks.push({
-      name: "RTL support",
-      nameAr: "دعم RTL",
-      passed: hasRtlSupport,
-      severity: hasRtlSupport ? "info" : "warning",
-      message: hasRtlSupport ? "RTL direction support found" : "No RTL support detected",
-      messageAr: hasRtlSupport ? "دعم اتجاه RTL موجود" : "لم يتم اكتشاف دعم RTL",
-    });
-    if (!hasRtlSupport) totalScore -= 3;
-
-    const hasVisibleContent = /<(h[1-6]|p|div|span|button|input|form)/i.test(allContent);
-    checks.push({
-      name: "Visible content",
-      nameAr: "محتوى مرئي",
-      passed: hasVisibleContent,
-      severity: hasVisibleContent ? "info" : "error",
-      message: hasVisibleContent ? "Visible content elements present" : "No visible content elements found",
-      messageAr: hasVisibleContent ? "عناصر محتوى مرئية موجودة" : "لا توجد عناصر محتوى مرئية",
-    });
-    if (!hasVisibleContent) totalScore -= 20;
-
-    const hasForms = /<form/i.test(allContent);
-    const hasButtons = /<button/i.test(allContent);
-    if (hasForms || hasButtons) {
-      checks.push({
-        name: "Interactive elements",
-        nameAr: "عناصر تفاعلية",
-        passed: true,
-        severity: "info",
-        message: `Found ${hasForms ? "forms" : ""}${hasForms && hasButtons ? " and " : ""}${hasButtons ? "buttons" : ""}`,
-        messageAr: `وُجدت ${hasForms ? "نماذج" : ""}${hasForms && hasButtons ? " و" : ""}${hasButtons ? "أزرار" : ""}`,
-      });
+  let fullHtml = indexHtml.content;
+  for (const css of cssFiles) {
+    const fileName = css.filePath.split("/").pop()!;
+    if (fullHtml.includes(fileName)) {
+      fullHtml = fullHtml.replace(
+        new RegExp(`<link[^>]*href=["']([^"']*${fileName.replace(/\./g, "\\.")})[^"']*["'][^>]*>`, "gi"),
+        `<style>${css.content}</style>`
+      );
     }
   }
+  for (const js of jsFiles) {
+    const fileName = js.filePath.split("/").pop()!;
+    if (fullHtml.includes(fileName)) {
+      fullHtml = fullHtml.replace(
+        new RegExp(`<script[^>]*src=["']([^"']*${fileName.replace(/\./g, "\\.")})[^"']*["'][^>]*>\\s*</script>`, "gi"),
+        `<script>${js.content}</script>`
+      );
+    }
+  }
+
+  const virtualConsole = new VirtualConsole();
+  virtualConsole.on("jsdomError", () => {});
+  virtualConsole.on("error", () => {});
+
+  let dom: JSDOM;
+  try {
+    dom = new JSDOM(fullHtml, {
+      runScripts: "dangerously",
+      virtualConsole,
+      pretendToBeVisual: true,
+      url: "http://localhost/",
+    });
+  } catch {
+    checks.push({
+      name: "Page loads",
+      nameAr: "تحميل الصفحة",
+      passed: false,
+      severity: "error",
+      message: "Site fails to load and execute",
+      messageAr: "فشل الموقع في التحميل والتنفيذ",
+    });
+    totalScore -= 30;
+
+    const score = Math.max(0, totalScore);
+    return {
+      status: "failed",
+      score,
+      details: {
+        checks,
+        summary: `Functional check: 0/1 passed. 1 error.`,
+        summaryAr: `الفحص الوظيفي: 0/1 ناجح. 1 خطأ.`,
+      },
+    };
+  }
+
+  const doc = dom.window.document;
+
+  const navEl = doc.querySelector("nav, header, [role='navigation']");
+  checks.push({
+    name: "Navigation present",
+    nameAr: "التنقل موجود",
+    passed: !!navEl,
+    severity: navEl ? "info" : "warning",
+    message: navEl ? "Navigation element rendered in DOM" : "No navigation element rendered",
+    messageAr: navEl ? "عنصر التنقل موجود في DOM" : "عنصر التنقل غير موجود في DOM",
+  });
+  if (!navEl) totalScore -= 5;
+
+  const links = doc.querySelectorAll("a[href]");
+  checks.push({
+    name: "Interactive links",
+    nameAr: "روابط تفاعلية",
+    passed: links.length > 0,
+    severity: links.length > 0 ? "info" : "warning",
+    message: links.length > 0 ? `${links.length} interactive link(s) rendered` : "No interactive links rendered",
+    messageAr: links.length > 0 ? `${links.length} رابط تفاعلي` : "لا توجد روابط تفاعلية",
+  });
+  if (links.length === 0) totalScore -= 3;
+
+  const semanticTags = doc.querySelectorAll("main, section, article, aside, footer");
+  checks.push({
+    name: "Semantic HTML",
+    nameAr: "HTML دلالي",
+    passed: semanticTags.length > 0,
+    severity: semanticTags.length > 0 ? "info" : "warning",
+    message: semanticTags.length > 0 ? `${semanticTags.length} semantic element(s) rendered` : "No semantic HTML elements in rendered DOM",
+    messageAr: semanticTags.length > 0 ? `${semanticTags.length} عنصر دلالي` : "لا توجد عناصر HTML دلالية في DOM",
+  });
+  if (semanticTags.length === 0) totalScore -= 5;
+
+  const htmlEl = doc.documentElement;
+  const hasRtl = htmlEl?.getAttribute("dir") === "rtl" ||
+    doc.querySelector("[dir='rtl']") !== null ||
+    fullHtml.includes("direction: rtl") || fullHtml.includes("direction:rtl");
+  checks.push({
+    name: "RTL support",
+    nameAr: "دعم RTL",
+    passed: hasRtl,
+    severity: hasRtl ? "info" : "warning",
+    message: hasRtl ? "RTL direction support found" : "No RTL support detected",
+    messageAr: hasRtl ? "دعم اتجاه RTL موجود" : "لم يتم اكتشاف دعم RTL",
+  });
+  if (!hasRtl) totalScore -= 3;
+
+  const visibleEls = doc.querySelectorAll("h1, h2, h3, h4, h5, h6, p, button, input, form, img");
+  checks.push({
+    name: "Visible content rendered",
+    nameAr: "محتوى مرئي معروض",
+    passed: visibleEls.length > 0,
+    severity: visibleEls.length > 0 ? "info" : "error",
+    message: visibleEls.length > 0 ? `${visibleEls.length} visible content element(s) rendered` : "No visible content elements rendered in DOM",
+    messageAr: visibleEls.length > 0 ? `${visibleEls.length} عنصر محتوى مرئي` : "لا توجد عناصر محتوى مرئية في DOM",
+  });
+  if (visibleEls.length === 0) totalScore -= 20;
+
+  const forms = doc.querySelectorAll("form");
+  const buttons = doc.querySelectorAll("button, input[type='submit'], input[type='button']");
+  if (forms.length > 0 || buttons.length > 0) {
+    checks.push({
+      name: "Interactive elements",
+      nameAr: "عناصر تفاعلية",
+      passed: true,
+      severity: "info",
+      message: `${forms.length} form(s) and ${buttons.length} button(s) rendered`,
+      messageAr: `${forms.length} نموذج و${buttons.length} زر`,
+    });
+  }
+
+  const textContent = doc.body?.textContent?.trim() || "";
+  if (textContent.length < 10) {
+    checks.push({
+      name: "Meaningful text content",
+      nameAr: "محتوى نصي ذو معنى",
+      passed: false,
+      severity: "warning",
+      message: "Very little text content rendered on page",
+      messageAr: "محتوى نصي قليل جداً في الصفحة",
+    });
+    totalScore -= 5;
+  } else {
+    checks.push({
+      name: "Meaningful text content",
+      nameAr: "محتوى نصي ذو معنى",
+      passed: true,
+      severity: "info",
+      message: `${textContent.length} characters of text content rendered`,
+      messageAr: `${textContent.length} حرف من المحتوى النصي`,
+    });
+  }
+
+  dom.window.close();
 
   const score = Math.max(0, Math.min(100, totalScore));
   const failed = checks.filter((c) => !c.passed && c.severity === "error");
