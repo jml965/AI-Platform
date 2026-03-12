@@ -54,7 +54,22 @@ const en = {
   checkpoint: "Checkpoint",
   time_elapsed: "elapsed",
   seconds_short: "s",
-  no_files: "No files yet"
+  no_files: "No files yet",
+  nav_back: "Back",
+  nav_forward: "Forward",
+  nav_refresh: "Refresh",
+  device_responsive: "Responsive",
+  device_selector: "Screen size",
+  device_iphone17: "iPhone 17 Pro",
+  device_iphone14: "iPhone 14",
+  device_iphonese: "iPhone SE",
+  device_samsung_s25: "Samsung Galaxy S25",
+  device_ipad_pro: "iPad Pro 13\"",
+  device_ipad_air: "iPad Air",
+  device_samsung_tab: "Samsung Tab S9",
+  device_laptop: "Laptop HD",
+  device_desktop: "Desktop",
+  device_fullhd: "Full HD"
 };
 
 const ar = {
@@ -111,7 +126,22 @@ const ar = {
   checkpoint: "نقطة تحقق",
   time_elapsed: "مضت",
   seconds_short: "ث",
-  no_files: "لا توجد ملفات بعد"
+  no_files: "لا توجد ملفات بعد",
+  nav_back: "رجوع",
+  nav_forward: "تقدم",
+  nav_refresh: "تحديث",
+  device_responsive: "متجاوب",
+  device_selector: "حجم الشاشة",
+  device_iphone17: "iPhone 17 Pro",
+  device_iphone14: "iPhone 14",
+  device_iphonese: "iPhone SE",
+  device_samsung_s25: "Samsung Galaxy S25",
+  device_ipad_pro: "iPad Pro 13\"",
+  device_ipad_air: "iPad Air",
+  device_samsung_tab: "Samsung Tab S9",
+  device_laptop: "لابتوب HD",
+  device_desktop: "سطح المكتب",
+  device_fullhd: "Full HD"
 };
 
 type Language = "en" | "ar";

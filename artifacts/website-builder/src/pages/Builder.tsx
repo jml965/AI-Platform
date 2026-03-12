@@ -4,7 +4,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Send, Loader2, Code2, Eye, Wrench, FolderOpen, AlertCircle, CheckCircle2,
   FileCode2, User, Bot, Search, ChevronRight, ChevronDown,
-  FileText, FileJson, FileImage, File, Folder, ArrowLeft, Clock
+  FileText, FileJson, FileImage, File, Folder, ArrowLeft, Clock,
+  RotateCw, Monitor, Smartphone, Tablet, Laptop, ChevronLeft
 } from "lucide-react";
 import { format } from "date-fns";
 import { useI18n } from "@/lib/i18n";
@@ -48,6 +49,10 @@ export default function Builder() {
   });
   const [centerTab, setCenterTab] = useState<"canvas" | "code">("canvas");
   const [selectedFileIndex, setSelectedFileIndex] = useState(0);
+  const [selectedDevice, setSelectedDevice] = useState("responsive");
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showDeviceMenu, setShowDeviceMenu] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const { data: project } = useGetProject(id || "");
   const { data: tokenSummary } = useGetTokenSummary();
@@ -223,6 +228,46 @@ export default function Builder() {
     });
   };
 
+  const DEVICES = [
+    { id: "responsive", label: t.device_responsive, Icon: Monitor, width: null, height: null, group: null },
+    { id: "iphone17", label: t.device_iphone17, Icon: Smartphone, width: 393, height: 852, group: "phone" },
+    { id: "iphone14", label: t.device_iphone14, Icon: Smartphone, width: 390, height: 844, group: "phone" },
+    { id: "iphonese", label: t.device_iphonese, Icon: Smartphone, width: 375, height: 667, group: "phone" },
+    { id: "samsung_s25", label: t.device_samsung_s25, Icon: Smartphone, width: 412, height: 915, group: "phone" },
+    { id: "ipad_pro", label: t.device_ipad_pro, Icon: Tablet, width: 1024, height: 1366, group: "tablet" },
+    { id: "ipad_air", label: t.device_ipad_air, Icon: Tablet, width: 820, height: 1180, group: "tablet" },
+    { id: "samsung_tab", label: t.device_samsung_tab, Icon: Tablet, width: 800, height: 1280, group: "tablet" },
+    { id: "laptop", label: t.device_laptop, Icon: Laptop, width: 1280, height: 800, group: "desktop" },
+    { id: "desktop", label: t.device_desktop, Icon: Monitor, width: 1440, height: 900, group: "desktop" },
+    { id: "fullhd", label: t.device_fullhd, Icon: Monitor, width: 1920, height: 1080, group: "desktop" },
+  ];
+
+  const currentDevice = DEVICES.find(d => d.id === selectedDevice) ?? DEVICES[0];
+
+  const handleRefresh = () => {
+    if (!iframeRef.current) return;
+    setIsRefreshing(true);
+    const iframe = iframeRef.current;
+    const src = iframe.src;
+    if (src && src !== "about:blank") {
+      iframe.src = "";
+      setTimeout(() => { iframe.src = src; }, 50);
+    } else {
+      const content = iframe.srcdoc;
+      iframe.srcdoc = "";
+      setTimeout(() => { iframe.srcdoc = content; }, 50);
+    }
+    setTimeout(() => setIsRefreshing(false), 600);
+  };
+
+  const handleNavBack = () => {
+    try { iframeRef.current?.contentWindow?.history.back(); } catch { /* cross-origin */ }
+  };
+
+  const handleNavForward = () => {
+    try { iframeRef.current?.contentWindow?.history.forward(); } catch { /* cross-origin */ }
+  };
+
   return (
     <div className="flex h-screen bg-[#0e1525] text-[#e1e4e8] overflow-hidden">
 
@@ -378,7 +423,85 @@ export default function Builder() {
           </button>
         </div>
 
-        <div className="flex-1 relative bg-[#0d1117] overflow-hidden">
+        {centerTab === "canvas" && hasPreview && !isBuilding && (
+          <div className="h-8 flex items-center gap-1 px-2 border-b border-[#1c2333] bg-[#161b22] flex-shrink-0">
+            <button
+              onClick={handleNavBack}
+              title={t.nav_back}
+              className="p-1 rounded text-[#8b949e] hover:text-[#e1e4e8] hover:bg-[#1c2333] transition-colors"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={handleNavForward}
+              title={t.nav_forward}
+              className="p-1 rounded text-[#8b949e] hover:text-[#e1e4e8] hover:bg-[#1c2333] transition-colors"
+            >
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={handleRefresh}
+              title={t.nav_refresh}
+              className="p-1 rounded text-[#8b949e] hover:text-[#e1e4e8] hover:bg-[#1c2333] transition-colors"
+            >
+              <RotateCw className={cn("w-3.5 h-3.5", isRefreshing && "animate-spin")} />
+            </button>
+            <div className="flex-1 mx-2 bg-[#0d1117] border border-[#30363d] rounded text-[10px] text-[#484f58] font-mono px-2 py-0.5 overflow-hidden text-ellipsis whitespace-nowrap">
+              preview://website
+            </div>
+            <div className="relative">
+              <button
+                onClick={() => setShowDeviceMenu(v => !v)}
+                className="flex items-center gap-1.5 px-2 py-1 rounded text-[#8b949e] hover:text-[#e1e4e8] hover:bg-[#1c2333] transition-colors text-[11px]"
+                title={t.device_selector}
+              >
+                <currentDevice.Icon className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline max-w-[80px] truncate">{currentDevice.label}</span>
+                <ChevronDown className="w-3 h-3 opacity-60" />
+              </button>
+              {showDeviceMenu && (
+                <div className="absolute end-0 top-full mt-1 w-52 bg-[#161b22] border border-[#30363d] rounded-lg shadow-xl z-50 overflow-hidden py-1">
+                  {[
+                    { group: null, label: null },
+                    { group: "phone", label: "📱" },
+                    { group: "tablet", label: "⬛" },
+                    { group: "desktop", label: "💻" },
+                  ].map(({ group, label }) => {
+                    const groupDevices = DEVICES.filter(d => d.group === group);
+                    if (groupDevices.length === 0) return null;
+                    return (
+                      <React.Fragment key={group ?? "responsive"}>
+                        {label && (
+                          <div className="px-3 py-1 text-[10px] font-semibold text-[#484f58] uppercase tracking-wider border-t border-[#21262d] mt-1 pt-1">
+                            {label} {group === "phone" ? "Phones" : group === "tablet" ? "Tablets" : "Desktop"}
+                          </div>
+                        )}
+                        {groupDevices.map(device => (
+                          <button
+                            key={device.id}
+                            onClick={() => { setSelectedDevice(device.id); setShowDeviceMenu(false); }}
+                            className={cn(
+                              "w-full flex items-center gap-2.5 px-3 py-1.5 text-[12px] hover:bg-[#1c2333] transition-colors text-start",
+                              selectedDevice === device.id ? "text-[#58a6ff]" : "text-[#c9d1d9]"
+                            )}
+                          >
+                            <device.Icon className="w-3.5 h-3.5 flex-shrink-0" />
+                            <span className="flex-1 truncate">{device.label}</span>
+                            {device.width && (
+                              <span className="text-[10px] text-[#484f58] font-mono">{device.width}×{device.height}</span>
+                            )}
+                          </button>
+                        ))}
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="flex-1 relative bg-[#0d1117] overflow-hidden" onClick={() => showDeviceMenu && setShowDeviceMenu(false)}>
           {centerTab === "canvas" ? (
             isBuilding ? (
               <div className="flex-1 h-full flex items-center justify-center">
@@ -389,12 +512,29 @@ export default function Builder() {
                 </div>
               </div>
             ) : hasPreview ? (
-              <iframe
-                srcDoc={buildPreviewHtml()}
-                sandbox="allow-scripts"
-                className="w-full h-full border-0 bg-white"
-                title={t.live_preview}
-              />
+              <div className="w-full h-full flex items-start justify-center overflow-auto bg-[#0d1117]">
+                <div
+                  className="flex-shrink-0 bg-[#161b22] overflow-hidden"
+                  style={{
+                    width: currentDevice.width ? `${currentDevice.width}px` : "100%",
+                    height: currentDevice.width ? `${currentDevice.height}px` : "100%",
+                    maxWidth: "100%",
+                    transition: "width 300ms ease, height 300ms ease",
+                    borderRadius: currentDevice.group === "phone" ? "16px" : currentDevice.group === "tablet" ? "8px" : "0",
+                    boxShadow: currentDevice.width ? "0 0 0 1px #30363d, 0 8px 32px rgba(0,0,0,0.5)" : "none",
+                    marginTop: currentDevice.width ? "16px" : "0",
+                  }}
+                >
+                  <iframe
+                    ref={iframeRef}
+                    srcDoc={buildPreviewHtml()}
+                    sandbox="allow-scripts"
+                    className="border-0 bg-white"
+                    style={{ width: "100%", height: "100%", display: "block" }}
+                    title={t.live_preview}
+                  />
+                </div>
+              </div>
             ) : (
               <div className="flex-1 h-full flex items-center justify-center text-[#484f58]">
                 <div className="text-center">
