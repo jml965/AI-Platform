@@ -4,6 +4,8 @@ export type BuildStatus = "pending" | "in_progress" | "completed" | "failed" | "
 
 export type TaskStatus = "pending" | "in_progress" | "completed" | "failed";
 
+export type ProjectFramework = "react-vite" | "express" | "nextjs" | "fastapi" | "static";
+
 export interface AgentResult {
   success: boolean;
   tokensUsed: number;
@@ -38,4 +40,14 @@ export interface BuildContext {
   prompt: string;
   existingFiles: { filePath: string; content: string }[];
   tokensUsedSoFar: number;
+  framework?: ProjectFramework;
+}
+
+export interface ProjectStructure {
+  framework: ProjectFramework;
+  files: GeneratedFile[];
+  directories: string[];
+  dependencies: Record<string, string>;
+  devDependencies?: Record<string, string>;
+  scripts?: Record<string, string>;
 }

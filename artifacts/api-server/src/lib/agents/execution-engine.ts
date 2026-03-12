@@ -401,12 +401,15 @@ async function executeBuildPipeline(
       return;
     }
 
+    const generatedDirectories = codegenResult.data?.directories as string[] | undefined;
+
     const saveTaskId = await createTask(buildId, projectId, "filemanager");
     await logExecution(buildId, projectId, saveTaskId, "filemanager", "save_files", "in_progress", {
       fileCount: generatedFiles.length,
+      directoryCount: generatedDirectories?.length ?? 0,
     });
 
-    const saveResult = await fileManager.saveFiles(projectId, generatedFiles);
+    const saveResult = await fileManager.saveFiles(projectId, generatedFiles, generatedDirectories);
 
     if (saveResult.success) {
       await completeTask(saveTaskId, 0, 0, saveResult.durationMs);
