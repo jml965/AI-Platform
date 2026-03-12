@@ -237,9 +237,7 @@ async function executeBuildPipeline(
     const codegenCost = estimateCost(codegenResult.tokensUsed);
     totalCost += codegenCost;
 
-    if (codegenResult.tokensUsed > 0) {
-      await recordTokenUsage(userId, projectId, buildId, "codegen", codegenResult.tokensUsed, codegenCost);
-    }
+    await recordTokenUsage(userId, projectId, buildId, "codegen", codegenResult.tokensUsed, codegenCost);
 
     if (codegenResult.success) {
       await completeTask(codegenTaskId, codegenResult.tokensUsed, codegenCost, codegenResult.durationMs);
@@ -291,9 +289,7 @@ async function executeBuildPipeline(
     const reviewCost = estimateCost(reviewResult.tokensUsed);
     totalCost += reviewCost;
 
-    if (reviewResult.tokensUsed > 0) {
-      await recordTokenUsage(userId, projectId, buildId, "reviewer", reviewResult.tokensUsed, reviewCost);
-    }
+    await recordTokenUsage(userId, projectId, buildId, "reviewer", reviewResult.tokensUsed, reviewCost);
 
     if (reviewResult.success) {
       await completeTask(reviewTaskId, reviewResult.tokensUsed, reviewCost, reviewResult.durationMs);
@@ -350,9 +346,7 @@ async function executeBuildPipeline(
         const fixCost = estimateCost(fixResult.tokensUsed);
         totalCost += fixCost;
 
-        if (fixResult.tokensUsed > 0) {
-          await recordTokenUsage(userId, projectId, buildId, "fixer", fixResult.tokensUsed, fixCost);
-        }
+        await recordTokenUsage(userId, projectId, buildId, "fixer", fixResult.tokensUsed, fixCost);
 
         if (fixResult.success) {
           await completeTask(fixTaskId, fixResult.tokensUsed, fixCost, fixResult.durationMs);
