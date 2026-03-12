@@ -53,7 +53,8 @@ export default function Builder() {
       enabled: !!activeBuildId,
       refetchInterval: (query: { state: { data?: { status?: string } } }) => {
         const status = query.state.data?.status;
-        return (status === "completed" || status === "failed") ? false : 3000;
+        const isTerminal = status === "completed" || status === "failed" || status === "cancelled";
+        return isTerminal ? false : 3000;
       }
     }
   });
@@ -62,8 +63,10 @@ export default function Builder() {
     query: {
       queryKey: ["getBuildLogs", activeBuildId || ""],
       enabled: !!activeBuildId,
-      refetchInterval: () =>
-        (buildStatus?.status === "completed" || buildStatus?.status === "failed") ? false : 3000
+      refetchInterval: () => {
+        const isTerminal = buildStatus?.status === "completed" || buildStatus?.status === "failed" || buildStatus?.status === "cancelled";
+        return isTerminal ? false : 3000;
+      }
     }
   });
 
