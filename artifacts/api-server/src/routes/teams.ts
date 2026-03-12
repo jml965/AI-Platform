@@ -49,11 +49,13 @@ router.get("/teams", async (req, res) => {
       .groupBy(teamMembersTable.teamId);
 
     const countMap = new Map(memberCounts.map((mc) => [mc.teamId, mc.count]));
+    const roleMap = new Map(memberships.map((m) => [m.teamId, m.role]));
 
     const data = userTeams.map((team) => ({
       id: team.id,
       name: team.name,
       ownerId: team.ownerId,
+      myRole: roleMap.get(team.id) ?? "viewer",
       memberCount: countMap.get(team.id) ?? 0,
       createdAt: team.createdAt.toISOString(),
     }));

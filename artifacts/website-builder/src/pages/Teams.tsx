@@ -104,6 +104,10 @@ export default function Teams() {
 
   const teams = teamsData?.data ?? [];
 
+  const canSeeBilling = teams.length === 0 || teams.some(
+    (team: any) => team.myRole === "admin"
+  );
+
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-white" dir={lang === "ar" ? "rtl" : "ltr"}>
       <header className="border-b border-white/10 bg-[#0a0a0f]/80 backdrop-blur-xl sticky top-0 z-50">
@@ -120,9 +124,11 @@ export default function Teams() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <Link href="/billing" className="text-sm text-white/60 hover:text-white transition-colors">
-              {t.billing}
-            </Link>
+            {canSeeBilling && (
+              <Link href="/billing" className="text-sm text-white/60 hover:text-white transition-colors">
+                {t.billing}
+              </Link>
+            )}
             <LanguageToggle />
             <button onClick={handleLogout} className="p-2 text-white/40 hover:text-white/80 transition-colors">
               <LogOut className="w-4 h-4" />
