@@ -1,26 +1,46 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { buildTasksTable, executionLogsTable, projectsTable, usersTable } from "@workspace/db/schema";
+import { buildTasksTable, executionLogsTable, projectsTable, usersTable, teamMembersTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { StartBuildBody } from "@workspace/api-zod";
 import { startBuild, cancelBuild, getActiveBuild, checkBuildLimits } from "../lib/agents";
+import { getUserId, getUserTeamRole, hasPermission } from "../middlewares/permissions";
 
 const router: IRouter = Router();
 
+async function verifyProjectBuildAccess(userId: string, projectId: string, permission: "build.start" | "build.cancel" | "build.view") {
+  const [project] = await db
+    .select()
+    .from(projectsTable)
+    .where(eq(projectsTable.id, projectId))
+    .limit(1);
+
+  if (!project) return { allowed: false, project: null, reason: "Project not found" };
+
+  if (project.userId === userId) return { allowed: true, project, reason: null };
+
+  if (project.teamId) {
+    const role = await getUserTeamRole(userId, project.teamId);
+    if (role && hasPermission(role, permission)) {
+      return { allowed: true, project, reason: null };
+    }
+  }
+
+  return { allowed: false, project: null, reason: "Access denied" };
+}
+
 router.post("/build/start", async (req, res) => {
   try {
+    const userId = getUserId(req);
     const body = StartBuildBody.parse(req.body);
 
-    const [project] = await db
-      .select()
-      .from(projectsTable)
-      .where(eq(projectsTable.id, body.projectId))
-      .limit(1);
-
-    if (!project) {
-      res.status(404).json({ error: { code: "NOT_FOUND", message: "Project not found" } });
+    const access = await verifyProjectBuildAccess(userId, body.projectId, "build.start");
+    if (!access.allowed || !access.project) {
+      res.status(403).json({ error: { code: "FORBIDDEN", message: access.reason || "Access denied" } });
       return;
     }
+
+    const project = access.project;
 
     if (project.status === "building") {
       res.status(409).json({ error: { code: "BUILD_IN_PROGRESS", message: "A build is already in progress for this project" } });
@@ -108,6 +128,15 @@ router.get("/build/:buildId/status", async (req, res) => {
 
     const projectId = tasks[0]?.projectId ?? activeBuild?.projectId ?? "";
 
+    if (projectId) {
+      const userId = getUserId(req);
+      const access = await verifyProjectBuildAccess(userId, projectId, "build.view");
+      if (!access.allowed) {
+        res.status(403).json({ error: { code: "FORBIDDEN", message: "Access denied" } });
+        return;
+      }
+    }
+
     res.json({
       buildId,
       projectId,
@@ -126,6 +155,17 @@ router.get("/build/:buildId/status", async (req, res) => {
 router.post("/build/:buildId/cancel", async (req, res) => {
   try {
     const { buildId } = req.params;
+    const activeBuild = getActiveBuild(buildId);
+
+    if (activeBuild?.projectId) {
+      const userId = getUserId(req);
+      const access = await verifyProjectBuildAccess(userId, activeBuild.projectId, "build.cancel");
+      if (!access.allowed) {
+        res.status(403).json({ error: { code: "FORBIDDEN", message: "Access denied" } });
+        return;
+      }
+    }
+
     const cancelled = cancelBuild(buildId);
 
     if (!cancelled) {
@@ -142,6 +182,21 @@ router.post("/build/:buildId/cancel", async (req, res) => {
 router.get("/build/:buildId/logs", async (req, res) => {
   try {
     const { buildId } = req.params;
+
+    const [firstTask] = await db
+      .select({ projectId: buildTasksTable.projectId })
+      .from(buildTasksTable)
+      .where(eq(buildTasksTable.buildId, buildId))
+      .limit(1);
+
+    if (firstTask?.projectId) {
+      const userId = getUserId(req);
+      const access = await verifyProjectBuildAccess(userId, firstTask.projectId, "build.view");
+      if (!access.allowed) {
+        res.status(403).json({ error: { code: "FORBIDDEN", message: "Access denied" } });
+        return;
+      }
+    }
 
     const logs = await db
       .select()

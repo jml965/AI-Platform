@@ -14,6 +14,7 @@ import {
   requireTeamPermission,
   hasPermission,
 } from "../middlewares/permissions";
+import { sendInvitationEmail } from "../lib/email";
 
 const router: IRouter = Router();
 
@@ -288,7 +289,25 @@ router.post("/teams/:teamId/invite", requireTeamPermission("team.invite"), async
       expiresAt,
     });
 
-    console.log(`[Teams] Invitation sent to ${email} for team ${req.params.teamId} with role ${role}`);
+    const [team] = await db
+      .select()
+      .from(teamsTable)
+      .where(eq(teamsTable.id, req.params.teamId))
+      .limit(1);
+
+    const [inviter] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.id, userId))
+      .limit(1);
+
+    await sendInvitationEmail({
+      recipientEmail: email,
+      teamName: team?.name ?? "Team",
+      inviterName: inviter?.displayName || inviter?.email || "A team member",
+      role,
+      token,
+    });
 
     return res.json({
       success: true,

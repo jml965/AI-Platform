@@ -1,28 +1,45 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { projectsTable, projectFilesTable } from "@workspace/db/schema";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { projectsTable, projectFilesTable, teamMembersTable } from "@workspace/db/schema";
+import { eq, and, desc, sql, or, inArray } from "drizzle-orm";
 import {
   CreateProjectBody,
   UpdateProjectBody,
 } from "@workspace/api-zod";
+import { requireProjectAccess, getUserId } from "../middlewares/permissions";
 
 const router: IRouter = Router();
 
 router.get("/projects", async (req, res) => {
   try {
+    const userId = getUserId(req);
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
     const offset = (page - 1) * limit;
+
+    const teamMemberships = await db
+      .select({ teamId: teamMembersTable.teamId })
+      .from(teamMembersTable)
+      .where(eq(teamMembersTable.userId, userId));
+
+    const teamIds = teamMemberships.map((m) => m.teamId);
+
+    const accessCondition = teamIds.length > 0
+      ? or(
+          eq(projectsTable.userId, userId),
+          inArray(projectsTable.teamId, teamIds)
+        )
+      : eq(projectsTable.userId, userId);
 
     const [projects, countResult] = await Promise.all([
       db
         .select()
         .from(projectsTable)
+        .where(accessCondition)
         .orderBy(desc(projectsTable.createdAt))
         .limit(limit)
         .offset(offset),
-      db.select({ count: sql<number>`count(*)::int` }).from(projectsTable),
+      db.select({ count: sql<number>`count(*)::int` }).from(projectsTable).where(accessCondition),
     ]);
 
     const total = countResult[0]?.count ?? 0;
@@ -38,12 +55,13 @@ router.get("/projects", async (req, res) => {
 
 router.post("/projects", async (req, res) => {
   try {
+    const userId = getUserId(req);
     const body = CreateProjectBody.parse(req.body);
 
     const [project] = await db
       .insert(projectsTable)
       .values({
-        userId: getDefaultUserId(),
+        userId,
         name: body.name,
         description: body.description,
         teamId: body.teamId,
@@ -56,7 +74,7 @@ router.post("/projects", async (req, res) => {
   }
 });
 
-router.get("/projects/:projectId", async (req, res) => {
+router.get("/projects/:projectId", requireProjectAccess("project.view"), async (req, res) => {
   try {
     const [project] = await db
       .select()
@@ -75,7 +93,7 @@ router.get("/projects/:projectId", async (req, res) => {
   }
 });
 
-router.patch("/projects/:projectId", async (req, res) => {
+router.patch("/projects/:projectId", requireProjectAccess("project.edit"), async (req, res) => {
   try {
     const body = UpdateProjectBody.parse(req.body);
 
@@ -100,7 +118,7 @@ router.patch("/projects/:projectId", async (req, res) => {
   }
 });
 
-router.delete("/projects/:projectId", async (req, res) => {
+router.delete("/projects/:projectId", requireProjectAccess("project.delete"), async (req, res) => {
   try {
     const [project] = await db
       .delete(projectsTable)
@@ -118,7 +136,7 @@ router.delete("/projects/:projectId", async (req, res) => {
   }
 });
 
-router.get("/projects/:projectId/files", async (req, res) => {
+router.get("/projects/:projectId/files", requireProjectAccess("project.view"), async (req, res) => {
   try {
     const files = await db
       .select()
@@ -134,7 +152,7 @@ router.get("/projects/:projectId/files", async (req, res) => {
   }
 });
 
-router.get("/projects/:projectId/files/:fileId", async (req, res) => {
+router.get("/projects/:projectId/files/:fileId", requireProjectAccess("project.view"), async (req, res) => {
   try {
     const [file] = await db
       .select()
@@ -157,10 +175,6 @@ router.get("/projects/:projectId/files/:fileId", async (req, res) => {
     res.status(500).json({ error: { code: "INTERNAL", message: "Failed to get file" } });
   }
 });
-
-function getDefaultUserId(): string {
-  return "00000000-0000-0000-0000-000000000001";
-}
 
 function mapProject(p: typeof projectsTable.$inferSelect) {
   return {

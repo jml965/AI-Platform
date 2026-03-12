@@ -11,15 +11,9 @@ import {
 import { eq, and, desc, sql, count } from "drizzle-orm";
 import { getStripeClient, isStripeConfigured } from "../lib/stripeClient";
 import { getAppBaseUrl } from "../lib/appDomain";
+import { getUserId } from "../middlewares/permissions";
 
 const router: IRouter = Router();
-
-function getUserId(req: Express.Request): string {
-  if (!req.user) {
-    throw new Error("getUserId called without authenticated user");
-  }
-  return req.user.id;
-}
 
 async function ensurePlansSeeded() {
   const existing = await db.select({ cnt: count() }).from(plansTable);

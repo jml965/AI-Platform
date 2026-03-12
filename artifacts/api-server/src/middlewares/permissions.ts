@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { db } from "@workspace/db";
-import { teamMembersTable } from "@workspace/db/schema";
+import { teamMembersTable, projectsTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 
 export type TeamRole = "admin" | "developer" | "reviewer" | "viewer";
@@ -106,5 +106,54 @@ export function requireTeamPermission(permission: Permission) {
 
     req.teamRole = role;
     next();
+  };
+}
+
+export function requireProjectAccess(permission: Permission) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return res.status(401).json({
+        error: "Authentication required",
+        errorAr: "يجب تسجيل الدخول",
+      });
+    }
+
+    const userId = req.user.id;
+    const projectId = req.params.projectId;
+
+    if (!projectId) {
+      return next();
+    }
+
+    const [project] = await db
+      .select()
+      .from(projectsTable)
+      .where(eq(projectsTable.id, projectId))
+      .limit(1);
+
+    if (!project) {
+      return res.status(404).json({
+        error: "Project not found",
+        errorAr: "المشروع غير موجود",
+      });
+    }
+
+    if (project.userId === userId) {
+      req.teamRole = "admin";
+      return next();
+    }
+
+    if (project.teamId) {
+      const role = await getUserTeamRole(userId, project.teamId);
+      if (role && hasPermission(role, permission)) {
+        req.teamRole = role;
+        return next();
+      }
+    }
+
+    return res.status(403).json({
+      error: "You do not have access to this project",
+      errorAr: "ليس لديك صلاحية للوصول إلى هذا المشروع",
+    });
   };
 }
