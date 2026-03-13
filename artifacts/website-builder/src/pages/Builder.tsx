@@ -774,23 +774,62 @@ export default function Builder() {
     var useDeferredValue = function(v) { return v; };
     var useTransition = function() { return [false, function(fn) { fn(); }]; };
     var startTransition = function(fn) { fn(); };
-    var useNavigate = function() { return function(p) { window.location.hash = p; }; };
-    var useParams = function() {
-      var hash = window.location.hash.slice(1) || '/';
-      var parts = hash.split('/').filter(Boolean);
-      var result = {};
-      if (parts.length > 1) result.id = parts[parts.length - 1];
-      return result;
+    var __currentParams = {};
+    function __matchRoute(pattern, pathname) {
+      if (!pattern) return false;
+      if (pattern === pathname) return { exact: true, params: {} };
+      if (pattern === '*') return { exact: false, params: { '*': pathname } };
+      var patternParts = pattern.split('/').filter(Boolean);
+      var pathParts = pathname.split('/').filter(Boolean);
+      if (patternParts.length !== pathParts.length) return false;
+      var params = {};
+      for (var i = 0; i < patternParts.length; i++) {
+        if (patternParts[i].charAt(0) === ':') {
+          params[patternParts[i].slice(1)] = decodeURIComponent(pathParts[i]);
+        } else if (patternParts[i] !== pathParts[i]) {
+          return false;
+        }
+      }
+      return { exact: true, params: params };
+    }
+    var useNavigate = function() { return function(p, opts) { if (typeof p === 'number') { return; } window.location.hash = p; }; };
+    var useParams = function() { return __currentParams; };
+    var useLocation = function() {
+      var _s = React.useState(window.location.hash.slice(1) || '/');
+      React.useEffect(function() {
+        var handler = function() { _s[1](window.location.hash.slice(1) || '/'); };
+        window.addEventListener('hashchange', handler);
+        return function() { window.removeEventListener('hashchange', handler); };
+      }, []);
+      return { pathname: _s[0], search: '', hash: '', state: null };
     };
-    var useLocation = function() { return { pathname: window.location.hash.slice(1) || '/', search: '', hash: '', state: null }; };
     var useSearchParams = function() {
       var params = new URLSearchParams(window.location.search);
       var setParams = function() {};
       return [params, setParams];
     };
     var Navigate = function(props) { if (props.to) window.location.hash = props.to; return null; };
-    var Link = function(props) { return React.createElement('a', { href: props.to || '#', className: props.className, style: props.style, onClick: function(e) { e.preventDefault(); window.location.hash = props.to || '/'; } }, props.children); };
-    var NavLink = Link;
+    var Link = function(props) {
+      var p = {};
+      for (var k in props) { if (k !== 'to' && k !== 'children' && k !== 'reloadDocument') p[k] = props[k]; }
+      p.href = '#' + (props.to || '/');
+      var origClick = props.onClick;
+      p.onClick = function(e) { e.preventDefault(); if (origClick) origClick(e); window.location.hash = props.to || '/'; };
+      return React.createElement('a', p, props.children);
+    };
+    var NavLink = function(props) {
+      var currentPath = window.location.hash.slice(1) || '/';
+      var isActive = currentPath === props.to || (props.to !== '/' && currentPath.indexOf(props.to) === 0);
+      var cn = props.className;
+      if (typeof cn === 'function') cn = cn({ isActive: isActive, isPending: false });
+      var newProps = {};
+      for (var k in props) { if (k !== 'to' && k !== 'children' && k !== 'className' && k !== 'end' && k !== 'reloadDocument') newProps[k] = props[k]; }
+      newProps.className = cn || '';
+      if (isActive && props.style && typeof props.style === 'function') newProps.style = props.style({ isActive: isActive });
+      newProps.href = '#' + (props.to || '/');
+      newProps.onClick = function(e) { e.preventDefault(); window.location.hash = props.to || '/'; };
+      return React.createElement('a', newProps, props.children);
+    };
     var BrowserRouter = function(props) { return React.createElement(Fragment, null, props.children); };
     var Routes = function(props) {
       var _s = React.useState(window.location.hash.slice(1) || '/');
@@ -801,8 +840,24 @@ export default function Builder() {
         return function() { window.removeEventListener('hashchange', handler); };
       }, []);
       var routes = React.Children.toArray(props.children);
-      var match = routes.find(function(r) { return r.props && r.props.path === path; }) || routes.find(function(r) { return r.props && (r.props.path === '/' || r.props.index); });
-      return match && match.props ? match.props.element : null;
+      var matched = null;
+      for (var i = 0; i < routes.length; i++) {
+        var r = routes[i];
+        if (!r.props) continue;
+        var result = __matchRoute(r.props.path, path);
+        if (result) {
+          __currentParams = result.params || {};
+          matched = r;
+          break;
+        }
+        if (r.props.index && path === '/') { matched = r; __currentParams = {}; break; }
+      }
+      if (!matched) {
+        var fallback = routes.find(function(r) { return r.props && r.props.path === '*'; });
+        if (!fallback) fallback = routes.find(function(r) { return r.props && (r.props.path === '/' || r.props.index); });
+        if (fallback) { matched = fallback; __currentParams = {}; }
+      }
+      return matched && matched.props ? matched.props.element : null;
     };
     var Route = function() { return null; };
     var Outlet = function(props) { return props && props.children ? React.createElement(Fragment, null, props.children) : null; };
@@ -810,24 +865,54 @@ export default function Builder() {
     var MemoryRouter = BrowserRouter;
     var Router = BrowserRouter;
     var RouterProvider = function(props) {
+      var _s = React.useState(window.location.hash.slice(1) || '/');
+      var currentPath = _s[0];
+      React.useEffect(function() {
+        var handler = function() { _s[1](window.location.hash.slice(1) || '/'); };
+        window.addEventListener('hashchange', handler);
+        return function() { window.removeEventListener('hashchange', handler); };
+      }, []);
       var router = props.router;
-      if (router && router.routes) {
-        var firstRoute = router.routes[0];
-        if (firstRoute && firstRoute.element) return firstRoute.element;
-        if (firstRoute && firstRoute.children && firstRoute.children.length > 0) {
-          var indexRoute = firstRoute.children.find(function(r) { return r.index; }) || firstRoute.children[0];
-          if (indexRoute && indexRoute.element) {
-            return firstRoute.element ? React.createElement(Fragment, null, firstRoute.element, indexRoute.element) : indexRoute.element;
+      if (!router || !router.routes) return null;
+      function findMatch(routesList, path) {
+        for (var i = 0; i < routesList.length; i++) {
+          var route = routesList[i];
+          if (route.path) {
+            var m = __matchRoute(route.path, path);
+            if (m) { __currentParams = m.params || {}; return route; }
+          }
+          if (route.index && path === '/') { __currentParams = {}; return route; }
+          if (route.children) {
+            var child = findMatch(route.children, path);
+            if (child) {
+              if (route.element) return { element: React.createElement(Fragment, null, route.element, child.element) };
+              return child;
+            }
           }
         }
+        return null;
       }
-      return null;
+      var matchedRoute = findMatch(router.routes, currentPath);
+      if (!matchedRoute) {
+        var firstRoute = router.routes[0];
+        if (firstRoute && firstRoute.children) {
+          var indexChild = firstRoute.children.find(function(r) { return r.index; }) || firstRoute.children[0];
+          if (indexChild) {
+            return firstRoute.element ? React.createElement(Fragment, null, firstRoute.element, indexChild.element) : indexChild.element;
+          }
+        }
+        if (firstRoute && firstRoute.element) return firstRoute.element;
+      }
+      return matchedRoute ? matchedRoute.element : null;
     };
     var createBrowserRouter = function(routes) { return { routes: routes }; };
     var createHashRouter = createBrowserRouter;
     var createMemoryRouter = createBrowserRouter;
     var ScrollRestoration = function() { return null; };
-    var useMatch = function() { return null; };
+    var useMatch = function(pattern) {
+      var path = window.location.hash.slice(1) || '/';
+      return __matchRoute(pattern, path) || null;
+    };
     var useRouteError = function() { return null; };
     var useLoaderData = function() { return {}; };
     var Form = function(props) { return React.createElement('form', props, props.children); };
@@ -965,8 +1050,9 @@ export default function Builder() {
           var exportStmts = exportedNames.filter(function(n) { return n && n !== '_default' && n.length > 1; }).map(function(n) {
             return 'if (typeof ' + n + ' !== "undefined") __exports["' + n + '"] = ' + n + ';';
           }).join('\\n');
-          // Import previously exported globals into this IIFE scope
-          var importStmts = Object.keys(__exports).map(function(k) {
+          // Import previously exported globals into this IIFE scope (skip router/React mocks)
+          var __skipImports = ['Link','NavLink','BrowserRouter','Routes','Route','HashRouter','MemoryRouter','Router','RouterProvider','Navigate','Outlet','Suspense','Fragment','useState','useEffect','useCallback','useMemo','useRef','useReducer','useContext','createContext','useNavigate','useParams','useLocation','useSearchParams','useMatch','useRouteError','useLoaderData','Form','ScrollRestoration','lazy','forwardRef','memo','axios','toast','Toaster','useToast','motion','AnimatePresence','clsx','cn','twMerge','cva'];
+          var importStmts = Object.keys(__exports).filter(function(k) { return __skipImports.indexOf(k) === -1; }).map(function(k) {
             return 'var ' + k + ' = __exports["' + k + '"];';
           }).join('\\n');
           transformed = '(function() {\\n' + importStmts + '\\n' + transformed + '\\n' + exportStmts + '\\n})();';
