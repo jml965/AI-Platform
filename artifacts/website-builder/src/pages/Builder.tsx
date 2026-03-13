@@ -666,8 +666,20 @@ export default function Builder() {
         useMemo = React.useMemo, useRef = React.useRef, createContext = React.createContext,
         useContext = React.useContext, Fragment = React.Fragment;
     var useNavigate = function() { return function(p) { window.location.hash = p; }; };
-    var useParams = function() { return {}; };
-    var useLocation = function() { return { pathname: window.location.hash.slice(1) || '/' }; };
+    var useParams = function() {
+      var hash = window.location.hash.slice(1) || '/';
+      var parts = hash.split('/').filter(Boolean);
+      var result = {};
+      if (parts.length > 1) result.id = parts[parts.length - 1];
+      return result;
+    };
+    var useLocation = function() { return { pathname: window.location.hash.slice(1) || '/', search: '', hash: '', state: null }; };
+    var useSearchParams = function() {
+      var params = new URLSearchParams(window.location.search);
+      var setParams = function() {};
+      return [params, setParams];
+    };
+    var Navigate = function(props) { if (props.to) window.location.hash = props.to; return null; };
     var Link = function(props) { return React.createElement('a', { href: props.to || '#', className: props.className, style: props.style, onClick: function(e) { e.preventDefault(); window.location.hash = props.to || '/'; } }, props.children); };
     var NavLink = Link;
     var BrowserRouter = function(props) { return React.createElement(Fragment, null, props.children); };
