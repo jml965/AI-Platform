@@ -920,22 +920,24 @@ export default function Builder() {
       {leftPanelOpen && (
         <div
           onMouseDown={handleLeftDragStart}
-          className="w-1 cursor-col-resize bg-transparent hover:bg-[#1f6feb] active:bg-[#1f6feb] transition-colors flex-shrink-0 relative group"
+          onDoubleClick={() => setLeftPanelOpen(false)}
+          className="w-[3px] cursor-col-resize flex-shrink-0 relative group hover:bg-[#1f6feb] active:bg-[#1f6feb] transition-colors"
         >
           <div className="absolute inset-y-0 -inset-x-1 z-10" />
         </div>
       )}
 
-      <button
-        onClick={() => setLeftPanelOpen(v => !v)}
-        className="w-5 flex-shrink-0 flex items-center justify-center bg-[#161b22] border-e border-[#1c2333] hover:bg-[#1c2333] transition-colors group"
-        title={leftPanelOpen ? "Collapse chat" : "Expand chat"}
-      >
-        {leftPanelOpen
-          ? <ChevronLeft className={cn("w-3.5 h-3.5 text-[#484f58] group-hover:text-[#e1e4e8] transition-colors", lang === "ar" && "rotate-180")} />
-          : <ChevronRight className={cn("w-3.5 h-3.5 text-[#484f58] group-hover:text-[#e1e4e8] transition-colors", lang === "ar" && "rotate-180")} />
-        }
-      </button>
+      {!leftPanelOpen && (
+        <button
+          onClick={() => setLeftPanelOpen(true)}
+          className="w-[3px] flex-shrink-0 relative hover:bg-[#1f6feb] transition-colors cursor-pointer group"
+          title="Expand chat"
+        >
+          <div className="absolute top-1/2 -translate-y-1/2 end-0 translate-x-1/2 w-4 h-8 bg-[#1c2333] border border-[#30363d] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20">
+            <ChevronRight className={cn("w-3 h-3 text-[#8b949e]", lang === "ar" && "rotate-180")} />
+          </div>
+        </button>
+      )}
 
       <div className="flex-1 flex flex-col border-e border-[#1c2333] min-w-0">
         <BuildProgress currentPhase={currentPhase} failed={phaseFailed} allComplete={buildStatus?.status === "completed"} />
@@ -1162,21 +1164,23 @@ export default function Builder() {
         </div>
       </div>
 
-      <button
-        onClick={() => setRightPanelOpen(v => !v)}
-        className="w-5 flex-shrink-0 flex items-center justify-center bg-[#161b22] border-s border-[#1c2333] hover:bg-[#1c2333] transition-colors group"
-        title={rightPanelOpen ? "Collapse panel" : "Expand panel"}
-      >
-        {rightPanelOpen
-          ? <ChevronRight className={cn("w-3.5 h-3.5 text-[#484f58] group-hover:text-[#e1e4e8] transition-colors", lang === "ar" && "rotate-180")} />
-          : <ChevronLeft className={cn("w-3.5 h-3.5 text-[#484f58] group-hover:text-[#e1e4e8] transition-colors", lang === "ar" && "rotate-180")} />
-        }
-      </button>
+      {!rightPanelOpen && (
+        <button
+          onClick={() => setRightPanelOpen(true)}
+          className="w-[3px] flex-shrink-0 relative hover:bg-[#1f6feb] transition-colors cursor-pointer group"
+          title="Expand panel"
+        >
+          <div className="absolute top-1/2 -translate-y-1/2 start-0 -translate-x-1/2 w-4 h-8 bg-[#1c2333] border border-[#30363d] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20">
+            <ChevronLeft className={cn("w-3 h-3 text-[#8b949e]", lang === "ar" && "rotate-180")} />
+          </div>
+        </button>
+      )}
 
       {rightPanelOpen && (
         <div
           onMouseDown={handleRightDragStart}
-          className="w-1 cursor-col-resize bg-transparent hover:bg-[#1f6feb] active:bg-[#1f6feb] transition-colors flex-shrink-0 relative group"
+          onDoubleClick={() => setRightPanelOpen(false)}
+          className="w-[3px] cursor-col-resize flex-shrink-0 relative group hover:bg-[#1f6feb] active:bg-[#1f6feb] transition-colors"
         >
           <div className="absolute inset-y-0 -inset-x-1 z-10" />
         </div>
