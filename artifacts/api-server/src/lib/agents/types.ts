@@ -1,4 +1,4 @@
-export type AgentType = "planner" | "codegen" | "reviewer" | "fixer" | "filemanager" | "qa_pipeline" | "package_runner" | "surgical_edit";
+export type AgentType = "planner" | "codegen" | "reviewer" | "fixer" | "filemanager" | "qa_pipeline" | "package_runner" | "surgical_edit" | "translator";
 
 export type BuildStatus = "pending" | "in_progress" | "completed" | "failed" | "cancelled";
 

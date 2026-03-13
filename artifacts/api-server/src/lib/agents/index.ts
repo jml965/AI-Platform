@@ -13,4 +13,5 @@ export {
   modifyPlan,
 } from "./planner-agent";
 export type { RunnerOutput, RunnerStatus } from "./package-runner-agent";
+export { TranslationAgent } from "./translation-agent";
 export type { AgentType, BuildStatus, AgentResult, BuildContext, GeneratedFile, CodeReviewResult, ProjectPlan, StoredPlan, PlanStatus } from "./types";

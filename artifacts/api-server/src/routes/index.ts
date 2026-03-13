@@ -20,6 +20,7 @@ import pwaRouter from "./pwa";
 import analyticsRouter from "./analytics";
 import seoRouter from "./seo";
 import pluginsRouter from "./plugins";
+import translationsRouter from "./translations";
 import { requireAuth } from "../middlewares/authSession";
 
 const router: IRouter = Router();
@@ -47,5 +48,6 @@ router.use(templatesRouter);
 router.use(pwaRouter);
 router.use(seoRouter);
 router.use(pluginsRouter);
+router.use(translationsRouter);
 
 export default router;

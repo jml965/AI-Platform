@@ -8,7 +8,7 @@ import {
   FileText, FileJson, FileImage, File, Folder, ArrowLeft, Clock,
   RotateCw, Monitor, Smartphone, Tablet, Laptop, ChevronLeft,
   Terminal as TerminalIcon, Rocket, ExternalLink, Square, RefreshCw, Globe, Archive, BarChart3,
-  Smartphone as SmartphoneIcon, Users, Lock, Unlock, Paintbrush, Puzzle
+  Smartphone as SmartphoneIcon, Users, Lock, Unlock, Paintbrush, Puzzle, Languages
 } from "lucide-react";
 import { format } from "date-fns";
 import { useI18n } from "@/lib/i18n";
@@ -42,6 +42,7 @@ import PluginStore from "@/components/builder/PluginStore";
 import { useUpdateFile } from "@/hooks/useUpdateFile";
 import { useCSSEditor } from "@/hooks/useCSSEditor";
 import CSSEditorPanel from "@/components/builder/CSSEditorPanel";
+import TranslationsPanel from "@/components/builder/TranslationsPanel";
 import "@/components/builder/prism-theme.css";
 
 interface ChatMessage {
@@ -84,6 +85,7 @@ export default function Builder() {
 
   const [showDeployPanel, setShowDeployPanel] = useState(false);
   const [showPwaPanel, setShowPwaPanel] = useState(false);
+  const [showTranslationsPanel, setShowTranslationsPanel] = useState(false);
   const [cssEditorActive, setCssEditorActive] = useState(false);
   const [cssSaving, setCssSaving] = useState(false);
 
@@ -465,7 +467,19 @@ export default function Builder() {
             {t.analytics}
           </Link>
           <button
-            onClick={() => { setShowPwaPanel(v => !v); setShowDeployPanel(false); }}
+            onClick={() => { setShowTranslationsPanel(v => !v); setShowDeployPanel(false); setShowPwaPanel(false); }}
+            className={cn(
+              "text-[11px] px-2.5 py-1 rounded-full font-medium flex items-center gap-1.5 flex-shrink-0 transition-all",
+              showTranslationsPanel
+                ? "bg-cyan-500/20 text-cyan-400"
+                : "bg-[#1c2333] text-[#8b949e] hover:bg-[#30363d] hover:text-[#e1e4e8]"
+            )}
+          >
+            <Languages className="w-3 h-3" />
+            {t.translations_panel}
+          </button>
+          <button
+            onClick={() => { setShowPwaPanel(v => !v); setShowDeployPanel(false); setShowTranslationsPanel(false); }}
             className={cn(
               "text-[11px] px-2.5 py-1 rounded-full font-medium flex items-center gap-1.5 flex-shrink-0 transition-all",
               showPwaPanel
@@ -477,7 +491,7 @@ export default function Builder() {
             PWA
           </button>
           <button
-            onClick={() => { setShowDeployPanel(v => !v); setShowPwaPanel(false); }}
+            onClick={() => { setShowDeployPanel(v => !v); setShowPwaPanel(false); setShowTranslationsPanel(false); }}
             disabled={!canDeploy && !isDeployed && !deploymentStatus}
             className={cn(
               "text-[11px] px-2.5 py-1 rounded-full font-medium flex items-center gap-1.5 flex-shrink-0 transition-all",
@@ -596,6 +610,66 @@ export default function Builder() {
               className="overflow-hidden border-b border-[#1c2333]"
             >
               <PwaSettingsPanel projectId={id} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {showTranslationsPanel && id && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="overflow-hidden border-b border-[#1c2333] max-h-[60vh]"
+            >
+              <TranslationsPanel
+                projectId={id}
+                onInjectSwitcher={() => {
+                  if (!id) return;
+                  const htmlFileForSwitcher = files.find(f => f.filePath?.endsWith('.html'));
+                  if (htmlFileForSwitcher?.id && htmlFileForSwitcher.content) {
+                    const switcherScript = `
+<script>
+(function() {
+  var switcher = document.createElement('div');
+  switcher.id = 'lang-switcher';
+  switcher.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:9999;background:#1a1a2e;border-radius:12px;padding:8px;display:flex;gap:4px;box-shadow:0 4px 20px rgba(0,0,0,0.3);font-family:system-ui,sans-serif;';
+  var langs = document.querySelectorAll('[data-lang]');
+  var allLangs = new Set();
+  langs.forEach(function(el) { allLangs.add(el.getAttribute('data-lang')); });
+  if (allLangs.size === 0) { allLangs.add(document.documentElement.lang || 'en'); }
+  allLangs.forEach(function(code) {
+    var btn = document.createElement('button');
+    btn.textContent = code.toUpperCase();
+    btn.style.cssText = 'padding:6px 12px;border:none;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;background:#2a2a4a;color:#e1e4e8;transition:all 0.2s;';
+    btn.addEventListener('mouseenter', function() { btn.style.background='#3a3a6a'; });
+    btn.addEventListener('mouseleave', function() { btn.style.background='#2a2a4a'; });
+    btn.addEventListener('click', function() {
+      var rtlLangs = ['ar','he','fa','ur'];
+      document.documentElement.dir = rtlLangs.indexOf(code) >= 0 ? 'rtl' : 'ltr';
+      document.documentElement.lang = code;
+      document.querySelectorAll('[data-lang]').forEach(function(el) {
+        el.style.display = el.getAttribute('data-lang') === code ? '' : 'none';
+      });
+      switcher.querySelectorAll('button').forEach(function(b) { b.style.background='#2a2a4a'; });
+      btn.style.background='#1f6feb';
+    });
+    switcher.appendChild(btn);
+  });
+  document.body.appendChild(switcher);
+})();
+<\/script>`;
+                    const newContent = htmlFileForSwitcher.content.replace('</body>', switcherScript + '\n</body>');
+                    updateFileMut.mutateAsync({
+                      projectId: id,
+                      fileId: htmlFileForSwitcher.id,
+                      content: newContent,
+                    }).then(() => {
+                      handleRefresh();
+                    });
+                  }
+                }}
+              />
             </motion.div>
           )}
         </AnimatePresence>

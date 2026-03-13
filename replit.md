@@ -221,9 +221,38 @@ API endpoints:
 
 Includes lightweight tracking script for embedding in deployed sites with visitor/session ID management.
 
+## Multilingual Website Support
+
+Enables users to create websites that support multiple languages with AI-powered translation. Up to 10 languages per project.
+
+Key files:
+- `lib/db/src/schema/translations.ts` — DB tables for project languages and translations
+- `artifacts/api-server/src/lib/agents/translation-agent.ts` — AI translation agent (Claude Sonnet 4.5)
+- `artifacts/api-server/src/routes/translations.ts` — REST API for language/translation management
+- `lib/api-client-react/src/translations-hooks.ts` — React Query hooks for translation endpoints
+- `artifacts/website-builder/src/components/builder/TranslationsPanel.tsx` — Language management UI panel
+
+API endpoints:
+- `GET /translations/languages` — List all supported languages
+- `GET /projects/:projectId/languages` — List project's configured languages
+- `POST /projects/:projectId/languages` — Add language to project
+- `DELETE /projects/:projectId/languages/:languageCode` — Remove language
+- `GET /projects/:projectId/translations/:languageCode` — Get translations for a language
+- `PATCH /projects/:projectId/translations/:translationId` — Update a translation manually
+- `POST /projects/:projectId/translate/:languageCode` — Trigger AI translation
+
+Features:
+- Add up to 10 languages per project from 15 supported languages
+- AI-powered automatic translation using Claude Sonnet 4.5
+- Manual translation review and editing
+- RTL language support (Arabic, Hebrew, Persian, Urdu)
+- Language switcher widget injection into generated websites
+- Auto-detects translatable content from HTML files (text, placeholders, titles, alt text)
+- Preserves manually edited translations during re-translation
+
 ## Database Schema
 
-16 tables in `lib/db/src/schema/`:
+18 tables in `lib/db/src/schema/`:
 - `users` — User accounts with locale preference, spending limits, credit balance, and active plan
 - `projects` — Website projects with status tracking
 - `project_files` — Generated files (HTML, CSS, JS) per project
@@ -243,6 +272,8 @@ Includes lightweight tracking script for embedding in deployed sites with visito
 - `domains` — Custom domains linked to projects with DNS verification status, SSL certificate tracking
 - `snapshots` — Project backup snapshots storing all project files as JSONB for one-click restore and comparison
 - `page_views` — Page view tracking for analytics with project, path, referrer, browser, device, OS, session/visitor IDs
+- `project_languages` — Languages configured per project with default/RTL flags
+- `translations` — Per-project, per-language content translations with auto/manual status tracking
 
 ## Template System
 
