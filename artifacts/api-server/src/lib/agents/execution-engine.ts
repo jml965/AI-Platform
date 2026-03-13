@@ -39,6 +39,34 @@ interface ActiveBuild {
 
 const activeBuilds = new Map<string, ActiveBuild>();
 
+(async function cleanupStuckProjects() {
+  try {
+    const stuck = await db.execute(
+      sql`UPDATE projects SET status = 'ready'
+          WHERE status = 'building'
+          AND id IN (SELECT DISTINCT project_id FROM project_files)
+          RETURNING id, name`
+    );
+    const stuckDraft = await db.execute(
+      sql`UPDATE projects SET status = 'draft'
+          WHERE status = 'building'
+          AND id NOT IN (SELECT DISTINCT project_id FROM project_files)
+          RETURNING id, name`
+    );
+    await db.execute(
+      sql`UPDATE build_tasks SET status = 'failed', completed_at = NOW()
+          WHERE status = 'in_progress'
+          AND created_at < NOW() - INTERVAL '5 minutes'`
+    );
+    const total = (stuck.rows?.length || 0) + (stuckDraft.rows?.length || 0);
+    if (total > 0) {
+      console.log(`[STARTUP] Fixed ${total} stuck project(s) from previous session`);
+    }
+  } catch (e) {
+    console.error("[STARTUP] Failed to cleanup stuck projects:", e);
+  }
+})();
+
 export function getActiveBuild(buildId: string): ActiveBuild | undefined {
   return activeBuilds.get(buildId);
 }
