@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Replit Home Screen</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- React 18 + ReactDOM 18 + Babel Standalone (JSX support) -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body, #root { height: 100%; width: 100%; overflow: hidden; }
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    textarea { font-family: inherit; }
+    textarea::placeholder { color: #6e7681; }
+    button { cursor: pointer; }
+    ::-webkit-scrollbar { display: none; }
+
+    .nav-item:hover  { background: rgba(255,255,255,0.06) !important; }
+    .dd-row:hover    { background: rgba(255,255,255,0.07) !important; }
+    .btn-ghost:hover { background: rgba(255,255,255,0.08) !important; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useRef, useEffect } = React;
+
+    /* ════════════════════════════════════════════════
+       SVG ICONS — all inline, zero external dependency
+       stroke-width: 1.75, viewBox: 0 0 24 24
+    ════════════════════════════════════════════════ */
+    const ICONS = {
+      home:        <><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></>,
+      layoutGrid:  <><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></>,
+      globe:       <><circle cx="12" cy="12" r="10"/><line x1="2" x2="22" y1="12" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></>,
+      puzzle:      <><path d="M19.439 7.85c-.049.322.059.648.289.878l1.568 1.568c.47.47.706 1.087.706 1.704s-.235 1.233-.706 1.704l-1.611 1.611a.98.98 0 0 1-.837.276c-.47-.07-.802-.48-.968-.925a2.501 2.501 0 1 0-3.214 3.214c.446.166.855.497.925.968a.979.979 0 0 1-.276.837l-1.61 1.61a2.404 2.404 0 0 1-1.705.707 2.402 2.402 0 0 1-1.704-.706l-1.568-1.568a1.026 1.026 0 0 0-.877-.29c-.493.074-.84.504-1.02.968a2.5 2.5 0 1 1-3.237-3.237c.464-.18.894-.527.967-1.02a1.026 1.026 0 0 0-.289-.877l-1.568-1.568A2.402 2.402 0 0 1 1.998 12c0-.617.236-1.234.706-1.704L4.23 8.77c.24-.24.581-.353.917-.303.515.077.877.528 1.073 1.01a2.5 2.5 0 1 0 3.259-3.259c-.482-.196-.933-.558-1.01-1.073-.05-.336.062-.676.303-.917l1.525-1.525A2.402 2.402 0 0 1 12 2c.617 0 1.234.236 1.704.706l1.568 1.568c.23.23.556.338.877.29.493-.074.84-.504 1.02-.968a2.5 2.5 0 1 1 3.237 3.237c-.464.18-.894.527-.967 1.02z"/></>,
+      code2:       <><path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/></>,
+      settings:    <><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></>,
+      bookOpen:    <><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></>,
+      fileText:    <><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></>,
+      gift:        <><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5A4.8 8 0 0 1 12 8a4.8 8 0 0 1 4.5-5 2.5 2.5 0 0 1 0 5"/></>,
+      search:      <><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></>,
+      chevronDown: <><path d="m6 9 6 6 6-6"/></>,
+      plus:        <><path d="M5 12h14"/><path d="M12 5v14"/></>,
+      upload:      <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></>,
+      uploadCloud: <><polyline points="16 16 12 12 8 16"/><line x1="12" x2="12" y1="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></>,
+      x:           <><path d="M18 6 6 18"/><path d="m6 6 12 12"/></>,
+      check:       <><path d="M20 6 9 17l-5-5"/></>,
+      cpu:         <><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></>,
+      smartphone:  <><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></>,
+      play:        <><polygon points="6 3 20 12 6 21 6 3"/></>,
+      barChart2:   <><line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/></>,
+      gamepad2:    <><line x1="6" x2="10" y1="11" y2="11"/><line x1="8" x2="8" y1="9" y2="13"/><line x1="15" x2="15.01" y1="12" y2="12"/><line x1="17" x2="17.01" y1="10" y2="10"/><path d="M6 5H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><path d="M11 5a2 2 0 0 1 2 2v2H9V7a2 2 0 0 1 2-2z"/></>,
+      refreshCw:   <><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></>,
+      file:        <><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></>,
+      wand2:       <><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72Z"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/></>,
+      camera:      <><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></>,
+      arrowRight:  <><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></>,
+      externalLink:<><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></>,
+      download:    <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></>,
+    };
+
+    /* Renders any icon by key name */
+    function Icon({ name, size = 14, color = "currentColor", style: extraStyle = {} }) {
+      const paths = ICONS[name];
+      if (!paths) return null;
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width={size} height={size}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke={color}
+          strokeWidth="1.75"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ display: "inline-block", flexShrink: 0, ...extraStyle }}
+        >
+          {paths}
+        </svg>
+      );
+    }
+
+    /* Replit logo */
+    function ReplitLogo() {
+      return (
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <path d="M4 4H10V10H4V4Z" fill="#F26207"/>
+          <path d="M10 4H16V10H10V4Z" fill="#F26207" fillOpacity="0.6"/>
+          <path d="M4 10H10V16H4V10Z" fill="#F26207" fillOpacity="0.6"/>
+          <path d="M10 10H16V16H10V10Z" fill="#F26207"/>
+        </svg>
+      );
+    }
+
+    /* Figma logo (multicolor) */
+    function FigmaIcon() {
+      return (
+        <svg width="16" height="16" viewBox="0 0 38 57" fill="none">
+          <path d="M19 28.5a9.5 9.5 0 1 1 19 0 9.5 9.5 0 0 1-19 0z" fill="#1ABCFE"/>
+          <path d="M0 47.5A9.5 9.5 0 0 1 9.5 38H19v9.5a9.5 9.5 0 0 1-19 0z" fill="#0ACF83"/>
+          <path d="M19 0v19h9.5a9.5 9.5 0 0 0 0-19H19z" fill="#FF7262"/>
+          <path d="M0 9.5A9.5 9.5 0 0 0 9.5 19H19V0H9.5A9.5 9.5 0 0 0 0 9.5z" fill="#F24E1E"/>
+          <path d="M0 28.5A9.5 9.5 0 0 0 9.5 38H19V19H9.5A9.5 9.5 0 0 0 0 28.5z" fill="#A259FF"/>
+        </svg>
+      );
+    }
+
+    /* ════════════════════════════════════════════════
+       MAIN COMPONENT
+    ════════════════════════════════════════════════ */
+    function ReplitHome() {
+      const [activeTab,            setActiveTab]            = useState("app");
+      const [showWebAppDropdown,   setShowWebAppDropdown]   = useState(false);
+      const [showBuildDropdown,    setShowBuildDropdown]    = useState(false);
+      const [showPlusDropdown,     setShowPlusDropdown]     = useState(false);
+      const [textValue,            setTextValue]            = useState("");
+      const [notificationVisible,  setNotificationVisible]  = useState(true);
+      const [selectedApp,          setSelectedApp]          = useState("Web app");
+      const [selectedBuildMode,    setSelectedBuildMode]    = useState("Build");
+
+      const closeAll = () => {
+        setShowWebAppDropdown(false);
+        setShowBuildDropdown(false);
+        setShowPlusDropdown(false);
+      };
+
+      const webAppOptions = [
+        { label: "Web app",            icon: "globe" },
+        { label: "Mobile app",         icon: "smartphone" },
+        { label: "Animation",          icon: "play",       isNew: true },
+        { label: "Data app",           icon: "barChart2" },
+        { label: "3D Game",            icon: "gamepad2" },
+        { label: "Automation",         icon: "refreshCw" },
+        { label: "Start from scratch", icon: "file" },
+      ];
+
+      const buildOptions = [
+        { label: "Start building immediately",  mode: "Build", icon: "cpu" },
+        { label: "Plan your work before building", mode: "Plan", icon: "fileText" },
+      ];
+
+      const currentAppIcon = (webAppOptions.find(o => o.label === selectedApp) || webAppOptions[0]).icon;
+
+      /* ── colours / shared style tokens ── */
+      const clr = {
+        bg:       "#0e1117",
+        sidebar:  "#161b22",
+        card:     "#1c2128",
+        card2:    "#1e2228",
+        border:   "rgba(255,255,255,0.10)",
+        borderSub:"rgba(255,255,255,0.07)",
+        txt:      "#e2e8f0",
+        txtMid:   "#c9d1d9",
+        txtDim:   "#8b949e",
+        txtFaint: "#6e7681",
+        blue:     "#58a6ff",
+        accent:   "#2d7dd2",
+      };
+
+      const pill = (extra = {}) => ({
+        display: "flex", alignItems: "center", gap: 6,
+        padding: "5px 12px", borderRadius: 9999,
+        fontSize: 12, color: clr.txtDim, cursor: "pointer",
+        backgroundColor: "rgba(255,255,255,0.05)",
+        border: `1px solid ${clr.border}`,
+        ...extra,
+      });
+
+      const dropdownBase = {
+        position: "absolute", zIndex: 100, borderRadius: 12,
+        backgroundColor: clr.card2,
+        border: `1px solid rgba(255,255,255,0.12)`,
+        boxShadow: "0 16px 48px rgba(0,0,0,0.85)",
+        overflow: "hidden",
+      };
+
+      const newBadge = {
+        borderRadius: 4, fontWeight: 700, fontSize: 9,
+        padding: "1px 5px",
+        backgroundColor: clr.accent, color: "#fff",
+      };
+
+      return (
+        <div
+          style={{ display:"flex", height:"100vh", width:"100%", overflow:"hidden",
+                   backgroundColor: clr.bg, color: clr.txt, userSelect:"none" }}
+          onClick={closeAll}
+        >
+          {/* ─────────────── SIDEBAR ─────────────── */}
+          <div style={{ display:"flex", flexDirection:"column", width:168, minWidth:168,
+                        backgroundColor: clr.sidebar, borderRight:`1px solid ${clr.borderSub}` }}>
+
+            {/* Top bar */}
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+                          padding:"10px 12px", borderBottom:`1px solid ${clr.borderSub}` }}>
+              <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                <ReplitLogo />
+                <Icon name="chevronDown" size={12} color={clr.txtDim} />
+              </div>
+              <button style={{ background:"none", border:"none", display:"flex", color:clr.txtDim }}>
+                <Icon name="search" size={14} color={clr.txtDim} />
+              </button>
+            </div>
+
+            {/* Workspace pill */}
+            <div style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 12px",
+                          margin:"4px 8px", borderRadius:6, cursor:"pointer",
+                          backgroundColor:"rgba(255,255,255,0.06)" }}>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"center",
+                            width:20, height:20, borderRadius:"50%", fontWeight:600,
+                            fontSize:10, backgroundColor: clr.accent, color:"#fff", flexShrink:0 }}>J</div>
+              <span style={{ fontSize:12.5, color:clr.txtMid, fontWeight:500, flex:1 }}>jamal's Workspace</span>
+              <Icon name="chevronDown" size={11} color={clr.txtDim} />
+            </div>
+
+            {/* Action buttons */}
+            <div style={{ padding:"0 8px", display:"flex", flexDirection:"column", gap:4 }}>
+              <button style={{ display:"flex", alignItems:"center", gap:6, width:"100%", padding:"6px 12px",
+                               borderRadius:6, fontSize:12, fontWeight:500, cursor:"pointer",
+                               color:clr.txtMid, backgroundColor:"rgba(255,255,255,0.07)",
+                               border:`1px solid ${clr.border}`, textAlign:"left" }}>
+                <Icon name="plus" size={13} color={clr.txtDim} /> Create App
+              </button>
+              <button style={{ display:"flex", alignItems:"center", gap:6, width:"100%", padding:"6px 12px",
+                               borderRadius:6, fontSize:12, cursor:"pointer",
+                               color:clr.txtDim, background:"none",
+                               border:"1px solid rgba(255,255,255,0.07)", textAlign:"left" }}>
+                <Icon name="upload" size={13} color={clr.txtDim} /> Import code or design
+              </button>
+            </div>
+
+            {/* Nav links */}
+            <nav style={{ display:"flex", flexDirection:"column", gap:2, padding:"12px 8px", flex:1 }}>
+              {[
+                { icon:"home",       label:"Home",                active:true },
+                { icon:"layoutGrid", label:"Apps" },
+                { icon:"globe",      label:"Published apps" },
+                { icon:"puzzle",     label:"Integrations" },
+                { icon:"code2",      label:"Developer Frameworks" },
+                { icon:"settings",   label:"Settings" },
+              ].map((item, i) => (
+                <div key={i} className="nav-item"
+                  style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 12px",
+                           borderRadius:6, cursor:"pointer", fontSize:12.5,
+                           backgroundColor: item.active ? "rgba(255,255,255,0.08)" : "transparent",
+                           color: item.active ? clr.txt : clr.txtDim }}>
+                  <Icon name={item.icon} size={14} color={item.active ? clr.txt : clr.txtDim} />
+                  <span>{item.label}</span>
+                </div>
+              ))}
+            </nav>
+
+            {/* Promo banner */}
+            <div style={{ margin:"0 8px 12px", borderRadius:8, padding:10,
+                          backgroundColor:"rgba(45,125,210,0.15)",
+                          border:"1px solid rgba(45,125,210,0.25)" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:4 }}>
+                <Icon name="gift" size={12} color={clr.blue} />
+                <span style={{ fontSize:10.5, color:clr.txtMid, fontWeight:600 }}>Celebrating women's day</span>
+              </div>
+              <p style={{ fontSize:10.5, color:clr.txtDim, lineHeight:1.4 }}>
+                Gift one free month of Replit Core and receive $20 credit on your next bill.
+              </p>
+            </div>
+
+            {/* Bottom links */}
+            <div style={{ borderTop:`1px solid ${clr.borderSub}`, padding:"8px 8px" }}>
+              {[
+                { icon:"bookOpen",  label:"Learn" },
+                { icon:"fileText",  label:"Documentation" },
+              ].map((item, i) => (
+                <div key={i} className="nav-item"
+                  style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 12px",
+                           borderRadius:6, cursor:"pointer", color:clr.txtDim, fontSize:12.5 }}>
+                  <Icon name={item.icon} size={13} color={clr.txtDim} />
+                  <span>{item.label}</span>
+                </div>
+              ))}
+              <button style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6,
+                               width:"calc(100% - 8px)", margin:"4px 4px 0", padding:6, borderRadius:6,
+                               fontSize:12, color:clr.txtMid,
+                               backgroundColor:"rgba(255,255,255,0.06)", border:`1px solid ${clr.border}` }}>
+                <Icon name="gift" size={12} color={clr.txtMid} /> Refer & Earn
+              </button>
+              <div style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 12px", marginTop:4,
+                            fontSize:10.5, color:clr.txtFaint }}>
+                <span>Install Replit on</span>
+                <span style={{ border:"1px solid rgba(255,255,255,0.15)", borderRadius:3,
+                               padding:"0 3px", fontSize:9 }}>⊞</span>
+                <span>•</span><span>Changelog</span>
+              </div>
+            </div>
+          </div>
+
+          {/* ─────────────── MAIN AREA ─────────────── */}
+          <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center",
+                        justifyContent:"center", position:"relative", overflow:"hidden" }}>
+
+            {/* Radial glow */}
+            <div style={{ position:"absolute", inset:0, pointerEvents:"none",
+                          background:"radial-gradient(ellipse 60% 40% at 50% 30%, rgba(45,125,210,0.08) 0%, transparent 70%)" }} />
+
+            <div style={{ display:"flex", flexDirection:"column", alignItems:"center",
+                          width:"100%", maxWidth:560, padding:"0 16px", position:"relative", zIndex:10 }}>
+
+              {/* Workspace badge */}
+              <div style={{ display:"flex", alignItems:"center", gap:8, borderRadius:9999,
+                            padding:"6px 12px", marginBottom:20, cursor:"pointer",
+                            backgroundColor:"rgba(255,255,255,0.06)", border:`1px solid ${clr.border}` }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"center",
+                              width:18, height:18, borderRadius:"50%", fontWeight:600,
+                              fontSize:9, backgroundColor: clr.accent, color:"#fff" }}>J</div>
+                <span style={{ fontSize:13, color:clr.txtMid, fontWeight:500 }}>jamal's Workspace</span>
+                <Icon name="chevronDown" size={13} color={clr.txtDim} />
+              </div>
+
+              {/* Heading */}
+              <h1 style={{ fontSize:28, fontWeight:700, color:"#fff", letterSpacing:"-0.5px",
+                           textAlign:"center", marginBottom:24 }}>
+                Hi jamal, what do you want to make?
+              </h1>
+
+              {/* ── Input card ── */}
+              <div style={{ width:"100%", borderRadius:12, overflow:"visible", position:"relative",
+                            backgroundColor: clr.card,
+                            border:"1px solid rgba(88,166,255,0.4)",
+                            boxShadow:"0 0 0 1px rgba(88,166,255,0.15), 0 4px 24px rgba(0,0,0,0.4)" }}>
+
+                {/* Tabs */}
+                <div style={{ display:"flex", borderBottom:`1px solid ${clr.borderSub}` }}>
+                  {[
+                    { key:"app",    label:"App",    icon:"cpu" },
+                    { key:"design", label:"Design", icon:"wand2" },
+                  ].map(tab => (
+                    <button key={tab.key}
+                      onClick={e => { e.stopPropagation(); setActiveTab(tab.key); }}
+                      style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 20px",
+                               background:"none", cursor:"pointer", fontSize:13, border:"none",
+                               borderBottom:`2px solid ${activeTab===tab.key ? clr.blue : "transparent"}`,
+                               marginBottom:-1,
+                               color: activeTab===tab.key ? clr.txt : clr.txtDim,
+                               fontWeight: activeTab===tab.key ? 500 : 400 }}>
+                      <Icon name={tab.icon} size={13} color={activeTab===tab.key ? clr.txt : clr.txtDim} />
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Textarea */}
+                <textarea
+                  placeholder="Describe your idea, '/' for integrations..."
+                  value={textValue}
+                  onChange={e => setTextValue(e.target.value)}
+                  onClick={e => e.stopPropagation()}
+                  style={{ width:"100%", height:110, resize:"none", outline:"none",
+                           background:"transparent", padding:"12px 16px", display:"block",
+                           fontSize:13.5, color:clr.txtMid, caretColor:clr.blue, border:"none" }}
+                />
+
+                {/* Toolbar */}
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+                              padding:"6px 12px", borderTop:`1px solid ${clr.borderSub}` }}>
+
+                  {/* Left */}
+                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+
+                    {/* Build button + dropdown */}
+                    <div style={{ position:"relative" }}>
+                      <button
+                        onClick={e => { e.stopPropagation(); setShowBuildDropdown(v => !v); setShowWebAppDropdown(false); setShowPlusDropdown(false); }}
+                        style={{ display:"flex", alignItems:"center", gap:6, padding:"5px 10px",
+                                 borderRadius:6, fontSize:12, color:clr.txtMid,
+                                 backgroundColor:"rgba(255,255,255,0.06)", border:`1px solid ${clr.border}` }}>
+                        <Icon name="cpu" size={13} color={clr.txtMid} />
+                        {selectedBuildMode}
+                        <Icon name="chevronDown" size={11} color={clr.txtDim} />
+                      </button>
+
+                      {showBuildDropdown && (
+                        <div style={{ ...dropdownBase, bottom:"calc(100% + 8px)", left:0, minWidth:270 }}
+                          onClick={e => e.stopPropagation()}>
+                          <div style={{ padding:"8px 14px", borderBottom:`1px solid ${clr.borderSub}` }}>
+                            <span style={{ fontSize:11, color:clr.txtFaint }}>
+                              to switch modes&nbsp;
+                              <kbd style={{ background:"rgba(255,255,255,0.08)", border:"1px solid rgba(255,255,255,0.15)", borderRadius:4, padding:"1px 6px", fontSize:11, color:clr.txtDim, fontFamily:"monospace" }}>I</kbd>
+                              &nbsp;
+                              <kbd style={{ background:"rgba(255,255,255,0.08)", border:"1px solid rgba(255,255,255,0.15)", borderRadius:4, padding:"1px 6px", fontSize:11, color:clr.txtDim, fontFamily:"monospace" }}>⌘</kbd>
+                            </span>
+                          </div>
+                          {buildOptions.map(opt => (
+                            <div key={opt.mode} className="dd-row"
+                              onClick={() => { setSelectedBuildMode(opt.mode); setShowBuildDropdown(false); }}
+                              style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px",
+                                       cursor:"pointer", fontSize:13, color:clr.txtMid }}>
+                              {selectedBuildMode===opt.mode
+                                ? <Icon name="check" size={13} color={clr.blue} />
+                                : <span style={{ width:13 }} />}
+                              <span style={{ flex:1 }}>{opt.label}</span>
+                              <span style={{ color:clr.txtDim, fontWeight:600, fontSize:12 }}>{opt.mode}</span>
+                              <Icon name={opt.icon} size={14} color={clr.txtFaint} />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Plus button + dropdown */}
+                    <div style={{ position:"relative" }}>
+                      <button
+                        onClick={e => { e.stopPropagation(); setShowPlusDropdown(v => !v); setShowBuildDropdown(false); setShowWebAppDropdown(false); }}
+                        style={{ display:"flex", alignItems:"center", justifyContent:"center",
+                                 width:30, height:30, borderRadius:6,
+                                 color:clr.txtDim,
+                                 backgroundColor: showPlusDropdown ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.04)",
+                                 border:`1px solid ${clr.border}` }}>
+                        <Icon name="plus" size={15} color={clr.txtDim} />
+                      </button>
+
+                      {showPlusDropdown && (
+                        <div style={{ ...dropdownBase, bottom:"calc(100% + 8px)", left:0, minWidth:240 }}
+                          onClick={e => e.stopPropagation()}>
+
+                          <div style={{ padding:"10px 16px 4px", fontSize:11, color:clr.txtFaint, fontWeight:500, letterSpacing:"0.02em" }}>
+                            Add attachments
+                          </div>
+                          <div className="dd-row" style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 16px", cursor:"pointer", fontSize:14, color:clr.txt, fontWeight:500 }}>
+                            <span>Upload a file</span>
+                            <div style={{ display:"flex", alignItems:"center", justifyContent:"center", width:28, height:28, borderRadius:6, backgroundColor:"rgba(255,255,255,0.07)", border:`1px solid ${clr.border}` }}>
+                              <Icon name="uploadCloud" size={14} color={clr.txtDim} />
+                            </div>
+                          </div>
+
+                          <div style={{ height:1, backgroundColor:clr.borderSub, margin:"4px 0" }} />
+
+                          <div style={{ padding:"8px 16px 4px", fontSize:11, color:clr.txtFaint, fontWeight:500, letterSpacing:"0.02em" }}>
+                            Add a starting point
+                          </div>
+                          <div className="dd-row" style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 16px", cursor:"pointer", fontSize:14, color:clr.txt, fontWeight:500 }}>
+                            <span>Import a Figma design</span>
+                            <FigmaIcon />
+                          </div>
+                          <div className="dd-row" style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 16px 12px", cursor:"pointer", fontSize:14, color:clr.txt, fontWeight:500 }}>
+                            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                              <Icon name="externalLink" size={14} color={clr.txtDim} />
+                              <span>Import an existing project</span>
+                            </div>
+                            <div style={{ display:"flex", alignItems:"center", justifyContent:"center", width:28, height:28, borderRadius:6, backgroundColor:"rgba(255,255,255,0.07)", border:`1px solid ${clr.border}` }}>
+                              <Icon name="download" size={14} color={clr.txtDim} />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right */}
+                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    <button style={{ display:"flex", alignItems:"center", gap:4, padding:"5px 8px",
+                                     borderRadius:6, color:clr.txtDim,
+                                     backgroundColor:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)" }}>
+                      <Icon name="camera" size={13} color={clr.txtDim} />
+                      <Icon name="chevronDown" size={11} color={clr.txtDim} />
+                    </button>
+                    <button style={{ display:"flex", alignItems:"center", gap:6, padding:"5px 12px",
+                                     borderRadius:6, fontSize:12.5, color:clr.txtDim,
+                                     fontWeight:500, background:"none", border:"none" }}>
+                      Start <Icon name="arrowRight" size={13} color={clr.txtDim} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Bottom bar ── */}
+              <div style={{ display:"flex", alignItems:"center", gap:12, marginTop:12 }}>
+
+                {/* Web app dropdown */}
+                <div style={{ position:"relative" }}>
+                  <button
+                    onClick={e => { e.stopPropagation(); setShowWebAppDropdown(v => !v); setShowBuildDropdown(false); setShowPlusDropdown(false); }}
+                    style={pill()}>
+                    <Icon name={currentAppIcon} size={13} color={clr.txtDim} />
+                    <span>{selectedApp}</span>
+                    <Icon name="chevronDown" size={11} color={clr.txtDim} />
+                  </button>
+
+                  {showWebAppDropdown && (
+                    <div style={{ ...dropdownBase, bottom:"calc(100% + 8px)", left:0, minWidth:230,
+                                  paddingTop:6, paddingBottom:6 }}
+                      onClick={e => e.stopPropagation()}>
+                      {webAppOptions.map(opt => (
+                        <div key={opt.label} className="dd-row"
+                          onClick={() => { setSelectedApp(opt.label); setShowWebAppDropdown(false); }}
+                          style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+                                   padding:"10px 16px", cursor:"pointer", fontSize:14,
+                                   color: selectedApp===opt.label ? clr.txt : clr.txtDim }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                            {selectedApp===opt.label
+                              ? <Icon name="check" size={14} color={clr.blue} />
+                              : <span style={{ width:14 }} />}
+                            {opt.isNew && <span style={newBadge}>New</span>}
+                            <span style={{ fontWeight:500 }}>{opt.label}</span>
+                          </div>
+                          <Icon name={opt.icon} size={15} color={clr.txtFaint} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Auto */}
+                <button style={pill()}>
+                  <Icon name="refreshCw" size={13} color={clr.txtDim} />
+                  <span>Auto</span>
+                  <Icon name="chevronDown" size={11} color={clr.txtDim} />
+                </button>
+              </div>
+            </div>
+
+            {/* ── Notification banner ── */}
+            {notificationVisible && (
+              <div style={{ position:"absolute", bottom:24, left:"50%", transform:"translateX(-50%)",
+                            display:"flex", alignItems:"flex-start", gap:12,
+                            borderRadius:12, padding:"12px 16px",
+                            backgroundColor: clr.card, border:`1px solid ${clr.border}`,
+                            boxShadow:"0 4px 20px rgba(0,0,0,0.5)",
+                            width:420, maxWidth:"calc(100% - 40px)" }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"center",
+                              width:36, height:36, borderRadius:8, flexShrink:0,
+                              backgroundColor:"#2d2d2d", border:`1px solid ${clr.border}` }}>
+                  <div style={{ width:20, height:20, borderRadius:4, display:"flex", alignItems:"center", justifyContent:"center",
+                                background:"linear-gradient(135deg, #f26207, #ff9500)" }}>
+                    <Icon name="play" size={10} color="#fff" />
+                  </div>
+                </div>
+                <div style={{ flex:1 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:2 }}>
+                    <span style={{ fontSize:13, color:clr.txt, fontWeight:600 }}>Introducing Replit Animation</span>
+                    <span style={newBadge}>New</span>
+                  </div>
+                  <p style={{ fontSize:12, color:clr.txtDim, lineHeight:1.4 }}>
+                    Describe the animation you want and watch it come to life. Export your video and share it anywhere.
+                  </p>
+                </div>
+                <button style={{ fontSize:12, color:clr.blue, fontWeight:500, flexShrink:0,
+                                 whiteSpace:"nowrap", background:"none", border:"none" }}>
+                  Try it now
+                </button>
+                <button onClick={() => setNotificationVisible(false)}
+                  style={{ display:"flex", alignItems:"center", background:"none", border:"none",
+                           flexShrink:0, color:clr.txtFaint }}>
+                  <Icon name="x" size={14} color={clr.txtFaint} />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    /* ── Mount ── */
+    ReactDOM.createRoot(document.getElementById("root")).render(<ReplitHome />);
+  </script>
+</body>
+</html>

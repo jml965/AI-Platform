@@ -1,8 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Link } from "wouter";
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, LayoutTemplate, Trash2, Loader2, Coins, LogOut, CreditCard, Users, ShieldCheck, Activity, Globe, ExternalLink, Square, RefreshCw, Rocket, Bell, Palette } from "lucide-react";
+import { Plus, LayoutTemplate, Trash2, Loader2, Coins, LogOut, CreditCard, Users, ShieldCheck, Activity, Globe, ExternalLink, Square, RefreshCw, Rocket, Bell, Palette, Home, Smartphone, Play, BarChart2, Gamepad2, FileText, Settings, BookOpen, Gift, Search, ChevronDown, Upload, UploadCloud, Download, Cpu, Wand2, Camera, ArrowRight, Check, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import type { Project, ProjectStatus as ProjectStatusType } from "@workspace/api-client-react";
@@ -19,8 +19,31 @@ import {
   useRedeployProject,
 } from "@workspace/api-client-react";
 
+function FigmaIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 38 57" fill="none">
+      <path d="M19 28.5a9.5 9.5 0 1 1 19 0 9.5 9.5 0 0 1-19 0z" fill="#1ABCFE"/>
+      <path d="M0 47.5A9.5 9.5 0 0 1 9.5 38H19v9.5a9.5 9.5 0 0 1-19 0z" fill="#0ACF83"/>
+      <path d="M19 0v19h9.5a9.5 9.5 0 0 0 0-19H19z" fill="#FF7262"/>
+      <path d="M0 9.5A9.5 9.5 0 0 0 9.5 19H19V0H9.5A9.5 9.5 0 0 0 0 9.5z" fill="#F24E1E"/>
+      <path d="M0 28.5A9.5 9.5 0 0 0 9.5 38H19V19H9.5A9.5 9.5 0 0 0 0 28.5z" fill="#A259FF"/>
+    </svg>
+  );
+}
+
+function ReplitLogo() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <path d="M4 4H10V10H4V4Z" fill="#F26207"/>
+      <path d="M10 4H16V10H10V4Z" fill="#F26207" fillOpacity="0.6"/>
+      <path d="M4 10H10V16H4V10Z" fill="#F26207" fillOpacity="0.6"/>
+      <path d="M10 10H16V16H10V10Z" fill="#F26207"/>
+    </svg>
+  );
+}
+
 export default function Dashboard() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [isModalOpen, setIsModalOpen] = useState(false);
   
   const { data: projectsData, isLoading: loadingProjects, refetch } = useListProjects();
@@ -29,6 +52,7 @@ export default function Dashboard() {
   const { data: me } = useGetMe({ query: { queryKey: ["getMe"], retry: false } });
   const isAdmin = (me as any)?.role === "admin";
   const logout = useAuthLogout();
+  const userName = (me as any)?.name || (me as any)?.email?.split("@")[0] || "User";
 
   const handleLogout = async () => {
     await logout.mutateAsync();
@@ -36,9 +60,8 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col">
-      {/* Header */}
-      <header className="h-16 border-b border-white/10 bg-card/50 backdrop-blur-md sticky top-0 z-40 px-6 flex items-center justify-between">
+    <div className="min-h-screen bg-[#0e1117] text-[#e2e8f0] flex flex-col">
+      <header className="h-14 border-b border-white/10 bg-[#161b22]/80 backdrop-blur-md sticky top-0 z-40 px-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 bg-primary/20 rounded-lg flex items-center justify-center">
             <LayoutTemplate className="w-4 h-4 text-primary" />
@@ -46,7 +69,7 @@ export default function Dashboard() {
           <h1 className="font-bold text-lg">{t.dashboard}</h1>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 overflow-x-auto">
           {tokenSummary && (
             <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/50 border border-white/5">
               <Coins className="w-4 h-4 text-yellow-500" />
@@ -82,75 +105,408 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-6 lg:p-8">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
-          <h2 className="text-2xl font-bold">{t.projects}</h2>
-          <div className="flex items-center gap-3">
-            <Link
-              href="/templates"
-              className="flex items-center gap-2 border border-white/10 hover:border-primary/30 text-foreground px-4 py-2 rounded-xl font-medium transition-all hover:-translate-y-0.5 active:translate-y-0 hover:bg-primary/5"
-            >
-              <Palette className="w-4 h-4 text-primary" />
-              {t.browse_templates}
-            </Link>
-            <button
-              onClick={() => setIsModalOpen(true)}
-              className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-xl font-medium shadow-lg shadow-primary/20 transition-all hover:-translate-y-0.5 active:translate-y-0"
-            >
-              <Plus className="w-4 h-4" />
-              {t.new_project}
-            </button>
-          </div>
-        </div>
+      <div className="flex flex-1 overflow-hidden">
+        <HomeSidebar t={t} lang={lang} userName={userName} />
 
-        {loadingProjects ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-8 h-8 animate-spin text-primary" />
-          </div>
-        ) : projectsData?.data?.length === 0 ? (
-          <div className="text-center py-20 bg-card/30 rounded-3xl border border-white/5 border-dashed">
-            <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mx-auto mb-4">
-              <LayoutTemplate className="w-8 h-8 text-muted-foreground" />
+        <div className="flex-1 overflow-y-auto">
+          <HomeHeroSection t={t} lang={lang} userName={userName} />
+
+          <main className="max-w-7xl w-full mx-auto p-6 lg:p-8">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
+              <h2 className="text-2xl font-bold">{t.projects}</h2>
+              <div className="flex items-center gap-3">
+                <Link
+                  href="/templates"
+                  className="flex items-center gap-2 border border-white/10 hover:border-primary/30 text-foreground px-4 py-2 rounded-xl font-medium transition-all hover:-translate-y-0.5 active:translate-y-0 hover:bg-primary/5"
+                >
+                  <Palette className="w-4 h-4 text-primary" />
+                  {t.browse_templates}
+                </Link>
+                <button
+                  onClick={() => setIsModalOpen(true)}
+                  className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-xl font-medium shadow-lg shadow-primary/20 transition-all hover:-translate-y-0.5 active:translate-y-0"
+                >
+                  <Plus className="w-4 h-4" />
+                  {t.new_project}
+                </button>
+              </div>
             </div>
-            <p className="text-muted-foreground mb-6">{t.no_projects}</p>
-            <button
-              onClick={() => setIsModalOpen(true)}
-              className="text-primary font-medium hover:underline"
-            >
-              + {t.new_project}
-            </button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <AnimatePresence>
-              {projectsData?.data?.map((project) => (
-                <ProjectCard key={project.id} project={project} refetch={refetch} />
-              ))}
-            </AnimatePresence>
-          </div>
-        )}
-      </main>
 
-      {deploymentsData?.data && deploymentsData.data.length > 0 && (
-        <section className="max-w-7xl w-full mx-auto px-6 lg:px-8 pb-8">
-          <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-            <Globe className="w-5 h-5 text-emerald-400" />
-            {t.deploy_section_title}
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {deploymentsData.data.map((dep) => (
-              <DeploymentCard key={dep.id} deployment={dep} refetch={refetchDeployments} />
-            ))}
-          </div>
-        </section>
-      )}
+            {loadingProjects ? (
+              <div className="flex items-center justify-center py-20">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              </div>
+            ) : projectsData?.data?.length === 0 ? (
+              <div className="text-center py-20 bg-[#1c2128]/30 rounded-3xl border border-white/5 border-dashed">
+                <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mx-auto mb-4">
+                  <LayoutTemplate className="w-8 h-8 text-muted-foreground" />
+                </div>
+                <p className="text-muted-foreground mb-6">{t.no_projects}</p>
+                <button
+                  onClick={() => setIsModalOpen(true)}
+                  className="text-primary font-medium hover:underline"
+                >
+                  + {t.new_project}
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <AnimatePresence>
+                  {projectsData?.data?.map((project) => (
+                    <ProjectCard key={project.id} project={project} refetch={refetch} />
+                  ))}
+                </AnimatePresence>
+              </div>
+            )}
+          </main>
+
+          {deploymentsData?.data && deploymentsData.data.length > 0 && (
+            <section className="max-w-7xl w-full mx-auto px-6 lg:px-8 pb-8">
+              <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                <Globe className="w-5 h-5 text-emerald-400" />
+                {t.deploy_section_title}
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {deploymentsData.data.map((dep) => (
+                  <DeploymentCard key={dep.id} deployment={dep} refetch={refetchDeployments} />
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+      </div>
 
       <CreateProjectModal 
         isOpen={isModalOpen} 
         onClose={() => setIsModalOpen(false)} 
         onSuccess={refetch} 
       />
+    </div>
+  );
+}
+
+function HomeSidebar({ t, lang, userName }: { t: any; lang: string; userName: string }) {
+  const navItems = [
+    { icon: Home, label: t.home_nav_home, active: true },
+    { icon: LayoutTemplate, label: t.home_nav_apps },
+    { icon: Globe, label: t.home_nav_published },
+    { icon: Settings, label: t.home_nav_settings },
+  ];
+
+  return (
+    <div className="hidden lg:flex flex-col w-[200px] min-w-[200px] bg-[#161b22] border-r border-white/7 rtl:border-r-0 rtl:border-l">
+      <div className="flex items-center justify-between p-3 border-b border-white/7">
+        <div className="flex items-center gap-2">
+          <ReplitLogo />
+          <ChevronDown className="w-3 h-3 text-[#8b949e]" />
+        </div>
+        <button className="text-[#8b949e] hover:text-white transition-colors">
+          <Search className="w-4 h-4" />
+        </button>
+      </div>
+
+      <div className="flex items-center gap-2 mx-2 mt-2 p-2 rounded-md bg-white/5 cursor-pointer hover:bg-white/8 transition-colors">
+        <div className="w-5 h-5 rounded-full bg-[#2d7dd2] flex items-center justify-center text-[10px] font-semibold text-white flex-shrink-0">
+          {userName.charAt(0).toUpperCase()}
+        </div>
+        <span className="text-[12.5px] text-[#c9d1d9] font-medium flex-1 truncate">
+          {t.home_workspace.replace("{name}", userName)}
+        </span>
+        <ChevronDown className="w-3 h-3 text-[#8b949e] flex-shrink-0" />
+      </div>
+
+      <div className="p-2 flex flex-col gap-1">
+        <button className="flex items-center gap-2 w-full px-3 py-2 rounded-md text-[12px] font-medium text-[#c9d1d9] bg-white/7 border border-white/10 hover:bg-white/10 transition-colors text-start">
+          <Plus className="w-3.5 h-3.5 text-[#8b949e]" />
+          {t.home_create_app}
+        </button>
+        <button className="flex items-center gap-2 w-full px-3 py-2 rounded-md text-[12px] text-[#8b949e] border border-white/7 hover:bg-white/5 transition-colors text-start">
+          <Upload className="w-3.5 h-3.5" />
+          {t.home_import_code}
+        </button>
+      </div>
+
+      <nav className="flex flex-col gap-0.5 px-2 py-3 flex-1">
+        {navItems.map((item, i) => (
+          <div
+            key={i}
+            className={`flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer text-[12.5px] transition-colors ${
+              item.active
+                ? "bg-white/8 text-[#e2e8f0]"
+                : "text-[#8b949e] hover:bg-white/5"
+            }`}
+          >
+            <item.icon className="w-4 h-4" />
+            <span>{item.label}</span>
+          </div>
+        ))}
+      </nav>
+
+      <div className="border-t border-white/7 p-2">
+        {[
+          { icon: BookOpen, label: t.home_learn },
+          { icon: FileText, label: t.home_documentation },
+        ].map((item, i) => (
+          <div
+            key={i}
+            className="flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer text-[12.5px] text-[#8b949e] hover:bg-white/5 transition-colors"
+          >
+            <item.icon className="w-3.5 h-3.5" />
+            <span>{item.label}</span>
+          </div>
+        ))}
+        <button className="flex items-center justify-center gap-2 w-[calc(100%-8px)] mx-1 mt-1 py-1.5 rounded-md text-[12px] text-[#c9d1d9] bg-white/5 border border-white/10 hover:bg-white/8 transition-colors">
+          <Gift className="w-3 h-3" />
+          {t.home_refer_earn}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function HomeHeroSection({ t, lang, userName }: { t: any; lang: string; userName: string }) {
+  const [activeTab, setActiveTab] = useState("app");
+  const [textValue, setTextValue] = useState("");
+  const [showWebAppDropdown, setShowWebAppDropdown] = useState(false);
+  const [showBuildDropdown, setShowBuildDropdown] = useState(false);
+  const [showPlusDropdown, setShowPlusDropdown] = useState(false);
+  const [selectedApp, setSelectedApp] = useState(t.home_web_app);
+  const [selectedBuildMode, setSelectedBuildMode] = useState(t.home_build);
+
+  const closeAll = () => {
+    setShowWebAppDropdown(false);
+    setShowBuildDropdown(false);
+    setShowPlusDropdown(false);
+  };
+
+  const webAppOptions = [
+    { label: t.home_web_app, icon: Globe },
+    { label: t.home_mobile_app, icon: Smartphone },
+    { label: t.home_animation, icon: Play, isNew: true },
+    { label: t.home_data_app, icon: BarChart2 },
+    { label: t.home_3d_game, icon: Gamepad2 },
+    { label: t.home_automation, icon: RefreshCw },
+    { label: t.home_from_scratch, icon: FileText },
+  ];
+
+  const buildOptions = [
+    { label: t.home_build_immediately, mode: t.home_build, icon: Cpu },
+    { label: t.home_plan_before, mode: t.home_plan, icon: FileText },
+  ];
+
+  const currentAppOption = webAppOptions.find(o => o.label === selectedApp) || webAppOptions[0];
+
+  return (
+    <div
+      className="relative flex flex-col items-center justify-center py-16 px-4 overflow-hidden"
+      onClick={closeAll}
+    >
+      <div className="absolute inset-0 pointer-events-none" style={{
+        background: "radial-gradient(ellipse 60% 40% at 50% 30%, rgba(45,125,210,0.08) 0%, transparent 70%)"
+      }} />
+
+      <div className="flex flex-col items-center w-full max-w-[560px] relative z-10">
+        <div className="flex items-center gap-2 rounded-full px-3 py-1.5 mb-5 cursor-pointer bg-white/5 border border-white/10 hover:bg-white/8 transition-colors">
+          <div className="w-[18px] h-[18px] rounded-full bg-[#2d7dd2] flex items-center justify-center text-[9px] font-semibold text-white">
+            {userName.charAt(0).toUpperCase()}
+          </div>
+          <span className="text-[13px] text-[#c9d1d9] font-medium">
+            {t.home_workspace.replace("{name}", userName)}
+          </span>
+          <ChevronDown className="w-3 h-3 text-[#8b949e]" />
+        </div>
+
+        <h1 className="text-[28px] font-bold text-white tracking-tight text-center mb-6">
+          {t.home_greeting.replace("{name}", userName)}
+        </h1>
+
+        <div className="w-full rounded-xl overflow-visible relative bg-[#1c2128] border border-[rgba(88,166,255,0.4)]" style={{
+          boxShadow: "0 0 0 1px rgba(88,166,255,0.15), 0 4px 24px rgba(0,0,0,0.4)"
+        }}>
+          <div className="flex border-b border-white/7">
+            {[
+              { key: "app", label: t.home_tab_app, icon: Cpu },
+              { key: "design", label: t.home_tab_design, icon: Wand2 },
+            ].map(tab => (
+              <button
+                key={tab.key}
+                onClick={e => { e.stopPropagation(); setActiveTab(tab.key); }}
+                className={`flex items-center gap-2 px-5 py-2.5 text-[13px] border-b-2 -mb-px transition-colors ${
+                  activeTab === tab.key
+                    ? "border-[#58a6ff] text-[#e2e8f0] font-medium"
+                    : "border-transparent text-[#8b949e] hover:text-[#c9d1d9]"
+                }`}
+              >
+                <tab.icon className="w-3.5 h-3.5" />
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          <textarea
+            placeholder={t.home_placeholder}
+            value={textValue}
+            onChange={e => setTextValue(e.target.value)}
+            onClick={e => e.stopPropagation()}
+            className="w-full h-[110px] resize-none bg-transparent px-4 py-3 text-[13.5px] text-[#c9d1d9] placeholder-[#6e7681] outline-none"
+            style={{ caretColor: "#58a6ff" }}
+          />
+
+          <div className="flex items-center justify-between px-3 py-1.5 border-t border-white/7">
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <button
+                  onClick={e => { e.stopPropagation(); setShowBuildDropdown(v => !v); setShowWebAppDropdown(false); setShowPlusDropdown(false); }}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[12px] text-[#c9d1d9] bg-white/5 border border-white/10 hover:bg-white/8 transition-colors"
+                >
+                  <Cpu className="w-3.5 h-3.5" />
+                  {selectedBuildMode}
+                  <ChevronDown className="w-3 h-3 text-[#8b949e]" />
+                </button>
+
+                {showBuildDropdown && (
+                  <div
+                    className="absolute bottom-[calc(100%+8px)] start-0 min-w-[270px] rounded-xl bg-[#1e2228] border border-white/12 z-50"
+                    style={{ boxShadow: "0 16px 48px rgba(0,0,0,0.85)" }}
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <div className="px-3.5 py-2 border-b border-white/7">
+                      <span className="text-[11px] text-[#6e7681]">
+                        {t.home_switch_modes}&nbsp;
+                        <kbd className="bg-white/8 border border-white/15 rounded px-1.5 py-0.5 text-[11px] text-[#8b949e] font-mono">I</kbd>
+                        &nbsp;
+                        <kbd className="bg-white/8 border border-white/15 rounded px-1.5 py-0.5 text-[11px] text-[#8b949e] font-mono">&#8984;</kbd>
+                      </span>
+                    </div>
+                    {buildOptions.map(opt => (
+                      <div
+                        key={opt.mode}
+                        onClick={() => { setSelectedBuildMode(opt.mode); setShowBuildDropdown(false); }}
+                        className="flex items-center gap-2.5 px-3.5 py-2.5 cursor-pointer text-[13px] text-[#c9d1d9] hover:bg-white/7 transition-colors"
+                      >
+                        {selectedBuildMode === opt.mode
+                          ? <Check className="w-3.5 h-3.5 text-[#58a6ff]" />
+                          : <span className="w-3.5" />}
+                        <span className="flex-1">{opt.label}</span>
+                        <span className="text-[#8b949e] font-semibold text-[12px]">{opt.mode}</span>
+                        <opt.icon className="w-3.5 h-3.5 text-[#6e7681]" />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="relative">
+                <button
+                  onClick={e => { e.stopPropagation(); setShowPlusDropdown(v => !v); setShowBuildDropdown(false); setShowWebAppDropdown(false); }}
+                  className={`flex items-center justify-center w-[30px] h-[30px] rounded-md border border-white/10 text-[#8b949e] transition-colors ${
+                    showPlusDropdown ? "bg-white/10" : "bg-white/4 hover:bg-white/8"
+                  }`}
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+
+                {showPlusDropdown && (
+                  <div
+                    className="absolute bottom-[calc(100%+8px)] start-0 min-w-[240px] rounded-xl bg-[#1e2228] border border-white/12 z-50"
+                    style={{ boxShadow: "0 16px 48px rgba(0,0,0,0.85)" }}
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <div className="px-4 pt-2.5 pb-1 text-[11px] text-[#6e7681] font-medium tracking-wide">
+                      {t.home_add_attachments}
+                    </div>
+                    <div className="flex items-center justify-between px-4 py-2 cursor-pointer text-[14px] text-white font-medium hover:bg-white/7 transition-colors">
+                      <span>{t.home_upload_file}</span>
+                      <div className="w-7 h-7 rounded-md bg-white/7 border border-white/10 flex items-center justify-center">
+                        <UploadCloud className="w-3.5 h-3.5 text-[#8b949e]" />
+                      </div>
+                    </div>
+
+                    <div className="h-px bg-white/7 mx-0 my-1" />
+
+                    <div className="px-4 pt-2 pb-1 text-[11px] text-[#6e7681] font-medium tracking-wide">
+                      {t.home_add_starting_point}
+                    </div>
+                    <div className="flex items-center justify-between px-4 py-2 cursor-pointer text-[14px] text-white font-medium hover:bg-white/7 transition-colors">
+                      <span>{t.home_import_figma}</span>
+                      <FigmaIcon />
+                    </div>
+                    <div className="flex items-center justify-between px-4 py-2 pb-3 cursor-pointer text-[14px] text-white font-medium hover:bg-white/7 transition-colors">
+                      <div className="flex items-center gap-2">
+                        <ExternalLink className="w-3.5 h-3.5 text-[#8b949e]" />
+                        <span>{t.home_import_project}</span>
+                      </div>
+                      <div className="w-7 h-7 rounded-md bg-white/7 border border-white/10 flex items-center justify-center">
+                        <Download className="w-3.5 h-3.5 text-[#8b949e]" />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button className="flex items-center gap-1 px-2 py-1.5 rounded-md text-[#8b949e] bg-white/4 border border-white/8 hover:bg-white/8 transition-colors">
+                <Camera className="w-3.5 h-3.5" />
+                <ChevronDown className="w-3 h-3" />
+              </button>
+              <button className="flex items-center gap-1.5 px-3 py-1.5 text-[12.5px] text-[#8b949e] font-medium hover:text-white transition-colors">
+                {t.home_start} <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 mt-3">
+          <div className="relative">
+            <button
+              onClick={e => { e.stopPropagation(); setShowWebAppDropdown(v => !v); setShowBuildDropdown(false); setShowPlusDropdown(false); }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] text-[#8b949e] bg-white/5 border border-white/10 hover:bg-white/8 cursor-pointer transition-colors"
+            >
+              <currentAppOption.icon className="w-3.5 h-3.5" />
+              <span>{selectedApp}</span>
+              <ChevronDown className="w-3 h-3" />
+            </button>
+
+            {showWebAppDropdown && (
+              <div
+                className="absolute bottom-[calc(100%+8px)] start-0 min-w-[230px] rounded-xl bg-[#1e2228] border border-white/12 py-1.5 z-50"
+                style={{ boxShadow: "0 16px 48px rgba(0,0,0,0.85)" }}
+                onClick={e => e.stopPropagation()}
+              >
+                {webAppOptions.map(opt => (
+                  <div
+                    key={opt.label}
+                    onClick={() => { setSelectedApp(opt.label); setShowWebAppDropdown(false); }}
+                    className={`flex items-center justify-between px-4 py-2.5 cursor-pointer text-[14px] hover:bg-white/7 transition-colors ${
+                      selectedApp === opt.label ? "text-[#e2e8f0]" : "text-[#8b949e]"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      {selectedApp === opt.label
+                        ? <Check className="w-3.5 h-3.5 text-[#58a6ff]" />
+                        : <span className="w-3.5" />}
+                      {opt.isNew && (
+                        <span className="rounded px-1.5 py-0.5 text-[9px] font-bold bg-[#2d7dd2] text-white">
+                          {t.home_new_badge}
+                        </span>
+                      )}
+                      <span className="font-medium">{opt.label}</span>
+                    </div>
+                    <opt.icon className="w-4 h-4 text-[#6e7681]" />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] text-[#8b949e] bg-white/5 border border-white/10 hover:bg-white/8 cursor-pointer transition-colors">
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>{t.home_auto}</span>
+            <ChevronDown className="w-3 h-3" />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -184,7 +540,7 @@ function ProjectCard({ project, refetch }: { project: Project, refetch: () => vo
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.9 }}
       whileHover={{ y: -4 }}
-      className="group bg-card border border-white/10 rounded-2xl p-5 hover:shadow-xl hover:shadow-black/50 hover:border-primary/30 transition-all duration-300 relative flex flex-col"
+      className="group bg-[#1c2128] border border-white/10 rounded-2xl p-5 hover:shadow-xl hover:shadow-black/50 hover:border-primary/30 transition-all duration-300 relative flex flex-col"
     >
       <div className="flex justify-between items-start mb-4">
         <h3 className="font-semibold text-lg line-clamp-1 group-hover:text-primary transition-colors">
@@ -244,7 +600,7 @@ function CreateProjectModal({ isOpen, onClose, onSuccess }: { isOpen: boolean, o
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="bg-card border border-white/10 shadow-2xl rounded-2xl p-6 w-full max-w-md"
+        className="bg-[#1c2128] border border-white/10 shadow-2xl rounded-2xl p-6 w-full max-w-md"
       >
         <h2 className="text-xl font-bold mb-4">{t.new_project}</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -255,7 +611,7 @@ function CreateProjectModal({ isOpen, onClose, onSuccess }: { isOpen: boolean, o
               type="text" 
               value={name}
               onChange={e => setName(e.target.value)}
-              className="w-full px-4 py-2.5 bg-background border border-white/10 rounded-xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+              className="w-full px-4 py-2.5 bg-[#0e1117] border border-white/10 rounded-xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
               required
             />
           </div>
@@ -264,7 +620,7 @@ function CreateProjectModal({ isOpen, onClose, onSuccess }: { isOpen: boolean, o
             <textarea 
               value={description}
               onChange={e => setDescription(e.target.value)}
-              className="w-full px-4 py-2.5 bg-background border border-white/10 rounded-xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all resize-none h-24"
+              className="w-full px-4 py-2.5 bg-[#0e1117] border border-white/10 rounded-xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all resize-none h-24"
             />
           </div>
           <div className="flex gap-3 pt-2 justify-end">
@@ -325,7 +681,7 @@ function DeploymentCard({ deployment, refetch }: { deployment: DeploymentRespons
       layout
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
-      className="bg-card border border-white/10 rounded-xl p-4 hover:border-emerald-500/30 transition-all"
+      className="bg-[#1c2128] border border-white/10 rounded-xl p-4 hover:border-emerald-500/30 transition-all"
     >
       <div className="flex justify-between items-start mb-2">
         <h3 className="font-semibold text-sm truncate flex-1">
