@@ -5,7 +5,8 @@ import path from "path";
 const isReplitDev =
   process.env.NODE_ENV !== "production" && process.env.REPL_ID !== undefined;
 
-const rawPort = process.env.PORT;
+const isBuild = process.argv.includes("build");
+const rawPort = process.env.PORT || (isBuild ? "3000" : undefined);
 
 if (!rawPort) {
   throw new Error(
@@ -19,7 +20,7 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-const basePath = process.env.BASE_PATH;
+const basePath = process.env.BASE_PATH || (isBuild ? "/" : undefined);
 
 if (!basePath) {
   throw new Error(

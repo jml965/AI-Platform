@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Globe, Plus, Trash2, RefreshCw, CheckCircle, XCircle, Shield, Loader2, Copy, Check, AlertCircle } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
-import { useListDomains, useAddDomain, useVerifyDomain, useRemoveDomain } from "@workspace/api-client-react";
+import { useListDomains, useAddDomainWithInvalidation, useVerifyDomainWithInvalidation, useRemoveDomainWithInvalidation } from "@workspace/api-client-react";
 import type { DomainResponse, DomainVerifyResponse } from "@workspace/api-client-react";
 
 interface DomainSettingsProps {
@@ -17,9 +17,9 @@ export default function DomainSettings({ projectId }: DomainSettingsProps) {
   const [error, setError] = useState<string | null>(null);
 
   const { data: domainsData, isLoading } = useListDomains(projectId);
-  const addDomainMut = useAddDomain();
-  const verifyDomainMut = useVerifyDomain();
-  const removeDomainMut = useRemoveDomain();
+  const addDomainMut = useAddDomainWithInvalidation();
+  const verifyDomainMut = useVerifyDomainWithInvalidation();
+  const removeDomainMut = useRemoveDomainWithInvalidation();
 
   const domains = domainsData?.data || [];
 

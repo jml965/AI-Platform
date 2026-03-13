@@ -1,9 +1,18 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { customFetch } from "./custom-fetch";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  useAddDomain as useAddDomainGenerated,
+  useVerifyDomain as useVerifyDomainGenerated,
+  useRemoveDomain as useRemoveDomainGenerated,
+  getListDomainsQueryKey,
+} from "./generated/api";
 
-const API_BASE = import.meta.env.VITE_API_URL || "";
+export interface DnsInstructions {
+  aRecord: { type: string; host: string; value: string };
+  cnameRecord: { type: string; host: string; value: string };
+  txtRecord: { type: string; host: string; value: string };
+}
 
-export interface DomainResponse {
+export interface DomainVerifyResponse {
   id: string;
   projectId: string;
   domain: string;
@@ -14,70 +23,46 @@ export interface DomainResponse {
   verificationToken: string | null;
   createdAt: string;
   updatedAt: string;
-}
-
-export interface DnsInstructions {
-  aRecord: { type: string; host: string; value: string };
-  cnameRecord: { type: string; host: string; value: string };
-  txtRecord: { type: string; host: string; value: string };
-}
-
-export interface DomainVerifyResponse extends DomainResponse {
   dnsRecords: { type: string; value: string }[];
   dnsInstructions: DnsInstructions;
 }
 
-export function useListDomains(projectId: string | undefined) {
-  return useQuery<{ data: DomainResponse[] }>({
-    queryKey: ["domains", projectId],
-    queryFn: () =>
-      customFetch(`${API_BASE}/projects/${projectId}/domains`, {
-        credentials: "include",
-      }),
-    enabled: !!projectId,
+export function useAddDomainWithInvalidation() {
+  const queryClient = useQueryClient();
+  const mutation = useAddDomainGenerated({
+    mutation: {
+      onSuccess: (_data, variables) => {
+        queryClient.invalidateQueries({ queryKey: getListDomainsQueryKey(variables.projectId) });
+      },
+    },
   });
+
+  return {
+    ...mutation,
+    mutateAsync: async ({ projectId, domain }: { projectId: string; domain: string }) => {
+      return mutation.mutateAsync({ projectId, data: { domain } });
+    },
+  };
 }
 
-export function useAddDomain() {
+export function useVerifyDomainWithInvalidation() {
   const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ projectId, domain }: { projectId: string; domain: string }) =>
-      customFetch<DomainResponse>(`${API_BASE}/projects/${projectId}/domains`, {
-        method: "POST",
-        credentials: "include",
-        body: JSON.stringify({ domain }),
-        headers: { "Content-Type": "application/json" },
-      }),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["domains", variables.projectId] });
+  return useVerifyDomainGenerated({
+    mutation: {
+      onSuccess: (_data, variables) => {
+        queryClient.invalidateQueries({ queryKey: getListDomainsQueryKey(variables.projectId) });
+      },
     },
   });
 }
 
-export function useVerifyDomain() {
+export function useRemoveDomainWithInvalidation() {
   const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ projectId, domainId }: { projectId: string; domainId: string }) =>
-      customFetch<DomainVerifyResponse>(`${API_BASE}/projects/${projectId}/domains/${domainId}/verify`, {
-        method: "POST",
-        credentials: "include",
-      }),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["domains", variables.projectId] });
-    },
-  });
-}
-
-export function useRemoveDomain() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ projectId, domainId }: { projectId: string; domainId: string }) =>
-      customFetch(`${API_BASE}/projects/${projectId}/domains/${domainId}`, {
-        method: "DELETE",
-        credentials: "include",
-      }),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["domains", variables.projectId] });
+  return useRemoveDomainGenerated({
+    mutation: {
+      onSuccess: (_data, variables) => {
+        queryClient.invalidateQueries({ queryKey: getListDomainsQueryKey(variables.projectId) });
+      },
     },
   });
 }
