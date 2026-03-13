@@ -244,22 +244,22 @@ export default function Builder() {
 
   const prevLogCountRef = React.useRef(0);
 
+  const agentNames: Record<string, { en: string; ar: string }> = {
+    planner: { en: "Planner", ar: "المخطط" },
+    codegen: { en: "Code Generator", ar: "مولّد الكود" },
+    reviewer: { en: "Code Reviewer", ar: "المراجع" },
+    fixer: { en: "Code Fixer", ar: "المصلح" },
+    surgical_edit: { en: "Editor", ar: "المحرر" },
+    package_runner: { en: "Runner", ar: "المشغّل" },
+    qa: { en: "QA", ar: "ضمان الجودة" },
+    filemanager: { en: "File Manager", ar: "مدير الملفات" },
+  };
+
   useEffect(() => {
     if (!activeBuildId || !logs.length) return;
     const newLogs = logs.slice(prevLogCountRef.current);
     if (newLogs.length === 0) return;
     prevLogCountRef.current = logs.length;
-
-    const agentNames: Record<string, { en: string; ar: string }> = {
-      planner: { en: "Planner", ar: "المخطط" },
-      codegen: { en: "Code Generator", ar: "مولّد الكود" },
-      reviewer: { en: "Code Reviewer", ar: "المراجع" },
-      fixer: { en: "Code Fixer", ar: "المصلح" },
-      surgical_edit: { en: "Editor", ar: "المحرر" },
-      package_runner: { en: "Runner", ar: "المشغّل" },
-      qa: { en: "QA", ar: "ضمان الجودة" },
-      filemanager: { en: "File Manager", ar: "مدير الملفات" },
-    };
 
     const statusIcons: Record<string, string> = {
       started: "🔄",
@@ -300,13 +300,30 @@ export default function Builder() {
     }
   }, [project?.status, activeBuildId, buildStatus?.status, id]);
 
+  const buildIdSetTime = useRef<number>(0);
+  useEffect(() => {
+    if (activeBuildId) {
+      buildIdSetTime.current = Date.now();
+    }
+  }, [activeBuildId]);
+
   useEffect(() => {
     if (!activeBuildId) return;
+    const elapsed = Date.now() - buildIdSetTime.current;
+    if (elapsed < 10000) {
+      if (!buildStatus || buildStatus.status === "in_progress" || buildStatus.status === "pending") {
+        const pollTimer = setTimeout(() => {
+          queryClient.invalidateQueries({ queryKey: ["getBuildStatus", activeBuildId] });
+          queryClient.invalidateQueries({ queryKey: ["getProject", id] });
+        }, 3000);
+        return () => clearTimeout(pollTimer);
+      }
+    }
     if (project && project.status !== "building") {
       const isStale = buildStatus && buildStatus.status !== "in_progress" && buildStatus.status !== "pending";
-      const noStatusYet = !buildStatus;
+      const noStatusYet = !buildStatus && elapsed > 10000;
       if (isStale || noStatusYet) {
-        console.log("[PREVIEW] Clearing stale build ID:", activeBuildId, "project:", project.status, "build:", buildStatus?.status);
+        console.log("[PREVIEW] Clearing stale build ID:", activeBuildId, "project:", project.status, "build:", buildStatus?.status, "elapsed:", elapsed);
         setActiveBuildId(null);
         if (id) localStorage.removeItem(`latestBuild_${id}`);
         setPreviewKey(k => k + 1);
@@ -512,7 +529,7 @@ export default function Builder() {
     }
   };
 
-  const isBuilding = buildStatus?.status === "pending" || buildStatus?.status === "in_progress" || startBuildMut.isPending;
+  const isBuilding = buildStatus?.status === "pending" || buildStatus?.status === "in_progress" || startBuildMut.isPending || (!!activeBuildId && !buildStatus);
 
   const actionCount = logs.length;
   const isDeploying = deployMut.isPending || redeployMut.isPending || deploymentStatus?.status === "deploying";
@@ -1243,17 +1260,43 @@ export default function Builder() {
             })}
           </AnimatePresence>
 
-          {(isBuilding || isChatLoading) && (
-            <div className="flex gap-2">
-              <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 bg-emerald-500/20 text-emerald-400">
-                <Bot className="w-3 h-3" />
+          {(isBuilding || isChatLoading) && (() => {
+            const activeLog = logs.find(l => l.status === "in_progress" || l.status === "running" || l.status === "pending");
+            const activeAgent = activeLog?.agentType;
+            const agentLabel = activeAgent
+              ? (agentNames[activeAgent] ? agentNames[activeAgent][lang] : activeAgent)
+              : null;
+            return (
+              <div className="flex gap-2">
+                <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 bg-emerald-500/20 text-emerald-400">
+                  <Bot className="w-3 h-3" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 pt-1">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-[#58a6ff]" />
+                    <span className="text-[12px] text-[#c9d1d9]">
+                      {isChatLoading
+                        ? (lang === "ar" ? "يفكر..." : "Thinking...")
+                        : agentLabel
+                          ? (lang === "ar" ? `${agentLabel} يعمل الآن...` : `${agentLabel} working...`)
+                          : (lang === "ar" ? "الوكلاء يعملون..." : "Agents working...")}
+                    </span>
+                  </div>
+                  {isBuilding && !isChatLoading && (
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <span className="relative flex h-1.5 w-1.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#58a6ff] opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[#58a6ff]"></span>
+                      </span>
+                      <span className="text-[10px] text-[#58a6ff] font-medium">
+                        {lang === "ar" ? "بث مباشر — الوكلاء يعملون أمامك" : "LIVE — agents executing in real-time"}
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center gap-2 pt-1">
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-[#8b949e]" />
-                <span className="text-[12px] text-[#8b949e]">{isChatLoading ? (lang === "ar" ? "يفكر..." : "Thinking...") : (lang === "ar" ? "يعمل..." : "Working...")}</span>
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
           {logs.length > 0 && <ExecutionLogTimeline logs={logs} isBuilding={isBuilding} />}
 
@@ -2078,6 +2121,15 @@ function ExecutionLogTimeline({ logs, isBuilding }: { logs: ExecutionLog[]; isBu
         {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
         <Code2 className="w-3.5 h-3.5" />
         <span className="text-[11px] font-semibold uppercase tracking-wider">{t.execution_log}</span>
+        {isBuilding && (
+          <span className="flex items-center gap-1 ms-1">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+            </span>
+            <span className="text-[10px] font-bold text-red-400 uppercase tracking-wider">LIVE</span>
+          </span>
+        )}
         <span className="text-[10px] text-[#484f58] ms-auto">
           {logs.length} {t.terminal_lines}
           {completedCount > 0 && <span className="text-emerald-400 ms-1">✓{completedCount}</span>}

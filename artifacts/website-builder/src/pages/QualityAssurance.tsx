@@ -361,7 +361,7 @@ export default function QualityAssurance() {
                 <ShieldCheck className="w-4 h-4" />
                 {t.qa_avg_score}
               </div>
-              <div className="text-2xl font-bold text-blue-400">{stats.averageScores.overall}</div>
+              <div className="text-2xl font-bold text-blue-400">{stats?.averageScores?.overall ?? "—"}</div>
             </div>
             <div className="bg-[#0f0f23]/80 border border-white/10 rounded-xl p-4">
               <div className="flex items-center gap-2 text-gray-400 text-sm mb-2">
