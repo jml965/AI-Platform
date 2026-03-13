@@ -269,8 +269,25 @@ router.post("/chat/message", async (req, res) => {
     });
   } catch (error: unknown) {
     console.error("Chat error:", error);
-    const message = error instanceof Error ? error.message : "Chat failed";
-    res.status(500).json({ error: { code: "CHAT_ERROR", message } });
+    const errMsg = error instanceof Error ? error.message : String(error);
+
+    let userFriendlyReply = "عذراً، حدث خطأ في معالجة طلبك. يرجى المحاولة مرة أخرى.";
+
+    if (errMsg.includes("credit balance") || errMsg.includes("billing") || errMsg.includes("insufficient")) {
+      userFriendlyReply = "عذراً، حدث خطأ مؤقت في الخدمة. يرجى المحاولة مرة أخرى بعد قليل.";
+    } else if (errMsg.includes("overloaded") || errMsg.includes("rate_limit")) {
+      userFriendlyReply = "الخدمة مشغولة حالياً. يرجى المحاولة مرة أخرى بعد لحظات.";
+    } else if (errMsg.includes("authentication") || errMsg.includes("api_key") || errMsg.includes("invalid_api_key")) {
+      userFriendlyReply = "حدث خطأ في إعدادات الخدمة. يرجى التواصل مع الدعم الفني.";
+    }
+
+    res.json({
+      reply: userFriendlyReply,
+      shouldBuild: false,
+      buildId: undefined,
+      tokensUsed: 0,
+      costUsd: 0,
+    });
   }
 });
 

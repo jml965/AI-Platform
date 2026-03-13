@@ -358,7 +358,10 @@ export default function Builder() {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err?.error?.message || "Chat failed");
+      if (err?.reply) {
+        return err as { reply: string; shouldBuild: boolean; buildId?: string; buildPrompt?: string; tokensUsed: number; costUsd: number };
+      }
+      throw new Error("عذراً، حدث خطأ في الاتصال. يرجى المحاولة مرة أخرى.");
     }
 
     return res.json() as Promise<{ reply: string; shouldBuild: boolean; buildId?: string; buildPrompt?: string; tokensUsed: number; costUsd: number }>;
