@@ -646,6 +646,27 @@ export default function Builder() {
     var Suspense = function(props) { return React.createElement(Fragment, null, props.children); };
     var lazy = function(fn) { return function(props) { return null; }; };
 
+    var axios = {
+      get: function(url, config) { return fetch(url, config).then(function(r) { return r.json().then(function(d) { return { data: d, status: r.status, statusText: r.statusText, headers: {}, config: config || {} }; }); }); },
+      post: function(url, data, config) { return fetch(url, Object.assign({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }, config)).then(function(r) { return r.json().then(function(d) { return { data: d, status: r.status, statusText: r.statusText, headers: {}, config: config || {} }; }); }); },
+      put: function(url, data, config) { return fetch(url, Object.assign({ method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }, config)).then(function(r) { return r.json().then(function(d) { return { data: d, status: r.status, statusText: r.statusText, headers: {}, config: config || {} }; }); }); },
+      delete: function(url, config) { return fetch(url, Object.assign({ method: 'DELETE' }, config)).then(function(r) { return r.json().then(function(d) { return { data: d, status: r.status, statusText: r.statusText, headers: {}, config: config || {} }; }); }); },
+      create: function() { return axios; },
+      defaults: { headers: { common: {} } },
+      interceptors: { request: { use: function(){} }, response: { use: function(){} } }
+    };
+    var toast = function(msg) { console.log('[toast]', msg); };
+    toast.success = toast; toast.error = toast; toast.info = toast; toast.warning = toast;
+    var Toaster = function() { return null; };
+    var useToast = function() { return { toast: toast }; };
+    var motion = new Proxy({}, { get: function(t, prop) { return function(p) { return React.createElement(prop, p, p ? p.children : null); }; } });
+    var AnimatePresence = function(props) { return React.createElement(Fragment, null, props.children); };
+    var framerMotion = { motion: motion, AnimatePresence: AnimatePresence };
+    var clsx = function() { return Array.prototype.slice.call(arguments).filter(Boolean).join(' '); };
+    var cn = clsx;
+    var twMerge = function(s) { return s; };
+    function cva(base, config) { return function(props) { return base; }; }
+
     try {
       var code = document.getElementById('__component_code__').textContent;
       code = code.replace(/^import\\s+[\\s\\S]*?from\\s+.+$/gm, '');
@@ -2024,9 +2045,13 @@ function LiveBuildView({ logs, buildStatus, lang, t }: { logs: ExecutionLog[]; b
   const getAgentStatus = (agentKey: string) => {
     const agentLogs = logs.filter(l => l.agentType === agentKey);
     if (agentLogs.length === 0) return "pending";
+    const hasFailed = agentLogs.some(l => l.status === "failed" || l.status === "error");
+    const hasCompleted = agentLogs.some(l => l.status === "completed" || l.status === "success");
     const last = agentLogs[agentLogs.length - 1];
-    if (last.status === "completed" || last.status === "success") return "done";
-    if (last.status === "failed" || last.status === "error") return "error";
+    if (last.status === "in_progress") return "running";
+    if (hasFailed && !hasCompleted) return "error";
+    if (hasFailed && hasCompleted) return "warning";
+    if (hasCompleted) return "done";
     return "running";
   };
 
@@ -2061,6 +2086,7 @@ function LiveBuildView({ logs, buildStatus, lang, t }: { logs: ExecutionLog[]; b
                 "rounded-lg border p-3 transition-all duration-300",
                 status === "running" && "bg-[#1f6feb]/5 border-[#1f6feb]/30 shadow-[0_0_15px_rgba(31,111,235,0.1)]",
                 status === "done" && "bg-emerald-500/5 border-emerald-500/20",
+                status === "warning" && "bg-yellow-500/5 border-yellow-500/20",
                 status === "error" && "bg-red-500/5 border-red-500/20",
                 status === "pending" && "bg-[#161b22] border-[#1c2333] opacity-40",
               )}
@@ -2071,6 +2097,7 @@ function LiveBuildView({ logs, buildStatus, lang, t }: { logs: ExecutionLog[]; b
                   "text-xs font-semibold truncate",
                   status === "running" && "text-[#58a6ff]",
                   status === "done" && "text-emerald-400",
+                  status === "warning" && "text-yellow-400",
                   status === "error" && "text-red-400",
                   status === "pending" && "text-[#484f58]",
                 )}>
@@ -2079,6 +2106,7 @@ function LiveBuildView({ logs, buildStatus, lang, t }: { logs: ExecutionLog[]; b
                 <div className="ms-auto flex-shrink-0">
                   {status === "running" && <Loader2 className="w-3.5 h-3.5 animate-spin text-[#58a6ff]" />}
                   {status === "done" && <span className="text-emerald-400 text-xs">✓</span>}
+                  {status === "warning" && <span className="text-yellow-400 text-xs">⚠</span>}
                   {status === "error" && <span className="text-red-400 text-xs">✗</span>}
                 </div>
               </div>
