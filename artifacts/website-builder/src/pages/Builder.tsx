@@ -556,6 +556,8 @@ export default function Builder() {
 
       c = c.replace(/^export\s+default\s+/gm, 'var _default = ');
 
+      c = c.replace(/^(?:const|let|var)\s+\w+\s*=\s*(?:React\.)?lazy\s*\(.*?\)\s*;?\s*$/gm, '');
+
       c = c.replace(/:\s*React\.FC(<[^>]*>)?/g, '');
       c = c.replace(/:\s*React\.ReactNode/g, '');
       c = c.replace(/:\s*React\.CSSProperties/g, '');
@@ -634,9 +636,9 @@ export default function Builder() {
     };
     var Route = function() { return null; };
     var Outlet = function() { return null; };
+    var Suspense = function(props) { return React.createElement(Fragment, null, props.children); };
+    var lazy = function(fn) { return function(props) { return null; }; };
 
-    window.__previewError = null;
-    window.onerror = function(msg) { window.__previewError = msg; };
     try {
       var code = document.getElementById('__component_code__').textContent;
       code = code.replace(/^import\\s+[\\s\\S]*?from\\s+.+$/gm, '');
@@ -647,19 +649,24 @@ export default function Builder() {
       code = code.replace(/export\\s+(const|function|class|let|var|type|interface|enum)\\s+/g, '$1 ');
       code = code.replace(/export\\s+\\{[^}]*\\}/g, '');
       code = code.replace(/^export\\s+default\\s+/gm, 'var _default = ');
+      code = code.replace(/^(?:const|let|var)\\s+\\w+\\s*=\\s*(?:React\\.)?lazy\\s*\\(.*?\\)\\s*;?\\s*$/gm, '');
       var transformed = Babel.transform(code, { presets: ['react', 'typescript'], filename: 'preview.tsx' }).code;
-      transformed = transformed.replace(/^const /gm, 'var ');
-      transformed = transformed.replace(/^let /gm, 'var ');
-      transformed = transformed.replace(/([;{}\\n])\\s*const /g, '$1 var ');
-      transformed = transformed.replace(/([;{}\\n])\\s*let /g, '$1 var ');
-      var scriptEl = document.createElement('script');
-      scriptEl.textContent = transformed;
-      document.body.appendChild(scriptEl);
-      if (window.__previewError) {
-        throw new Error(window.__previewError);
-      }
+      transformed = transformed.replace(/\\bconst\\s+/g, 'var ');
+      transformed = transformed.replace(/\\blet\\s+/g, 'var ');
+      (0, eval)(transformed);
       var root = ReactDOM.createRoot(document.getElementById('root'));
-      root.render(React.createElement(typeof App !== 'undefined' ? App : 'div', null, typeof App === 'undefined' ? 'No App component found' : null));
+      var AppComp = typeof App !== 'undefined' ? App : null;
+      if (!AppComp) {
+        var possibleNames = ['App', 'HomePage', 'Home', 'Main', 'Page', 'Root'];
+        for (var i = 0; i < possibleNames.length; i++) {
+          try { AppComp = eval(possibleNames[i]); if (typeof AppComp === 'function') break; AppComp = null; } catch(ex) { AppComp = null; }
+        }
+      }
+      if (AppComp) {
+        root.render(React.createElement(AppComp));
+      } else {
+        document.getElementById('root').innerHTML = '<div style="padding:40px;text-align:center;font-family:sans-serif;color:#666"><h3>No App Component</h3><p>Could not find main component to render.</p></div>';
+      }
     } catch(e) {
       console.error('Preview render error:', e);
       document.getElementById('root').innerHTML = '<div style="padding:40px;text-align:center;font-family:sans-serif;color:#666"><h3 style="margin-bottom:12px">Preview Error</h3><p style="font-size:14px">' + e.message + '</p></div>';

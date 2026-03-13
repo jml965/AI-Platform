@@ -1,0 +1,1979 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Cairo', 'Inter', sans-serif; }
+    @tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, -apple-system, sans-serif; line-height: 1.6; }
+
+:root {
+  --primary-blue: #2563eb;
+  --primary-orange: #f97316;
+}
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/plain" id="__component_code__">
+
+
+interface CarCardProps {
+  car: Car;
+  onClick?: () => void;
+}
+
+const CarCard = ({ car, onClick }) => {
+  const formatPrice = (price: number): string => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0
+    }).format(price);
+  };
+
+  const formatMileage = (mileage: number): string => {
+    return new Intl.NumberFormat('en-US').format(mileage);
+  };
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
+    if ((event.key === 'Enter' || event.key === ' ') && onClick) {
+      event.preventDefault();
+      onClick();
+    }
+  };
+
+  return (
+    <div
+      className="bg-white rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow duration-300 cursor-pointer"
+      onClick={onClick}
+      onKeyDown={handleKeyDown}
+      role="button"
+      tabIndex={onClick ? 0 : undefined}
+      aria-label={`View details for ${car.year} ${car.make} ${car.model} - ${formatPrice(car.price)}`}
+    >
+      <div className="relative h-48 md:h-56 overflow-hidden">
+        <img
+          src={car.image}
+          alt={`${car.year} ${car.make} ${car.model}`}
+          className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
+        />
+        {car.featured && (
+          <span className="absolute top-4 left-4 bg-[var(--primary-orange)] text-white px-3 py-1 rounded-full text-sm font-medium">
+            Featured
+          </span>
+        )}
+      </div>
+      <div className="p-4">
+        <h3 className="text-xl font-semibold mb-2">
+          {car.year} {car.make} {car.model}
+        </h3>
+        <p className="text-2xl font-bold text-[var(--primary-blue)] mb-3">
+          {formatPrice(car.price)}
+        </p>
+        <div className="grid grid-cols-3 gap-3 text-sm text-gray-600">
+          <div className="flex items-center space-x-1">
+            <Calendar size={16} />
+            <span>{car.year}</span>
+          </div>
+          <div className="flex items-center space-x-1">
+            <Gauge size={16} />
+            <span>{formatMileage(car.mileage)} mi</span>
+          </div>
+          <div className="flex items-center space-x-1">
+            <MapPin size={16} />
+            <span>{car.location.split(',')[0]}</span>
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs">
+            {car.transmission}
+          </span>
+          <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs">
+            {car.fuelType}
+          </span>
+          {car.condition && (
+            <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs">
+              {car.condition}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
+
+interface Car {
+  id: string;
+  make: string;
+  model: string;
+  year: number;
+  price: number;
+  mileage: number;
+  location: string;
+  image: string;
+  transmission: 'Manual' | 'Automatic';
+  fuelType: 'Gasoline' | 'Diesel' | 'Electric' | 'Hybrid';
+  condition?: 'Excellent' | 'Good' | 'Fair';
+  featured?: boolean;
+  name?: string;
+  nameAr?: string;
+  category?: 'Economy' | 'Midsize' | 'Luxury' | 'SUV';
+  features?: string[];
+  featuresAr?: string[];
+  available?: boolean;
+  seats?: number;
+}
+
+
+
+interface SearchBarProps {
+  onSearch: (filters: SearchFilters) => void;
+}
+
+interface SearchFilters {
+  location: string;
+  pickupDate: string;
+  pickupTime: string;
+  returnDate: string;
+  returnTime: string;
+}
+
+const SearchBar = ({ onSearch }) => {
+  const [filters, setFilters] = useState<SearchFilters>({
+    location: '',
+    pickupDate: '',
+    pickupTime: '',
+    returnDate: '',
+    returnTime: ''
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSearch(filters);
+  };
+
+  const handleChange = (field: keyof SearchFilters) => (e) => {
+    setFilters(prev => ({ ...prev, [field]: e.target.value }));
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-lg p-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="relative">
+          <MapPin className="absolute right-3 top-3 text-gray-400" size={20} />
+          <label htmlFor="location" className="sr-only">موقع الاستلام</label>
+          <input
+            id="location"
+            type="text"
+            placeholder="موقع الاستلام"
+            value={filters.location}
+            onChange={handleChange('location')}
+            className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            dir="rtl"
+          />
+        </div>
+        
+        <div className="relative">
+          <Calendar className="absolute right-3 top-3 text-gray-400" size={20} />
+          <label htmlFor="pickupDate" className="sr-only">تاريخ الاستلام</label>
+          <input
+            id="pickupDate"
+            type="date"
+            placeholder="تاريخ الاستلام"
+            value={filters.pickupDate}
+            onChange={handleChange('pickupDate')}
+            className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+        </div>
+        
+        <div className="relative">
+          <Clock className="absolute right-3 top-3 text-gray-400" size={20} />
+          <label htmlFor="pickupTime" className="sr-only">وقت الاستلام</label>
+          <input
+            id="pickupTime"
+            type="time"
+            placeholder="وقت الاستلام"
+            value={filters.pickupTime}
+            onChange={handleChange('pickupTime')}
+            className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+        </div>
+        
+        <div className="relative">
+          <Calendar className="absolute right-3 top-3 text-gray-400" size={20} />
+          <label htmlFor="returnDate" className="sr-only">تاريخ الإرجاع</label>
+          <input
+            id="returnDate"
+            type="date"
+            placeholder="تاريخ الإرجاع"
+            value={filters.returnDate}
+            onChange={handleChange('returnDate')}
+            className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+        </div>
+        
+        <div className="relative">
+          <Clock className="absolute right-3 top-3 text-gray-400" size={20} />
+          <label htmlFor="returnTime" className="sr-only">وقت الإرجاع</label>
+          <input
+            id="returnTime"
+            type="time"
+            placeholder="وقت الإرجاع"
+            value={filters.returnTime}
+            onChange={handleChange('returnTime')}
+            className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+        </div>
+      </div>
+      
+      <button
+        type="submit"
+        className="w-full md:w-auto mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-lg transition duration-300 flex items-center justify-center gap-2"
+      >
+        <Search size={20} />
+        <span>بحث عن سيارة</span>
+      </button>
+    </form>
+  );
+};
+
+
+
+
+
+interface HeaderProps {
+  isRTL: boolean;
+}
+
+const Header = ({ isRTL }) => {
+  const [isMenuOpen, setIsMenuOpen] = React.useState(false);
+
+  const menuItems = isRTL
+    ? ['الرئيسية', 'السيارات', 'العروض', 'من نحن', 'اتصل بنا']
+    : ['Home', 'Cars', 'Offers', 'About', 'Contact'];
+
+  return (
+    <header className="bg-white shadow-lg sticky top-0 z-50">
+      <nav className="container mx-auto px-4 py-4">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <Car className="w-8 h-8 text-blue-600" />
+            <span className="text-2xl font-bold text-gray-800">
+              {isRTL ? 'تأجير السيارات' : 'Car Rental'}
+            </span>
+          </div>
+
+          {/* Desktop Menu */}
+          <ul className="hidden md:flex gap-6">
+            {menuItems.map((item, index) => (
+              <li key={index}>
+                <a
+                  href="#"
+                  className="text-gray-700 hover:text-blue-600 transition-colors font-medium"
+                >
+                  {item}
+                </a>
+              </li>
+            ))}
+          </ul>
+
+          {/* Mobile Menu Button */}
+          <button
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+            className="md:hidden"
+            aria-label="Toggle menu"
+          >
+            {isMenuOpen ? (
+              <X className="w-6 h-6" />
+            ) : (
+              <Menu className="w-6 h-6" />
+            )}
+          </button>
+        </div>
+
+        {/* Mobile Menu */}
+        {isMenuOpen && (
+          <ul className="md:hidden mt-4 space-y-2 pb-4 border-t pt-4">
+            {menuItems.map((item, index) => (
+              <li key={index}>
+                <a
+                  href="#"
+                  className="block text-gray-700 hover:text-blue-600 transition-colors py-2"
+                >
+                  {item}
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
+      </nav>
+    </header>
+  );
+};
+
+
+
+
+
+interface HeroProps {
+  isRTL: boolean;
+}
+
+const Hero = ({ isRTL }) => {
+  return (
+    <section className="relative bg-gradient-to-r from-blue-600 to-blue-800 text-white py-20">
+      <div className="absolute inset-0 bg-black opacity-50"></div>
+      <div className="relative container mx-auto px-4">
+        <div className="text-center mb-12">
+          <h1 className="text-4xl md:text-6xl font-bold mb-4">
+            {isRTL
+              ? 'احجز سيارتك المثالية اليوم'
+              : 'Book Your Perfect Car Today'}
+          </h1>
+          <p className="text-xl md:text-2xl">
+            {isRTL
+              ? 'أفضل الأسعار، أفضل الخدمات'
+              : 'Best Prices, Best Service'}
+          </p>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-2xl p-6 md:p-8 text-gray-800">
+          <form className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <label htmlFor="pickup-location" className="block text-sm font-medium mb-2">
+                <MapPin className="inline w-4 h-4 mr-1" />
+                {isRTL ? 'موقع الاستلام' : 'Pickup Location'}
+              </label>
+              <input
+                id="pickup-location"
+                type="text"
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder={isRTL ? 'أدخل الموقع' : 'Enter location'}
+              />
+            </div>
+
+            <div>
+              <label htmlFor="pickup-date" className="block text-sm font-medium mb-2">
+                <Calendar className="inline w-4 h-4 mr-1" />
+                {isRTL ? 'تاريخ الاستلام' : 'Pickup Date'}
+              </label>
+              <input
+                id="pickup-date"
+                type="date"
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="return-date" className="block text-sm font-medium mb-2">
+                <Calendar className="inline w-4 h-4 mr-1" />
+                {isRTL ? 'تاريخ الإرجاع' : 'Return Date'}
+              </label>
+              <input
+                id="return-date"
+                type="date"
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            <div className="flex items-end">
+              <button
+                type="submit"
+                className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center justify-center gap-2"
+              >
+                <Car className="w-5 h-5" />
+                {isRTL ? 'ابحث عن السيارات' : 'Search Cars'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
+  );
+};
+
+
+
+
+interface UsePaginationProps<T> {
+  items: T[];
+  itemsPerPage: number;
+}
+
+interface UsePaginationReturn<T> {
+  currentPage: number;
+  totalPages: number;
+  currentItems: T[];
+  goToPage: (page: number) => void;
+  nextPage: () => void;
+  prevPage: () => void;
+}
+
+function usePagination<T>({ items, itemsPerPage }: UsePaginationProps<T>): UsePaginationReturn<T> {
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const totalPages = Math.ceil(items.length / itemsPerPage);
+
+  const currentItems = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return items.slice(startIndex, endIndex);
+  }, [items, currentPage, itemsPerPage]);
+
+  const goToPage = (page: number) => {
+    const pageNumber = Math.max(1, Math.min(page, totalPages));
+    setCurrentPage(pageNumber);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const nextPage = () => {
+    goToPage(currentPage + 1);
+  };
+
+  const prevPage = () => {
+    goToPage(currentPage - 1);
+  };
+
+  return {
+    currentPage,
+    totalPages,
+    currentItems,
+    goToPage,
+    nextPage,
+    prevPage
+  };
+}
+
+
+
+
+
+interface FooterProps {
+  isRTL: boolean;
+}
+
+const Footer = ({ isRTL }) => {
+  return (
+    <footer className="bg-gray-900 text-white py-12">
+      <div className="container mx-auto px-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+          <div>
+            <h3 className="text-xl font-bold mb-4">
+              {isRTL ? 'عن الشركة' : 'About Us'}
+            </h3>
+            <p className="text-gray-400">
+              {isRTL
+                ? 'نقدم أفضل خدمات تأجير السيارات بأسعار تنافسية وجودة عالية'
+                : 'We provide the best car rental services with competitive prices and high quality'}
+            </p>
+          </div>
+
+          <div>
+            <h3 className="text-xl font-bold mb-4">
+              {isRTL ? 'روابط سريعة' : 'Quick Links'}
+            </h3>
+            <ul className="space-y-2">
+              <li>
+                <a href="#" className="text-gray-400 hover:text-white transition-colors">
+                  {isRTL ? 'الرئيسية' : 'Home'}
+                </a>
+              </li>
+              <li>
+                <a href="#" className="text-gray-400 hover:text-white transition-colors">
+                  {isRTL ? 'السيارات' : 'Cars'}
+                </a>
+              </li>
+              <li>
+                <a href="#" className="text-gray-400 hover:text-white transition-colors">
+                  {isRTL ? 'الشروط والأحكام' : 'Terms & Conditions'}
+                </a>
+              </li>
+              <li>
+                <a href="#" className="text-gray-400 hover:text-white transition-colors">
+                  {isRTL ? 'سياسة الخصوصية' : 'Privacy Policy'}
+                </a>
+              </li>
+            </ul>
+          </div>
+
+          <div>
+            <h3 className="text-xl font-bold mb-4">
+              {isRTL ? 'تواصل معنا' : 'Contact Us'}
+            </h3>
+            <ul className="space-y-2">
+              <li className="flex items-center gap-2 text-gray-400">
+                <Phone className="w-4 h-4" />
+                <span dir="ltr">+1 234 567 8900</span>
+              </li>
+              <li className="flex items-center gap-2 text-gray-400">
+                <Mail className="w-4 h-4" />
+                <span>info@carrental.com</span>
+              </li>
+              <li className="flex items-center gap-2 text-gray-400">
+                <MapPin className="w-4 h-4" />
+                <span>
+                  {isRTL ? '123 الشارع الرئيسي، المدينة' : '123 Main St, City'}
+                </span>
+              </li>
+            </ul>
+          </div>
+
+          <div>
+            <h3 className="text-xl font-bold mb-4">
+              {isRTL ? 'تابعنا' : 'Follow Us'}
+            </h3>
+            <div className="flex gap-4">
+              <a
+                href="#"
+                className="bg-gray-800 p-2 rounded-full hover:bg-gray-700 transition-colors"
+                aria-label="Facebook"
+              >
+                <Facebook className="w-5 h-5" />
+              </a>
+              <a
+                href="#"
+                className="bg-gray-800 p-2 rounded-full hover:bg-gray-700 transition-colors"
+                aria-label="Twitter"
+              >
+                <Twitter className="w-5 h-5" />
+              </a>
+              <a
+                href="#"
+                className="bg-gray-800 p-2 rounded-full hover:bg-gray-700 transition-colors"
+                aria-label="Instagram"
+              >
+                <Instagram className="w-5 h-5" />
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
+          <p>
+            © 2024 {isRTL ? 'تأجير السيارات' : 'Car Rental'}.
+            {isRTL ? ' جميع الحقوق محفوظة' : ' All rights reserved.'}
+          </p>
+        </div>
+      </div>
+    </footer>
+  );
+};
+
+
+
+
+
+interface LanguageToggleProps {
+  isRTL: boolean;
+  onToggle: () => void;
+}
+
+const LanguageToggle = ({ isRTL, onToggle }) => {
+  return (
+    <button
+      onClick={onToggle}
+      className="fixed bottom-4 left-4 bg-blue-600 text-white p-3 rounded-full shadow-lg hover:bg-blue-700 transition-colors z-50 flex items-center gap-2"
+      aria-label="Toggle language"
+    >
+      <Globe className="w-5 h-5" />
+      <span className="text-sm font-medium">
+        {isRTL ? 'EN' : 'AR'}
+      </span>
+    </button>
+  );
+};
+
+
+
+
+
+interface FeaturesProps {
+  isRTL: boolean;
+}
+
+const Features = ({ isRTL }) => {
+  const features = [
+    {
+      icon: <DollarSign className="w-12 h-12 text-blue-600" />,
+      title: isRTL ? 'أفضل الأسعار' : 'Best Prices',
+      description: isRTL
+        ? 'نضمن لك الحصول على أفضل الأسعار في السوق'
+        : 'We guarantee you get the best prices in the market',
+    },
+    {
+      icon: <Clock className="w-12 h-12 text-blue-600" />,
+      title: isRTL ? 'خدمة على مدار الساعة' : '24/7 Service',
+      description: isRTL
+        ? 'خدمة عملاء متاحة على مدار الساعة لمساعدتك'
+        : 'Customer service available 24/7 to assist you',
+    },
+    {
+      icon: <Shield className="w-12 h-12 text-blue-600" />,
+      title: isRTL ? 'تأمين شامل' : 'Full Insurance',
+      description: isRTL
+        ? 'جميع سياراتنا مؤمنة بتأمين شامل لراحتك'
+        : 'All our cars are fully insured for your peace of mind',
+    },
+    {
+      icon: <Award className="w-12 h-12 text-blue-600" />,
+      title: isRTL ? 'جودة مضمونة' : 'Quality Guaranteed',
+      description: isRTL
+        ? 'سيارات حديثة ونظيفة مع صيانة دورية'
+        : 'Modern, clean cars with regular maintenance',
+    },
+  ];
+
+  return (
+    <section className="py-16 bg-gray-50">
+      <div className="container mx-auto px-4">
+        <h2 className="text-3xl md:text-4xl font-bold text-center mb-12">
+          {isRTL ? 'لماذا تختارنا؟' : 'Why Choose Us?'}
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+          {features.map((feature, index) => (
+            <div
+              key={index}
+              className="bg-white rounded-lg shadow-lg p-6 text-center hover:shadow-xl transition-shadow"
+            >
+              <div className="flex justify-center mb-4">{feature.icon}</div>
+              <h3 className="text-xl font-semibold mb-2">{feature.title}</h3>
+              <p className="text-gray-600">{feature.description}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+};
+
+
+
+
+const cars: Car[] = [
+  {
+    id: '1',
+    make: 'Toyota',
+    model: 'Corolla',
+    year: 2024,
+    price: 4500,
+    mileage: 0,
+    location: 'Riyadh, Saudi Arabia',
+    image: 'https://images.unsplash.com/photo-1626668893632-6f3a4466d22f?w=400',
+    transmission: 'Automatic',
+    fuelType: 'Gasoline',
+    condition: 'Excellent',
+    featured: true,
+    name: 'Toyota Corolla',
+    nameAr: 'تويوتا كورولا',
+    category: 'Economy',
+    features: ['Automatic', 'AC', '4 Seats', 'Bluetooth'],
+    featuresAr: ['أوتوماتيك', 'مكيف', '4 مقاعد', 'بلوتوث'],
+    available: true,
+  },
+  {
+    id: '2',
+    make: 'Honda',
+    model: 'Accord',
+    year: 2024,
+    price: 6500,
+    mileage: 0,
+    location: 'Riyadh, Saudi Arabia',
+    image: 'https://images.unsplash.com/photo-1619682817481-e994891cd1f5?w=400',
+    transmission: 'Automatic',
+    fuelType: 'Gasoline',
+    condition: 'Excellent',
+    featured: true,
+    name: 'Honda Accord',
+    nameAr: 'هوندا أكورد',
+    category: 'Midsize',
+    features: ['Automatic', 'AC', '5 Seats', 'GPS', 'Cruise Control'],
+    featuresAr: ['أوتوماتيك', 'مكيف', '5 مقاعد', 'GPS', 'مثبت سرعة'],
+    available: true,
+  },
+  {
+    id: '3',
+    make: 'BMW',
+    model: '3 Series',
+    year: 2024,
+    price: 12000,
+    mileage: 0,
+    location: 'Riyadh, Saudi Arabia',
+    image: 'https://images.unsplash.com/photo-1555215695-3004980ad54e?w=400',
+    transmission: 'Automatic',
+    fuelType: 'Gasoline',
+    condition: 'Excellent',
+    featured: true,
+    name: 'BMW 3 Series',
+    nameAr: 'بي إم دبليو الفئة الثالثة',
+    category: 'Luxury',
+    features: ['Automatic', 'AC', 'Leather Seats', 'GPS', 'Premium Audio'],
+    featuresAr: ['أوتوماتيك', 'مكيف', 'مقاعد جلدية', 'GPS', 'نظام صوتي فاخر'],
+    available: true,
+  },
+  {
+    id: '4',
+    make: 'Ford',
+    model: 'Explorer',
+    year: 2024,
+    price: 8500,
+    mileage: 0,
+    location: 'Riyadh, Saudi Arabia',
+    image: 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?w=400',
+    transmission: 'Automatic',
+    fuelType: 'Gasoline',
+    condition: 'Excellent',
+    featured: true,
+    name: 'Ford Explorer',
+    nameAr: 'فورد إكسبلورر',
+    category: 'SUV',
+    features: ['Automatic', 'AC', '7 Seats', '4WD', 'GPS'],
+    featuresAr: ['أوتوماتيك', 'مكيف', '7 مقاعد', 'دفع رباعي', 'GPS'],
+    available: true,
+  },
+  {
+    id: '5',
+    make: 'Nissan',
+    model: 'Sentra',
+    year: 2024,
+    price: 4000,
+    mileage: 0,
+    location: 'Riyadh, Saudi Arabia',
+    image: 'https://images.unsplash.com/photo-1619976215249-0b68cef412e6?w=400',
+    transmission: 'Automatic',
+    fuelType: 'Gasoline',
+    condition: 'Excellent',
+    featured: false,
+    name: 'Nissan Sentra',
+    nameAr: 'نيسان سنترا',
+    category: 'Economy',
+    features: ['Automatic', 'AC', '5 Seats', 'Bluetooth'],
+    featuresAr: ['أوتوماتيك', 'مكيف', '5 مقاعد', 'بلوتوث'],
+    available: false,
+  },
+  {
+    id: '6',
+    make: 'Mercedes',
+    model: 'E-Class',
+    year: 2024,
+    price: 15000,
+    mileage: 0,
+    location: 'Riyadh, Saudi Arabia',
+    image: 'https://images.unsplash.com/photo-1618843479313-40f8afb4b4d8?w=400',
+    transmission: 'Automatic',
+    fuelType: 'Gasoline',
+    condition: 'Excellent',
+    featured: true,
+    name: 'Mercedes E-Class',
+    nameAr: 'مرسيدس الفئة E',
+    category: 'Luxury',
+    features: ['Automatic', 'AC', 'Leather Seats', 'Sunroof', 'Premium Audio'],
+    featuresAr: ['أوتوماتيك', 'مكيف', 'مقاعد جلدية', 'فتحة سقف', 'نظام صوتي فاخر'],
+    available: true,
+  },
+  {
+    id: '7',
+    make: 'Chevrolet',
+    model: 'Tahoe',
+    year: 2024,
+    price: 9500,
+    mileage: 0,
+    location: 'Riyadh, Saudi Arabia',
+    image: 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?w=400',
+    transmission: 'Automatic',
+    fuelType: 'Gasoline',
+    condition: 'Excellent',
+    featured: true,
+    name: 'Chevrolet Tahoe',
+    nameAr: 'شيفروليه تاهو',
+    category: 'SUV',
+    features: ['Automatic', 'AC', '8 Seats', '4WD', 'Entertainment System'],
+    featuresAr: ['أوتوماتيك', 'مكيف', '8 مقاعد', 'دفع رباعي', 'نظام ترفيهي'],
+    available: true,
+  },
+  {
+    id: '8',
+    make: 'Hyundai',
+    model: 'Elantra',
+    year: 2024,
+    price: 4200,
+    mileage: 0,
+    location: 'Riyadh, Saudi Arabia',
+    image: 'https://images.unsplash.com/photo-1616788494707-ec28f08d05a1?w=400',
+    transmission: 'Automatic',
+    fuelType: 'Gasoline',
+    condition: 'Excellent',
+    featured: true,
+    name: 'Hyundai Elantra',
+    nameAr: 'هيونداي إلنترا',
+    category: 'Economy',
+    features: ['Automatic', 'AC', '5 Seats', 'Apple CarPlay'],
+    featuresAr: ['أوتوماتيك', 'مكيف', '5 مقاعد', 'Apple CarPlay'],
+    available: true,
+  },
+];
+
+
+
+
+interface CarDetailsProps {
+  car: Car;
+  isOpen: boolean;
+  onClose: () => void;
+  language: 'ar' | 'en';
+}
+
+const CarDetails = ({ car, isOpen, onClose, language }) => {
+  if (!isOpen) return null;
+
+  const isRTL = language === 'ar';
+
+  const features = [
+    { icon: Users, label: isRTL ? 'عدد المقاعد' : 'Seats', value: `${car.seats} ${isRTL ? 'مقاعد' : 'seats'}` },
+    { icon: Fuel, label: isRTL ? 'نوع الوقود' : 'Fuel Type', value: car.fuelType },
+    { icon: Settings, label: isRTL ? 'ناقل الحركة' : 'Transmission', value: car.transmission },
+    { icon: Calendar, label: isRTL ? 'السنة' : 'Year', value: car.year },
+  ];
+
+  const amenities = [
+    { name: isRTL ? 'تكييف هواء' : 'Air Conditioning', included: true },
+    { name: isRTL ? 'نظام GPS' : 'GPS Navigation', included: true },
+    { name: isRTL ? 'بلوتوث' : 'Bluetooth', included: true },
+    { name: isRTL ? 'كاميرا خلفية' : 'Backup Camera', included: true },
+    { name: isRTL ? 'مثبت سرعة' : 'Cruise Control', included: true },
+    { name: isRTL ? 'مقاعد جلدية' : 'Leather Seats', included: car.price > 100 },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50" onClick={onClose}>
+      <div className="flex items-center justify-center min-h-screen p-4">
+        <div 
+          className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto"
+          onClick={(e) => e.stopPropagation()}
+          dir={isRTL ? 'rtl' : 'ltr'}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-title"
+        >
+          {/* Header */}
+          <div className="relative">
+            <img 
+              src={car.image} 
+              alt={car.name}
+              className="w-full h-96 object-cover rounded-t-lg"
+            />
+            <button
+              onClick={onClose}
+              className="absolute top-4 right-4 bg-white rounded-full p-2 shadow-lg hover:shadow-xl transition-shadow"
+              aria-label="Close"
+            >
+              <X className="h-6 w-6 text-gray-700" />
+            </button>
+            {car.featured && (
+              <div className={`absolute top-4 ${isRTL ? 'left-4' : 'right-16'} bg-yellow-500 text-white px-3 py-1 rounded-full text-sm font-semibold`}>
+                {isRTL ? 'مميز' : 'Featured'}
+              </div>
+            )}
+          </div>
+
+          {/* Content */}
+          <div className="p-6 md:p-8">
+            {/* Title and Price */}
+            <div className="flex justify-between items-start mb-6">
+              <div>
+                <h2 id="modal-title" className="text-3xl font-bold text-gray-900 mb-2">{car.name}</h2>
+                <div className="flex items-center text-gray-600">
+                  <MapPin className="h-4 w-4 mr-1" />
+                  <span>{car.location}</span>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-3xl font-bold text-blue-600">
+                  ${car.price}<span className="text-base font-normal text-gray-600">/{isRTL ? 'يوم' : 'day'}</span>
+                </p>
+                <p className="text-sm text-gray-500">
+                  {isRTL ? 'شامل الضرائب' : 'Tax included'}
+                </p>
+              </div>
+            </div>
+
+            {/* Features Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+              {features.map((feature, index) => {
+                const Icon = feature.icon;
+                return (
+                  <div key={index} className="bg-gray-50 rounded-lg p-4">
+                    <Icon className="h-6 w-6 text-blue-600 mb-2" />
+                    <p className="text-sm text-gray-600 mb-1">{feature.label}</p>
+                    <p className="font-semibold text-gray-900">{feature.value}</p>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Description */}
+            <div className="mb-8">
+              <h3 className="text-xl font-bold text-gray-900 mb-3">
+                {isRTL ? 'الوصف' : 'Description'}
+              </h3>
+              <p className="text-gray-600 leading-relaxed">
+                {isRTL 
+                  ? `${car.name} هي سيارة ${car.category} ممتازة توفر راحة فائقة وأداء موثوق. مثالية للرحلات العائلية والسفر لمسافات طويلة.`
+                  : `The ${car.name} is an excellent ${car.category} vehicle that offers superior comfort and reliable performance. Perfect for family trips and long-distance travel.`
+                }
+              </p>
+            </div>
+
+            {/* Amenities */}
+            <div className="mb-8">
+              <h3 className="text-xl font-bold text-gray-900 mb-3">
+                {isRTL ? 'المزايا' : 'Amenities'}
+              </h3>
+              <div className="grid grid-cols-2 gap-3">
+                {amenities.map((amenity, index) => (
+                  <div key={index} className="flex items-center">
+                    <div className={`rounded-full p-1 ${amenity.included ? 'bg-green-100' : 'bg-gray-100'}`}>
+                      <Check className={`h-4 w-4 ${amenity.included ? 'text-green-600' : 'text-gray-400'}`} />
+                    </div>
+                    <span className={`ml-2 ${amenity.included ? 'text-gray-900' : 'text-gray-400'}`}>
+                      {amenity.name}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Insurance Info */}
+            <div className="bg-blue-50 rounded-lg p-4 mb-8">
+              <div className="flex items-start">
+                <Shield className="h-6 w-6 text-blue-600 mt-1" />
+                <div className="ml-3">
+                  <h4 className="font-semibold text-gray-900 mb-1">
+                    {isRTL ? 'تأمين شامل' : 'Full Insurance Coverage'}
+                  </h4>
+                  <p className="text-sm text-gray-600">
+                    {isRTL 
+                      ? 'جميع سياراتنا مؤمنة بالكامل لراحة بالك'
+                      : 'All our vehicles come with comprehensive insurance for your peace of mind'
+                    }
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-4">
+              <button className="flex-1 bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors font-semibold">
+                {isRTL ? 'احجز الآن' : 'Book Now'}
+              </button>
+              <button className="flex-1 border border-gray-300 text-gray-700 py-3 px-6 rounded-lg hover:bg-gray-50 transition-colors font-semibold">
+                {isRTL ? 'اتصل بنا' : 'Contact Us'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
+
+
+
+
+interface BookingModalProps {
+  car: Car;
+  isOpen: boolean;
+  onClose: () => void;
+  language: 'ar' | 'en';
+}
+
+const BookingModal = ({ car, isOpen, onClose, language }) => {
+  const [step, setStep] = useState(1);
+  const [formData, setFormData] = useState({
+    pickupDate: '',
+    returnDate: '',
+    pickupTime: '10:00',
+    returnTime: '10:00',
+    pickupLocation: car.location,
+    name: '',
+    email: '',
+    phone: '',
+    cardNumber: '',
+    expiryDate: '',
+    cvv: ''
+  });
+
+  const isRTL = language === 'ar';
+
+  if (!isOpen) return null;
+
+  const handleInputChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const calculateDays = () => {
+    if (formData.pickupDate && formData.returnDate) {
+      const pickup = new Date(formData.pickupDate);
+      const returnD = new Date(formData.returnDate);
+      const diffTime = Math.abs(returnD.getTime() - pickup.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      return diffDays || 1;
+    }
+    return 1;
+  };
+
+  const totalPrice = calculateDays() * car.price;
+
+  const handleNextStep = () => {
+    if (step === 1 && formData.pickupDate && formData.returnDate) {
+      setStep(2);
+    } else if (step === 2 && formData.name && formData.email && formData.phone) {
+      setStep(3);
+    }
+  };
+
+  const handleBooking = () => {
+    // Handle booking logic here
+    alert(isRTL ? 'تم الحجز بنجاح!' : 'Booking successful!');
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50" onClick={onClose}>
+      <div className="flex items-center justify-center min-h-screen p-4">
+        <div 
+          className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+          onClick={(e) => e.stopPropagation()}
+          dir={isRTL ? 'rtl' : 'ltr'}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="booking-modal-title"
+        >
+          {/* Header */}
+          <div className="border-b px-6 py-4">
+            <div className="flex items-center justify-between">
+              <h2 id="booking-modal-title" className="text-2xl font-bold text-gray-900">
+                {isRTL ? `حجز ${car.name}` : `Book ${car.name}`}
+              </h2>
+              <button
+                onClick={onClose}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                aria-label="Close"
+              >
+                <X className="h-6 w-6 text-gray-500" />
+              </button>
+            </div>
+          </div>
+
+          {/* Progress Steps */}
+          <div className="px-6 py-4">
+            <div className="flex items-center justify-between mb-8">
+              {[1, 2, 3].map((num) => (
+                <div key={num} className="flex items-center">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
+                    step >= num ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'
+                  }`}>
+                    {num}
+                  </div>
+                  {num < 3 && (
+                    <div className={`w-full h-1 mx-2 ${
+                      step > num ? 'bg-blue-600' : 'bg-gray-200'
+                    }`} />
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Step 1: Rental Details */}
+            {step === 1 && (
+              <div className="space-y-6">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {isRTL ? 'تفاصيل الإيجار' : 'Rental Details'}
+                </h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <Calendar className="inline h-4 w-4 mr-1" />
+                      {isRTL ? 'تاريخ الاستلام' : 'Pickup Date'}
+                    </label>
+                    <input
+                      type="date"
+                      name="pickupDate"
+                      value={formData.pickupDate}
+                      onChange={handleInputChange}
+                      min={new Date().toISOString().split('T')[0]}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      required
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <Clock className="inline h-4 w-4 mr-1" />
+                      {isRTL ? 'وقت الاستلام' : 'Pickup Time'}
+                    </label>
+                    <select
+                      name="pickupTime"
+                      value={formData.pickupTime}
+                      onChange={handleInputChange}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      {Array.from({ length: 24 }, (_, i) => i).map((hour) => (
+                        <option key={hour} value={`${hour.toString().padStart(2, '0')}:00`}>
+                          {`${hour.toString().padStart(2, '0')}:00`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <Calendar className="inline h-4 w-4 mr-1" />
+                      {isRTL ? 'تاريخ الإرجاع' : 'Return Date'}
+                    </label>
+                    <input
+                      type="date"
+                      name="returnDate"
+                      value={formData.returnDate}
+                      onChange={handleInputChange}
+                      min={formData.pickupDate || new Date().toISOString().split('T')[0]}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      required
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <Clock className="inline h-4 w-4 mr-1" />
+                      {isRTL ? 'وقت الإرجاع' : 'Return Time'}
+                    </label>
+                    <select
+                      name="returnTime"
+                      value={formData.returnTime}
+                      onChange={handleInputChange}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      {Array.from({ length: 24 }, (_, i) => i).map((hour) => (
+                        <option key={hour} value={`${hour.toString().padStart(2, '0')}:00`}>
+                          {`${hour.toString().padStart(2, '0')}:00`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <MapPin className="inline h-4 w-4 mr-1" />
+                    {isRTL ? 'موقع الاستلام' : 'Pickup Location'}
+                  </label>
+                  <select
+                    name="pickupLocation"
+                    value={formData.pickupLocation}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value={car.location}>{car.location}</option>
+                    <option value="Airport">{isRTL ? 'المطار' : 'Airport'}</option>
+                    <option value="Downtown">{isRTL ? 'وسط المدينة' : 'Downtown'}</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {/* Step 2: Personal Information */}
+            {step === 2 && (
+              <div className="space-y-6">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {isRTL ? 'المعلومات الشخصية' : 'Personal Information'}
+                </h3>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <User className="inline h-4 w-4 mr-1" />
+                    {isRTL ? 'الاسم الكامل' : 'Full Name'}
+                  </label>
+                  <input
+                    type="text"
+                    name="name"
+                    value={formData.name}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <Mail className="inline h-4 w-4 mr-1" />
+                    {isRTL ? 'البريد الإلكتروني' : 'Email'}
+                  </label>
+                  <input
+                    type="email"
+                    name="email"
+                    value={formData.email}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <Phone className="inline h-4 w-4 mr-1" />
+                    {isRTL ? 'رقم الهاتف' : 'Phone Number'}
+                  </label>
+                  <input
+                    type="tel"
+                    name="phone"
+                    value={formData.phone}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Step 3: Payment */}
+            {step === 3 && (
+              <div className="space-y-6">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {isRTL ? 'معلومات الدفع' : 'Payment Information'}
+                </h3>
+                
+                <div className="bg-gray-50 p-4 rounded-lg mb-6">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-gray-600">
+                      {isRTL ? 'عدد الأيام' : 'Number of days'}
+                    </span>
+                    <span className="font-semibold">{calculateDays()}</span>
+                  </div>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-gray-600">
+                      {isRTL ? 'السعر لليوم' : 'Price per day'}
+                    </span>
+                    <span className="font-semibold">${car.price}</span>
+                  </div>
+                  <div className="border-t pt-2 mt-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-lg font-semibold">
+                        {isRTL ? 'المجموع' : 'Total'}
+                      </span>
+                      <span className="text-xl font-bold text-blue-600">${totalPrice}</span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <CreditCard className="inline h-4 w-4 mr-1" />
+                    {isRTL ? 'رقم البطاقة' : 'Card Number'}
+                  </label>
+                  <input
+                    type="text"
+                    name="cardNumber"
+                    value={formData.cardNumber}
+                    onChange={handleInputChange}
+                    placeholder="1234 5678 9012 3456"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required
+                  />
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      {isRTL ? 'تاريخ الانتهاء' : 'Expiry Date'}
+                    </label>
+                    <input
+                      type="text"
+                      name="expiryDate"
+                      value={formData.expiryDate}
+                      onChange={handleInputChange}
+                      placeholder="MM/YY"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      required
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      CVV
+                    </label>
+                    <input
+                      type="text"
+                      name="cvv"
+                      value={formData.cvv}
+                      onChange={handleInputChange}
+                      placeholder="123"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex gap-4 mt-8">
+              {step > 1 && (
+                <button
+                  onClick={() => setStep(step - 1)}
+                  className="flex-1 border border-gray-300 text-gray-700 py-3 px-6 rounded-lg hover:bg-gray-50 transition-colors font-semibold"
+                >
+                  {isRTL ? 'السابق' : 'Previous'}
+                </button>
+              )}
+              
+              {step < 3 ? (
+                <button
+                  onClick={handleNextStep}
+                  className="flex-1 bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors font-semibold"
+                >
+                  {isRTL ? 'التالي' : 'Next'}
+                </button>
+              ) : (
+                <button
+                  onClick={handleBooking}
+                  className="flex-1 bg-green-600 text-white py-3 px-6 rounded-lg hover:bg-green-700 transition-colors font-semibold"
+                >
+                  {isRTL ? 'تأكيد الحجز' : 'Confirm Booking'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
+
+
+
+interface PaginationProps {
+  currentPage: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+  language: 'ar' | 'en';
+}
+
+const Pagination = ({ currentPage, totalPages, onPageChange, language }) => {
+  const isRTL = language === 'ar';
+  
+  const renderPageNumbers = () => {
+    const pageNumbers = [];
+    const maxVisiblePages = 5;
+    
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+    
+    if (endPage - startPage < maxVisiblePages - 1) {
+      startPage = Math.max(1, endPage - maxVisiblePages + 1);
+    }
+    
+    for (let i = startPage; i <= endPage; i++) {
+      pageNumbers.push(
+        <button
+          key={i}
+          onClick={() => onPageChange(i)}
+          className={`px-3 py-2 mx-1 rounded-lg transition-colors ${
+            currentPage === i
+              ? 'bg-blue-600 text-white'
+              : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+          }`}
+        >
+          {i}
+        </button>
+      );
+    }
+    
+    return pageNumbers;
+  };
+  
+  if (totalPages <= 1) return null;
+  
+  return (
+    <div className="flex justify-center items-center mt-8" dir={isRTL ? 'rtl' : 'ltr'}>
+      <button
+        onClick={() => onPageChange(currentPage - 1)}
+        disabled={currentPage === 1}
+        className="p-2 mx-1 rounded-lg bg-white border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        aria-label={isRTL ? 'الصفحة السابقة' : 'Previous page'}
+      >
+        {isRTL ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
+      </button>
+      
+      {renderPageNumbers()}
+      
+      <button
+        onClick={() => onPageChange(currentPage + 1)}
+        disabled={currentPage === totalPages}
+        className="p-2 mx-1 rounded-lg bg-white border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        aria-label={isRTL ? 'الصفحة التالية' : 'Next page'}
+      >
+        {isRTL ? <ChevronLeft className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
+      </button>
+    </div>
+  );
+};
+
+
+
+
+interface LoadingSpinnerProps {
+  size?: 'small' | 'medium' | 'large';
+  className?: string;
+}
+
+const LoadingSpinner = ({ size = 'medium', className = '' }) => {
+  const sizeClasses = {
+    small: 'w-4 h-4',
+    medium: 'w-8 h-8',
+    large: 'w-12 h-12'
+  };
+  
+  return (
+    <div className={`flex justify-center items-center ${className}`}>
+      <div className={`${sizeClasses[size]} border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin`} />
+    </div>
+  );
+};
+
+
+
+
+
+interface ErrorMessageProps {
+  message: string;
+  language: 'ar' | 'en';
+  onRetry?: () => void;
+}
+
+const ErrorMessage = ({ message, language, onRetry }) => {
+  const isRTL = language === 'ar';
+  
+  return (
+    <div className="flex flex-col items-center justify-center py-12" dir={isRTL ? 'rtl' : 'ltr'}>
+      <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
+      <h3 className="text-lg font-semibold text-gray-900 mb-2">
+        {isRTL ? 'حدث خطأ' : 'Error Occurred'}
+      </h3>
+      <p className="text-gray-600 text-center mb-4 max-w-md">
+        {message}
+      </p>
+      {onRetry && (
+        <button
+          onClick={onRetry}
+          className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          {isRTL ? 'حاول مرة أخرى' : 'Try Again'}
+        </button>
+      )}
+    </div>
+  );
+};
+
+
+
+
+
+interface SortDropdownProps {
+  value: string;
+  onChange: (value: string) => void;
+  language: 'ar' | 'en';
+}
+
+const SortDropdown = ({ value, onChange, language }) => {
+  const isRTL = language === 'ar';
+  
+  const options = [
+    { value: 'featured', label: isRTL ? 'المميزة أولاً' : 'Featured First' },
+    { value: 'price-low', label: isRTL ? 'السعر: من الأقل للأعلى' : 'Price: Low to High' },
+    { value: 'price-high', label: isRTL ? 'السعر: من الأعلى للأقل' : 'Price: High to Low' },
+    { value: 'name', label: isRTL ? 'الاسم: أ-ي' : 'Name: A-Z' },
+  ];
+  
+  return (
+    <div className="relative" dir={isRTL ? 'rtl' : 'ltr'}>
+      <label className="block text-sm font-medium text-gray-700 mb-2">
+        {isRTL ? 'ترتيب حسب' : 'Sort by'}
+      </label>
+      <div className="relative">
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="appearance-none w-full bg-white border border-gray-300 rounded-lg px-4 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        >
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 pointer-events-none" />
+      </div>
+    </div>
+  );
+};
+
+
+
+
+
+interface LanguageContextType {
+  language: 'ar' | 'en';
+  toggleLanguage: () => void;
+  t: (key: string) => string;
+}
+
+const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
+
+const useLanguage = () => {
+  const context = useContext(LanguageContext);
+  if (!context) {
+    throw new Error('useLanguage must be used within a LanguageProvider');
+  }
+  return context;
+};
+
+interface LanguageProviderProps {
+  children;
+}
+
+const translations = {
+  en: {
+    'hero.title': 'Find Your Perfect Ride',
+    'hero.subtitle': 'Choose from our wide selection of premium vehicles',
+    'search.placeholder': 'Search by car name, type, or location...',
+    'filter.category': 'Category',
+    'filter.priceRange': 'Price Range',
+    'filter.seats': 'Number of Seats',
+    'filter.fuelType': 'Fuel Type',
+    'filter.transmission': 'Transmission',
+    'filter.location': 'Location',
+    'filter.clearAll': 'Clear All',
+    'car.perDay': 'per day',
+    'car.bookNow': 'Book Now',
+    'car.viewDetails': 'View Details',
+    'footer.quickLinks': 'Quick Links',
+    'footer.contact': 'Contact Us',
+    'footer.newsletter': 'Newsletter',
+    'footer.subscribe': 'Subscribe',
+    'footer.rights': 'All rights reserved',
+  },
+  ar: {
+    'hero.title': 'اعثر على سيارتك المثالية',
+    'hero.subtitle': 'اختر من مجموعتنا الواسعة من السيارات الفاخرة',
+    'search.placeholder': 'ابحث بالاسم أو النوع أو الموقع...',
+    'filter.category': 'الفئة',
+    'filter.priceRange': 'نطاق السعر',
+    'filter.seats': 'عدد المقاعد',
+    'filter.fuelType': 'نوع الوقود',
+    'filter.transmission': 'ناقل الحركة',
+    'filter.location': 'الموقع',
+    'filter.clearAll': 'مسح الكل',
+    'car.perDay': 'لليوم',
+    'car.bookNow': 'احجز الآن',
+    'car.viewDetails': 'عرض التفاصيل',
+    'footer.quickLinks': 'روابط سريعة',
+    'footer.contact': 'اتصل بنا',
+    'footer.newsletter': 'النشرة الإخبارية',
+    'footer.subscribe': 'اشترك',
+    'footer.rights': 'جميع الحقوق محفوظة',
+  }
+};
+
+const LanguageProvider = ({ children }) => {
+  const [language, setLanguage] = useLocalStorage<'ar' | 'en'>('language', 'en');
+
+  const toggleLanguage = () => {
+    setLanguage(language === 'en' ? 'ar' : 'en');
+  };
+
+  const t = (key: string): string => {
+    return translations[language][key as keyof typeof translations['en']] || key;
+  };
+
+  return (
+    <LanguageContext.Provider value={{ language, toggleLanguage, t }}>
+      {children}
+    </LanguageContext.Provider>
+  );
+};
+
+
+
+
+interface FilterOptions {
+  categories: string[];
+  priceRange: [number, number];
+  seats: number[];
+  fuelTypes: string[];
+  transmissions: string[];
+  locations: string[];
+}
+
+function filterCars(cars: Car[], filters: FilterOptions, searchTerm: string): Car[] {
+  return cars.filter(car => {
+    // Search term filter
+    if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase();
+      const matchesSearch = 
+        (car.name?.toLowerCase().includes(searchLower) || false) ||
+        (car.category?.toLowerCase().includes(searchLower) || false) ||
+        car.location.toLowerCase().includes(searchLower) ||
+        car.make.toLowerCase().includes(searchLower) ||
+        car.model.toLowerCase().includes(searchLower);
+      
+      if (!matchesSearch) return false;
+    }
+
+    // Category filter
+    if (filters.categories.length > 0 && car.category && !filters.categories.includes(car.category)) {
+      return false;
+    }
+
+    // Price filter
+    if (car.price < filters.priceRange[0] || car.price > filters.priceRange[1]) {
+      return false;
+    }
+
+    // Seats filter
+    if (filters.seats.length > 0 && car.seats && !filters.seats.includes(car.seats)) {
+      return false;
+    }
+
+    // Fuel type filter
+    if (filters.fuelTypes.length > 0 && !filters.fuelTypes.includes(car.fuelType)) {
+      return false;
+    }
+
+    // Transmission filter
+    if (filters.transmissions.length > 0 && !filters.transmissions.includes(car.transmission)) {
+      return false;
+    }
+
+    // Location filter
+    if (filters.locations.length > 0 && !filters.locations.includes(car.location)) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+function sortCars(cars: Car[], sortBy: string): Car[] {
+  const sorted = [...cars];
+  
+  switch (sortBy) {
+    case 'price-low':
+      return sorted.sort((a, b) => a.price - b.price);
+    case 'price-high':
+      return sorted.sort((a, b) => b.price - a.price);
+    case 'name':
+      return sorted.sort((a, b) => (a.name || a.model).localeCompare(b.name || b.model));
+    case 'featured':
+      return sorted.sort((a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0));
+    default:
+      return sorted;
+  }
+}
+
+
+function useLocalStorage<T>(key: string, initialValue: T): [T, (value: T) => void] {
+  // Get initial value from localStorage or use the provided initial value
+  const [storedValue, setStoredValue] = useState<T>(() => {
+    try {
+      const item = window.localStorage.getItem(key);
+      return item ? JSON.parse(item) : initialValue;
+    } catch (error) {
+      console.error(`Error reading localStorage key "${key}":`, error);
+      return initialValue;
+    }
+  });
+
+  // Update localStorage when value changes
+  const setValue = (value: T) => {
+    try {
+      setStoredValue(value);
+      window.localStorage.setItem(key, JSON.stringify(value));
+    } catch (error) {
+      console.error(`Error setting localStorage key "${key}":`, error);
+    }
+  };
+
+  return [storedValue, setValue];
+}
+
+
+
+
+
+interface FilterSidebarProps {
+  isRTL: boolean;
+  selectedCategory: string;
+  setSelectedCategory: (category: string) => void;
+  priceRange: [number, number];
+  setPriceRange: (range: [number, number]) => void;
+}
+
+const FilterSidebar = ({
+  isRTL,
+  selectedCategory,
+  setSelectedCategory,
+  priceRange,
+  setPriceRange,
+}) => {
+  const categories = isRTL
+    ? ['جميع الفئات', 'اقتصادية', 'متوسطة', 'فاخرة', 'دفع رباعي']
+    : ['All Categories', 'Economy', 'Midsize', 'Luxury', 'SUV'];
+
+  const categoryMap: { [key: string]: string } = {
+    'جميع الفئات': 'All',
+    'اقتصادية': 'Economy',
+    'متوسطة': 'Midsize',
+    'فاخرة': 'Luxury',
+    'دفع رباعي': 'SUV',
+    'All Categories': 'All',
+    'Economy': 'Economy',
+    'Midsize': 'Midsize',
+    'Luxury': 'Luxury',
+    'SUV': 'SUV',
+  };
+
+  return (
+    <aside className="bg-white rounded-lg shadow-lg p-6">
+      <div className="flex items-center gap-2 mb-6">
+        <Filter className="w-5 h-5 text-blue-600" />
+        <h3 className="text-lg font-semibold">
+          {isRTL ? 'تصفية النتائج' : 'Filter Results'}
+        </h3>
+      </div>
+
+      <div className="mb-6">
+        <h4 className="font-medium mb-3">
+          {isRTL ? 'الفئة' : 'Category'}
+        </h4>
+        <div className="space-y-2">
+          {categories.map((category) => (
+            <label key={category} className="flex items-center cursor-pointer">
+              <input
+                type="radio"
+                name="category"
+                value={categoryMap[category]}
+                checked={selectedCategory === categoryMap[category]}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                className="mr-2 text-blue-600 focus:ring-blue-500"
+              />
+              <span className="text-gray-700 hover:text-blue-600 transition-colors">
+                {category}
+              </span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <div className="mb-6">
+        <h4 className="font-medium mb-3">
+          {isRTL ? 'نطاق السعر' : 'Price Range'}
+        </h4>
+        <div className="space-y-4">
+          <div>
+            <label className="text-sm text-gray-600">
+              {isRTL ? 'السعر الأدنى' : 'Min Price'}: ${priceRange[0]}/day
+            </label>
+            <input
+              type="range"
+              min="0"
+              max="500"
+              step="10"
+              value={priceRange[0]}
+              onChange={(e) =>
+                setPriceRange([parseInt(e.target.value), priceRange[1]])
+              }
+              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+            />
+          </div>
+          <div>
+            <label className="text-sm text-gray-600">
+              {isRTL ? 'السعر الأقصى' : 'Max Price'}: ${priceRange[1]}/day
+            </label>
+            <input
+              type="range"
+              min="0"
+              max="500"
+              step="10"
+              value={priceRange[1]}
+              onChange={(e) =>
+                setPriceRange([priceRange[0], parseInt(e.target.value)])
+              }
+              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+            />
+          </div>
+        </div>
+      </div>
+
+      <button
+        onClick={() => {
+          setSelectedCategory('All');
+          setPriceRange([0, 500]);
+        }}
+        className="w-full text-blue-600 hover:text-blue-700 transition-colors text-sm font-medium"
+      >
+        {isRTL ? 'إعادة تعيين الفلاتر' : 'Reset Filters'}
+      </button>
+    </aside>
+  );
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function App() {
+  const [isRTL, setIsRTL] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [priceRange, setPriceRange] = useState<[number, number]>([0, 500]);
+
+  const filteredCars = useMemo(() => {
+    return cars.filter((car) => {
+      const categoryMatch = selectedCategory === 'All' || car.category === selectedCategory;
+      const priceMatch = car.price >= priceRange[0] && car.price <= priceRange[1] * 100; // Convert range to match car prices
+      return categoryMatch && priceMatch;
+    });
+  }, [selectedCategory, priceRange]);
+
+  const handleToggleLanguage = () => {
+    setIsRTL(!isRTL);
+    document.documentElement.dir = !isRTL ? 'rtl' : 'ltr';
+    document.documentElement.lang = !isRTL ? 'ar' : 'en';
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <Header isRTL={isRTL} />
+      <Hero isRTL={isRTL} />
+      
+      <main className="container mx-auto px-4 py-12">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+          <div className="lg:col-span-1">
+            <FilterSidebar
+              isRTL={isRTL}
+              selectedCategory={selectedCategory}
+              setSelectedCategory={setSelectedCategory}
+              priceRange={priceRange}
+              setPriceRange={setPriceRange}
+            />
+          </div>
+          
+          <div className="lg:col-span-3">
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold mb-2">
+                {isRTL ? 'السيارات المتاحة' : 'Available Cars'}
+              </h2>
+              <p className="text-gray-600">
+                {isRTL
+                  ? `عدد ${filteredCars.length} سيارة متاحة`
+                  : `${filteredCars.length} cars available`}
+              </p>
+            </div>
+            
+            {filteredCars.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {filteredCars.map((car) => (
+                  <CarCard
+                    key={car.id}
+                    car={car}
+                    onClick={() => {
+                      console.log('Car clicked:', car);
+                      // Here you would typically navigate to a car detail page
+                    }}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <p className="text-gray-500 text-lg">
+                  {isRTL
+                    ? 'لا توجد سيارات متطابقة مع معايير البحث'
+                    : 'No cars match your search criteria'}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </main>
+      
+      <Features isRTL={isRTL} />
+      <Footer isRTL={isRTL} />
+      <LanguageToggle isRTL={isRTL} onToggle={handleToggleLanguage} />
+    </div>
+  );
+}
+
+</script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
+  <script>
+    var useState = React.useState, useEffect = React.useEffect;
+    var useMemo = React.useMemo, useRef = React.useRef;
+    var useCallback = React.useCallback;
+    var createContext = React.createContext;
+    var useContext = React.useContext, Fragment = React.Fragment;
+
+    window.__previewError = null;
+    window.onerror = function(msg) { window.__previewError = msg; };
+    try {
+      var code = document.getElementById('__component_code__').textContent;
+      code = code.replace(/^import\s+[\s\S]*?from\s+.+$/gm, '');
+      code = code.replace(/^import\s+['"].+['"].*$/gm, '');
+      code = code.replace(/export\s+default\s+function\s+(\w+)/g, 'function $1');
+      code = code.replace(/export\s+default\s+class\s+(\w+)/g, 'class $1');
+      code = code.replace(/export\s+default\s+(\w+)\s*;?/g, '');
+      code = code.replace(/export\s+(const|function|class|let|var|type|interface|enum)\s+/g, '$1 ');
+      code = code.replace(/export\s+\{[^}]*\}/g, '');
+      code = code.replace(/^export\s+default\s+/gm, 'var _default = ');
+      var transformed = Babel.transform(code, { presets: ['react', 'typescript'], filename: 'preview.tsx' }).code;
+      transformed = transformed.replace(/^const /gm, 'var ');
+      transformed = transformed.replace(/^let /gm, 'var ');
+      transformed = transformed.replace(/([;{}\n])\s*const /g, '$1 var ');
+      transformed = transformed.replace(/([;{}\n])\s*let /g, '$1 var ');
+      var scriptEl = document.createElement('script');
+      scriptEl.textContent = transformed;
+      document.body.appendChild(scriptEl);
+      if (window.__previewError) {
+        throw new Error(window.__previewError);
+      }
+      var root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(React.createElement(typeof App !== 'undefined' ? App : 'div', null, typeof App === 'undefined' ? 'No App component found' : null));
+    } catch(e) {
+      console.error('Preview render error:', e);
+      document.getElementById('root').innerHTML = '<div style="padding:40px;text-align:center;font-family:sans-serif;color:#666"><h3>Preview Error</h3><p>' + e.message + '</p></div>';
+    }
+  </script>
+</body>
+</html>
