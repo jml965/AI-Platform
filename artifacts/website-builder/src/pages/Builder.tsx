@@ -567,6 +567,11 @@ export default function Builder() {
       c = c.replace(/:\s*React\.FormEvent<[^>]*>/g, '');
       c = c.replace(/:\s*React\.MouseEvent<[^>]*>/g, '');
 
+      c = c.replace(/import\.meta\.env\.\w+/g, '""');
+      c = c.replace(/import\.meta/g, '({})');
+
+      c = c.replace(/process\.env\.\w+/g, '""');
+
       c = c.replace(/<(\w+)(\s[^>]*)?\s*\/>/g, (m, tag, attrs) => {
         if (/^[a-z]/.test(tag)) return m;
         return `<${tag}${attrs || ''} />`;
@@ -652,6 +657,9 @@ export default function Builder() {
       code = code.replace(/export\\s+\\{[^}]*\\}/g, '');
       code = code.replace(/^export\\s+default\\s+/gm, 'var _default = ');
       code = code.replace(/^(?:const|let|var)\\s+\\w+\\s*=\\s*(?:React\\.)?lazy\\s*\\(.*?\\)\\s*;?\\s*$/gm, '');
+      code = code.replace(/import\\.meta\\.env\\.\\w+/g, '""');
+      code = code.replace(/import\\.meta/g, '({})');
+      code = code.replace(/process\\.env\\.\\w+/g, '""');
       var transformed = Babel.transform(code, { presets: ['react', 'typescript'], filename: 'preview.tsx' }).code;
       transformed = transformed.replace(/\\bconst\\s+/g, 'var ');
       transformed = transformed.replace(/\\blet\\s+/g, 'var ');

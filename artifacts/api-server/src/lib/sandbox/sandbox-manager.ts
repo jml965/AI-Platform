@@ -103,9 +103,7 @@ function buildSafeEnv(sandbox: SandboxProcess): Record<string, string> {
 }
 
 function buildResourceLimitedCommand(command: string, memoryLimitMb: number, runtime: "node" | "python"): string {
-  const memoryLimitKb = memoryLimitMb * 1024;
-  const ulimitPrefix = `ulimit -v ${memoryLimitKb} 2>/dev/null; `;
-  return `${ulimitPrefix}${command}`;
+  return command;
 }
 
 function isPathSafe(filePath: string, workDir: string): boolean {
@@ -134,7 +132,7 @@ export async function createSandbox(
     throw new Error(`Maximum concurrent sandboxes reached (${MAX_CONCURRENT_SANDBOXES})`);
   }
 
-  const clampedMemory = Math.min(Math.max(memoryLimitMb, 64), 512);
+  const clampedMemory = Math.min(Math.max(memoryLimitMb, 64), 1024);
   const clampedTimeout = Math.min(Math.max(timeoutSeconds, 30), 600);
 
   const existingSandbox = Array.from(activeSandboxes.values()).find(
