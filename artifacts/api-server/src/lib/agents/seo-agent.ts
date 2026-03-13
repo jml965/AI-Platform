@@ -35,7 +35,7 @@ export class SeoAgent extends BaseAgent {
   readonly agentType: AgentType = "codegen";
   readonly modelConfig: ModelConfig = {
     provider: "openai",
-    model: "gpt-4o-mini",
+    model: "gpt-4o",
   };
 
   readonly systemPrompt = `You are an expert SEO analyst. You analyze HTML websites and provide comprehensive SEO audits.

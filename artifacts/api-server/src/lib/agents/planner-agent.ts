@@ -85,7 +85,7 @@ export function classifyComplexity(prompt: string): "complex" | "simple" {
 
 export class PlannerAgent extends BaseAgent {
   readonly agentType = "planner" as const;
-  readonly modelConfig: ModelConfig = { provider: "anthropic", model: "claude-sonnet-4-5" };
+  readonly modelConfig: ModelConfig = { provider: "openai", model: "o3" };
 
   readonly systemPrompt = `You are a senior software architect AI. Your job is to analyze a project request and produce a structured project plan BEFORE any code is generated.
 

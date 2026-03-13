@@ -56,7 +56,7 @@ The platform utilizes a pnpm workspace monorepo structure, separating deployable
 
 ## External Dependencies
 
-- **AI Providers:** Anthropic Claude Sonnet 4.5 (via Replit AI Integrations) for code generation and fixing; OpenAI o1 (via Replit AI Integrations) for code review.
+- **AI Providers:** Anthropic Claude Opus 4 for code generation, editing, and fixing; OpenAI o3 for code review and planning; GPT-4o for SEO analysis; Claude Sonnet 4.5 for chat. Supports custom API keys via `CUSTOM_ANTHROPIC_API_KEY` and `CUSTOM_OPENAI_API_KEY` environment variables (falls back to Replit AI Integrations if not set).
 - **Database:** PostgreSQL.
 - **ORM:** Drizzle ORM.
 - **Frontend Framework:** React.
