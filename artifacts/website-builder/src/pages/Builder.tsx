@@ -1255,11 +1255,9 @@ export default function Builder() {
               </div>
             ) : (
               isBuilding ? (
-                <div className="h-full flex items-center justify-center">
-                  <div className="flex flex-col items-center">
-                    <Loader2 className="w-8 h-8 animate-spin text-[#58a6ff] mb-3" />
-                    <p className="text-[#8b949e] text-sm font-medium">{t.building}</p>
-                    <p className="text-xs text-[#484f58] mt-1">{t.agents_working}</p>
+                <div className="h-full flex flex-col bg-[#0d1117]">
+                  <div className="flex-1 overflow-y-auto p-4">
+                    <LiveBuildView logs={logs} buildStatus={buildStatus?.status} lang={lang} t={t} />
                   </div>
                 </div>
               ) : (hasPreview || previewUrl) ? (
@@ -1942,6 +1940,147 @@ function ExecutionLogTimeline({ logs, isBuilding }: { logs: ExecutionLog[]; isBu
               <span className="text-[11px] text-[#58a6ff] animate-pulse">{t.agents_working}</span>
             </div>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LiveBuildView({ logs, buildStatus, lang, t }: { logs: ExecutionLog[]; buildStatus?: string; lang: string; t: Record<string, string> }) {
+  const logEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [logs.length]);
+
+  const agents = [
+    { key: "codegen", en: "Code Generator", ar: "مولّد الكود", icon: "⚡" },
+    { key: "reviewer", en: "Code Reviewer", ar: "مراجع الكود", icon: "🔍" },
+    { key: "fixer", en: "Code Fixer", ar: "مصلح الكود", icon: "🔧" },
+    { key: "filemanager", en: "File Manager", ar: "مدير الملفات", icon: "📁" },
+    { key: "package_runner", en: "Package Runner", ar: "مشغّل الحزم", icon: "📦" },
+    { key: "qa", en: "Quality Assurance", ar: "ضمان الجودة", icon: "✅" },
+  ];
+
+  const getAgentStatus = (agentKey: string) => {
+    const agentLogs = logs.filter(l => l.agentType === agentKey);
+    if (agentLogs.length === 0) return "pending";
+    const last = agentLogs[agentLogs.length - 1];
+    if (last.status === "completed" || last.status === "success") return "done";
+    if (last.status === "failed" || last.status === "error") return "error";
+    return "running";
+  };
+
+  const currentAgent = agents.find(a => getAgentStatus(a.key) === "running");
+  const isRtl = lang === "ar";
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-6">
+      <div className="text-center mb-4">
+        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#1f6feb]/10 border border-[#1f6feb]/20 mb-2">
+          <Loader2 className="w-4 h-4 animate-spin text-[#58a6ff]" />
+          <span className="text-sm font-medium text-[#58a6ff]">
+            {currentAgent ? (isRtl ? currentAgent.ar : currentAgent.en) : (t.building || "Building...")}
+          </span>
+        </div>
+        {currentAgent && (
+          <p className="text-xs text-[#484f58]">{t.agents_working}</p>
+        )}
+      </div>
+
+      <div className="grid grid-cols-3 gap-3">
+        {agents.map(agent => {
+          const status = getAgentStatus(agent.key);
+          const agentLogs = logs.filter(l => l.agentType === agent.key);
+          const lastLog = agentLogs[agentLogs.length - 1];
+          return (
+            <motion.div
+              key={agent.key}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={cn(
+                "rounded-lg border p-3 transition-all duration-300",
+                status === "running" && "bg-[#1f6feb]/5 border-[#1f6feb]/30 shadow-[0_0_15px_rgba(31,111,235,0.1)]",
+                status === "done" && "bg-emerald-500/5 border-emerald-500/20",
+                status === "error" && "bg-red-500/5 border-red-500/20",
+                status === "pending" && "bg-[#161b22] border-[#1c2333] opacity-40",
+              )}
+            >
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="text-base">{agent.icon}</span>
+                <span className={cn(
+                  "text-xs font-semibold truncate",
+                  status === "running" && "text-[#58a6ff]",
+                  status === "done" && "text-emerald-400",
+                  status === "error" && "text-red-400",
+                  status === "pending" && "text-[#484f58]",
+                )}>
+                  {isRtl ? agent.ar : agent.en}
+                </span>
+                <div className="ms-auto flex-shrink-0">
+                  {status === "running" && <Loader2 className="w-3.5 h-3.5 animate-spin text-[#58a6ff]" />}
+                  {status === "done" && <span className="text-emerald-400 text-xs">✓</span>}
+                  {status === "error" && <span className="text-red-400 text-xs">✗</span>}
+                </div>
+              </div>
+              {lastLog && (
+                <p className="text-[10px] text-[#8b949e] truncate">{lastLog.action}</p>
+              )}
+              {status === "running" && (
+                <div className="mt-2 h-1 rounded-full bg-[#1c2333] overflow-hidden">
+                  <motion.div
+                    className="h-full bg-[#1f6feb] rounded-full"
+                    initial={{ width: "5%" }}
+                    animate={{ width: "85%" }}
+                    transition={{ duration: 60, ease: "linear" }}
+                  />
+                </div>
+              )}
+            </motion.div>
+          );
+        })}
+      </div>
+
+      {logs.length > 0 && (
+        <div className="rounded-lg border border-[#1c2333] bg-[#0d1117] overflow-hidden">
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-[#1c2333] bg-[#161b22]">
+            <Code2 className="w-3.5 h-3.5 text-[#8b949e]" />
+            <span className="text-[11px] font-semibold text-[#8b949e] uppercase tracking-wider">
+              {isRtl ? "سجل مباشر" : "Live Log"}
+            </span>
+            <span className="text-[10px] text-[#484f58] ms-auto">{logs.length}</span>
+          </div>
+          <div className="max-h-[200px] overflow-y-auto p-2 space-y-0.5 font-mono">
+            {logs.map((log, i) => {
+              const time = log.createdAt ? new Date(log.createdAt).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "";
+              const isCompleted = log.status === "completed" || log.status === "success";
+              const isFailed = log.status === "failed" || log.status === "error";
+              const isRunning = log.status === "in_progress" || log.status === "running" || log.status === "pending";
+              return (
+                <motion.div
+                  key={log.id || i}
+                  initial={{ opacity: 0, x: isRtl ? 8 : -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className="flex items-center gap-2 py-0.5 px-1 text-[11px]"
+                >
+                  <span className="text-[#484f58] flex-shrink-0 w-16">{time}</span>
+                  <span className="text-[#8b949e] flex-shrink-0 truncate max-w-[120px]">{log.action}</span>
+                  <span className={cn(
+                    "font-bold uppercase text-[10px] flex-shrink-0",
+                    isCompleted && "text-emerald-400",
+                    isFailed && "text-red-400",
+                    isRunning && "text-[#58a6ff]",
+                  )}>
+                    {log.agentType || "SYSTEM"}
+                  </span>
+                  {isRunning && <Loader2 className="w-3 h-3 animate-spin text-[#58a6ff] flex-shrink-0" />}
+                  {isCompleted && <span className="text-emerald-400 flex-shrink-0">✓</span>}
+                  {isFailed && <span className="text-red-400 flex-shrink-0">✗</span>}
+                </motion.div>
+              );
+            })}
+            <div ref={logEndRef} />
+          </div>
         </div>
       )}
     </div>
