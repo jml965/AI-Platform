@@ -262,15 +262,22 @@ export default function Builder() {
   }, [buildStatus?.status, activeBuildId]);
 
   const isBuildRequest = useCallback((text: string): boolean => {
-    const buildKeywords = [
-      /\b(build|create|make|generate|develop|design)\b/i,
-      /\b(ابني|أنشئ|صمم|اعمل|طور|انشئ|اصنع|ولد|جهز|حول)\b/,
-      /\b(موقع|صفحة|تطبيق|مشروع|واجهة|صفحه)\b/,
-      /\b(website|page|app|site|landing|portfolio|store|shop|dashboard)\b/i,
-      /\b(غير|عدل|أضف|اضف|احذف|ازل|حدث|بدل)\b/,
-      /\b(change|modify|add|remove|update|fix|edit|replace)\b/i,
+    const strongBuildKeywords = [
+      /\b(نفذ|ابدأ|شغل|ابني|أنشئ|انشئ|اعمل|صمم|اصنع|ولد|جهز)\b/,
+      /\b(build|create|make|generate|develop|start)\b/i,
     ];
-    const matchCount = buildKeywords.filter(kw => kw.test(text)).length;
+    const contextKeywords = [
+      /\b(موقع|صفحة|تطبيق|مشروع|واجهة|صفحه|متجر|مدونة|لوحة)\b/,
+      /\b(website|page|app|site|landing|portfolio|store|shop|dashboard|blog)\b/i,
+      /\b(غير|عدل|أضف|اضف|احذف|ازل|حدث|بدل|حسن|طور)\b/,
+      /\b(change|modify|add|remove|update|fix|edit|replace|improve)\b/i,
+    ];
+    const hasStrongKeyword = strongBuildKeywords.some(kw => kw.test(text));
+    const hasContext = contextKeywords.some(kw => kw.test(text));
+    if (hasStrongKeyword && hasContext) return true;
+    if (hasStrongKeyword && text.trim().split(/\s+/).length <= 3) return true;
+    const allKeywords = [...strongBuildKeywords, ...contextKeywords];
+    const matchCount = allKeywords.filter(kw => kw.test(text)).length;
     return matchCount >= 2;
   }, []);
 
