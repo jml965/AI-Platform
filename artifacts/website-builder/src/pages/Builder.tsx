@@ -67,7 +67,14 @@ export default function Builder() {
         return JSON.parse(saved).map((m: ChatMessage) => ({ ...m, timestamp: new Date(m.timestamp) }));
       } catch { return []; }
     }
-    return [];
+    return [{
+      id: "welcome",
+      role: "assistant" as const,
+      content: lang === "ar"
+        ? `مرحباً! أنا مساعدك الذكي 👋\nأخبرني ماذا تريد أن تبني أو اسألني أي سؤال عن مشروعك.`
+        : `Hello! I'm your AI assistant 👋\nTell me what you'd like to build, or ask me anything about your project.`,
+      timestamp: new Date(),
+    }];
   });
   const [activeBuildId, setActiveBuildId] = useState<string | null>(() => {
     return localStorage.getItem(`latestBuild_${id}`);
@@ -85,6 +92,7 @@ export default function Builder() {
   const [showDeployPanel, setShowDeployPanel] = useState(false);
   const [showPwaPanel, setShowPwaPanel] = useState(false);
   const [showTranslationsPanel, setShowTranslationsPanel] = useState(false);
+  const [isChatLoading, setIsChatLoading] = useState(false);
   const [cssEditorActive, setCssEditorActive] = useState(false);
   const [cssSaving, setCssSaving] = useState(false);
 
@@ -206,6 +214,41 @@ export default function Builder() {
     }
   }, [buildStatus?.status, activeBuildId]);
 
+  const isBuildRequest = useCallback((text: string): boolean => {
+    const buildKeywords = [
+      /\b(build|create|make|generate|develop|design)\b/i,
+      /\b(ابني|أنشئ|صمم|اعمل|طور|انشئ|اصنع|ولد|جهز|حول)\b/,
+      /\b(موقع|صفحة|تطبيق|مشروع|واجهة|صفحه)\b/,
+      /\b(website|page|app|site|landing|portfolio|store|shop|dashboard)\b/i,
+      /\b(غير|عدل|أضف|اضف|احذف|ازل|حدث|بدل)\b/,
+      /\b(change|modify|add|remove|update|fix|edit|replace)\b/i,
+    ];
+    const matchCount = buildKeywords.filter(kw => kw.test(text)).length;
+    return matchCount >= 2;
+  }, []);
+
+  const sendChatMessage = useCallback(async (text: string, chatHistory: ChatMessage[]) => {
+    const baseUrl = import.meta.env.VITE_API_URL || "";
+    const history = chatHistory
+      .filter(m => m.role === "user" || m.role === "assistant")
+      .slice(-10)
+      .map(m => ({ role: m.role, content: m.content }));
+
+    const res = await fetch(`${baseUrl}/api/chat/message`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ projectId: id, message: text, history }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err?.error?.message || "Chat failed");
+    }
+
+    return res.json() as Promise<{ reply: string; tokensUsed: number; costUsd: number }>;
+  }, [id]);
+
   const handleGenerate = async () => {
     if (!prompt.trim() || !id) return;
     const userMsg: ChatMessage = {
@@ -218,28 +261,50 @@ export default function Builder() {
     const currentPrompt = prompt;
     setPrompt("");
 
-    try {
-      const res = await startBuildMut.mutateAsync({
-        data: { projectId: id, prompt: currentPrompt }
-      });
-      setActiveBuildId(res.buildId);
-      localStorage.setItem(`latestBuild_${id}`, res.buildId);
-      setPlanApproved(false);
+    if (isBuildRequest(currentPrompt)) {
+      try {
+        const res = await startBuildMut.mutateAsync({
+          data: { projectId: id, prompt: currentPrompt }
+        });
+        setActiveBuildId(res.buildId);
+        localStorage.setItem(`latestBuild_${id}`, res.buildId);
+        setPlanApproved(false);
 
-      setMessages(prev => [...prev, {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: t.agents_working,
-        buildId: res.buildId,
-        timestamp: new Date(),
-      }]);
-    } catch (err) {
-      setMessages(prev => [...prev, {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: t.unknown_error,
-        timestamp: new Date(),
-      }]);
+        setMessages(prev => [...prev, {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: t.agents_working,
+          buildId: res.buildId,
+          timestamp: new Date(),
+        }]);
+      } catch (err) {
+        setMessages(prev => [...prev, {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: t.unknown_error,
+          timestamp: new Date(),
+        }]);
+      }
+    } else {
+      setIsChatLoading(true);
+      try {
+        const chatRes = await sendChatMessage(currentPrompt, [...messages, userMsg]);
+        setMessages(prev => [...prev, {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: chatRes.reply,
+          timestamp: new Date(),
+        }]);
+      } catch (err) {
+        setMessages(prev => [...prev, {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: t.unknown_error,
+          timestamp: new Date(),
+        }]);
+      } finally {
+        setIsChatLoading(false);
+      }
     }
   };
 
@@ -759,13 +824,14 @@ export default function Builder() {
             })}
           </AnimatePresence>
 
-          {isBuilding && (
+          {(isBuilding || isChatLoading) && (
             <div className="flex gap-2">
               <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 bg-emerald-500/20 text-emerald-400">
                 <Bot className="w-3 h-3" />
               </div>
-              <div className="bg-[#161b22] border border-[#1c2333] rounded-lg px-3 py-2">
+              <div className="bg-[#161b22] border border-[#1c2333] rounded-lg px-3 py-2 flex items-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin text-[#8b949e]" />
+                {isChatLoading && <span className="text-[11px] text-[#8b949e]">{lang === "ar" ? "يفكر..." : "Thinking..."}</span>}
               </div>
             </div>
           )}
@@ -784,7 +850,7 @@ export default function Builder() {
               value={prompt}
               onChange={e => setPrompt(e.target.value)}
               placeholder={t.prompt_placeholder}
-              disabled={isBuilding}
+              disabled={isBuilding || isChatLoading}
               className="w-full bg-[#161b22] border border-[#30363d] rounded-lg p-3 pe-10 resize-none h-20 focus:outline-none focus:border-[#58a6ff] focus:ring-1 focus:ring-[#58a6ff]/50 disabled:opacity-50 transition-all text-sm text-[#e1e4e8] placeholder-[#484f58]"
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {

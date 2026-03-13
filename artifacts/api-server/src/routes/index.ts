@@ -21,6 +21,7 @@ import analyticsRouter from "./analytics";
 import seoRouter from "./seo";
 import pluginsRouter from "./plugins";
 import translationsRouter from "./translations";
+import chatRouter from "./chat";
 import { requireAuth } from "../middlewares/authSession";
 
 const router: IRouter = Router();
@@ -49,5 +50,6 @@ router.use(pwaRouter);
 router.use(seoRouter);
 router.use(pluginsRouter);
 router.use(translationsRouter);
+router.use(chatRouter);
 
 export default router;
