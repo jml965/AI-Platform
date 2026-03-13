@@ -427,6 +427,20 @@ export interface UpdateMemberRoleRequest {
   role: UpdateMemberRoleRequestRole;
 }
 
+export interface NotificationPreferences {
+  buildComplete: boolean;
+  buildError: boolean;
+  teamInvite: boolean;
+  subscriptionRenewal: boolean;
+}
+
+export interface UpdateNotificationPreferencesRequest {
+  buildComplete?: boolean;
+  buildError?: boolean;
+  teamInvite?: boolean;
+  subscriptionRenewal?: boolean;
+}
+
 export type PreviewResponseStatus =
   (typeof PreviewResponseStatus)[keyof typeof PreviewResponseStatus];
 

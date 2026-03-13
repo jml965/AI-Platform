@@ -20,6 +20,7 @@ import { PackageRunnerAgent, setRunner, removeRunner } from "./package-runner-ag
 import { PlannerAgent, classifyComplexity } from "./planner-agent";
 import { checkSpendingLimits, checkAndNotifyLimits } from "../token-limits";
 import { runQaWithRetry } from "./qa-pipeline";
+import { emitBuildComplete, emitBuildError } from "../notificationEvents";
 import type {
   BuildContext,
   BuildStatus,
@@ -1108,6 +1109,25 @@ async function finalizeBuild(
     totalTokens,
     totalCost,
   });
+
+  if (build?.userId) {
+    try {
+      const [proj] = await db
+        .select({ name: projectsTable.name })
+        .from(projectsTable)
+        .where(eq(projectsTable.id, projectId))
+        .limit(1);
+      const projectName = proj?.name || "Untitled Project";
+
+      if (projectStatus === "ready") {
+        await emitBuildComplete({ userId: build.userId, projectName, projectId });
+      } else if (projectStatus === "failed") {
+        await emitBuildError({ userId: build.userId, projectName, projectId });
+      }
+    } catch (err) {
+      console.error(`Failed to emit build notification for ${buildId}:`, err);
+    }
+  }
 
   if (totalCost > 0 && build?.userId) {
     try {

@@ -15,6 +15,8 @@ import {
   hasPermission,
 } from "../middlewares/permissions";
 import { sendInvitationEmail } from "../lib/email";
+import { emitTeamInvite } from "../lib/notificationEvents";
+import { getAppBaseUrl } from "../lib/appDomain";
 
 const router: IRouter = Router();
 
@@ -310,6 +312,23 @@ router.post("/teams/:teamId/invite", requireTeamPermission("team.invite"), async
       role,
       token,
     });
+
+    if (existingUser) {
+      const baseUrl = getAppBaseUrl();
+      const acceptUrl = `${baseUrl}/teams?invite=${token}`;
+      try {
+        await emitTeamInvite({
+          userId: existingUser.id,
+          recipientEmail: email,
+          teamName: team?.name ?? "Team",
+          inviterName: inviter?.displayName || inviter?.email || "A team member",
+          role,
+          acceptUrl,
+        });
+      } catch (err) {
+        console.error("Failed to emit team invite notification:", err);
+      }
+    }
 
     return res.json({
       success: true,

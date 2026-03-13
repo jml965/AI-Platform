@@ -12,6 +12,7 @@ import sandboxRouter from "./sandbox";
 import monitoringRouter from "./monitoring";
 import plannerRouter from "./planner";
 import deploymentsRouter from "./deployments";
+import notificationsRouter from "./notifications";
 import { requireAuth } from "../middlewares/authSession";
 
 const router: IRouter = Router();
@@ -31,5 +32,6 @@ router.use(sandboxRouter);
 router.use(monitoringRouter);
 router.use(plannerRouter);
 router.use(deploymentsRouter);
+router.use(notificationsRouter);
 
 export default router;

@@ -305,7 +305,20 @@ const en = {
   file_desc_gitignore: "Git ignore rules",
   file_desc_env_file: "Environment config",
   file_desc_vite_config: "Vite config",
-  file_desc_requirements: "Python dependencies"
+  file_desc_requirements: "Python dependencies",
+  notif_settings: "Notification Settings",
+  notif_email_title: "Email Notifications",
+  notif_email_desc: "Choose which email notifications you'd like to receive.",
+  notif_build_complete: "Build Complete",
+  notif_build_complete_desc: "Get notified when your project build completes successfully.",
+  notif_build_error: "Build Error",
+  notif_build_error_desc: "Get notified when an error occurs during the build process.",
+  notif_team_invite: "Team Invitation",
+  notif_team_invite_desc: "Get notified when you receive a team invitation.",
+  notif_subscription_renewal: "Subscription Renewal",
+  notif_subscription_renewal_desc: "Get notified before your subscription renews.",
+  notif_email_setup: "Email Provider Setup",
+  notif_email_setup_desc: "To send actual emails, configure RESEND_API_KEY or SENDGRID_API_KEY in your environment variables.",
 };
 
 const ar = {
@@ -613,7 +626,20 @@ const ar = {
   file_desc_gitignore: "قواعد تجاهل Git",
   file_desc_env_file: "إعدادات البيئة",
   file_desc_vite_config: "إعدادات Vite",
-  file_desc_requirements: "تبعيات بايثون"
+  file_desc_requirements: "تبعيات بايثون",
+  notif_settings: "إعدادات الإشعارات",
+  notif_email_title: "إشعارات البريد الإلكتروني",
+  notif_email_desc: "اختر إشعارات البريد الإلكتروني التي تريد استلامها.",
+  notif_build_complete: "اكتمال البناء",
+  notif_build_complete_desc: "احصل على إشعار عند اكتمال بناء مشروعك بنجاح.",
+  notif_build_error: "خطأ في البناء",
+  notif_build_error_desc: "احصل على إشعار عند حدوث خطأ أثناء عملية البناء.",
+  notif_team_invite: "دعوة فريق",
+  notif_team_invite_desc: "احصل على إشعار عند استلام دعوة للانضمام لفريق.",
+  notif_subscription_renewal: "تجديد الاشتراك",
+  notif_subscription_renewal_desc: "احصل على إشعار قبل تجديد اشتراكك.",
+  notif_email_setup: "إعداد مزود البريد الإلكتروني",
+  notif_email_setup_desc: "لإرسال رسائل بريد إلكتروني فعلية، قم بتهيئة RESEND_API_KEY أو SENDGRID_API_KEY في متغيرات البيئة.",
 };
 
 type Language = "en" | "ar";

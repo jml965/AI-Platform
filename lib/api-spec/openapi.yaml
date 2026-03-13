@@ -26,6 +26,8 @@ tags:
     description: Team management and permissions
   - name: deployments
     description: Project deployment management
+  - name: notifications
+    description: Email notification preferences
   - name: preview
     description: Live preview of generated websites
 
@@ -612,6 +614,38 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SuccessResponse"
+
+  /notifications/preferences:
+    get:
+      operationId: getNotificationPreferences
+      tags: [notifications]
+      summary: Get notification preferences
+      description: Returns the user's email notification preferences
+      responses:
+        "200":
+          description: Notification preferences
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationPreferences"
+    patch:
+      operationId: updateNotificationPreferences
+      tags: [notifications]
+      summary: Update notification preferences
+      description: Updates the user's email notification preferences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateNotificationPreferencesRequest"
+      responses:
+        "200":
+          description: Updated preferences
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationPreferences"
 
   /billing/plans:
     get:
@@ -1791,6 +1825,35 @@ components:
           enum: [admin, developer, reviewer, viewer]
       required:
         - role
+
+    NotificationPreferences:
+      type: object
+      properties:
+        buildComplete:
+          type: boolean
+        buildError:
+          type: boolean
+        teamInvite:
+          type: boolean
+        subscriptionRenewal:
+          type: boolean
+      required:
+        - buildComplete
+        - buildError
+        - teamInvite
+        - subscriptionRenewal
+
+    UpdateNotificationPreferencesRequest:
+      type: object
+      properties:
+        buildComplete:
+          type: boolean
+        buildError:
+          type: boolean
+        teamInvite:
+          type: boolean
+        subscriptionRenewal:
+          type: boolean
 
     PreviewResponse:
       type: object

@@ -63,6 +63,27 @@ UI:
 - Builder page: Deploy button in header + expandable deploy panel (status, URL, redeploy/undeploy)
 - Dashboard: Deployed projects section with status cards and management controls
 
+## Email Notification System
+
+Event-driven email notification system that sends emails on important events (build complete, build error, team invite, subscription renewal).
+
+Key files:
+- `lib/db/src/schema/notification-preferences.ts` — DB table for per-user notification preferences
+- `artifacts/api-server/src/lib/emailTemplates.ts` — Bilingual HTML email templates with HTML escaping
+- `artifacts/api-server/src/lib/notificationEvents.ts` — Event emitters that create in-app notifications and send emails
+- `artifacts/api-server/src/lib/notificationMailer.ts` — Email sending via Resend or SendGrid APIs
+- `artifacts/api-server/src/routes/notifications.ts` — REST API for notification preferences (GET/PATCH)
+- `artifacts/website-builder/src/pages/NotificationSettings.tsx` — Frontend settings page with toggles
+
+API endpoints (under `/api/notifications`, auth required):
+- `GET /notifications/preferences` — Get user's notification preferences
+- `PATCH /notifications/preferences` — Update notification preferences (buildComplete, buildError, teamInvite, subscriptionRenewal)
+
+Integration points:
+- `execution-engine.ts` — emits build_complete/build_error after finalizeBuild
+- `teams.ts` — emits team_invite after sending team invitation
+- Email providers: RESEND_API_KEY or SENDGRID_API_KEY env vars
+
 ## Stack
 
 - **Monorepo tool**: pnpm workspaces

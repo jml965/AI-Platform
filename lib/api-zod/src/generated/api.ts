@@ -472,6 +472,35 @@ export const MarkNotificationReadResponse = zod.object({
 });
 
 /**
+ * Returns the user's email notification preferences
+ * @summary Get notification preferences
+ */
+export const GetNotificationPreferencesResponse = zod.object({
+  buildComplete: zod.boolean(),
+  buildError: zod.boolean(),
+  teamInvite: zod.boolean(),
+  subscriptionRenewal: zod.boolean(),
+});
+
+/**
+ * Updates the user's email notification preferences
+ * @summary Update notification preferences
+ */
+export const UpdateNotificationPreferencesBody = zod.object({
+  buildComplete: zod.boolean().optional(),
+  buildError: zod.boolean().optional(),
+  teamInvite: zod.boolean().optional(),
+  subscriptionRenewal: zod.boolean().optional(),
+});
+
+export const UpdateNotificationPreferencesResponse = zod.object({
+  buildComplete: zod.boolean(),
+  buildError: zod.boolean(),
+  teamInvite: zod.boolean(),
+  subscriptionRenewal: zod.boolean(),
+});
+
+/**
  * Returns all available subscription plans
  * @summary List subscription plans
  */
