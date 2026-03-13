@@ -13,27 +13,28 @@ interface ChatRequest {
   history?: { role: "user" | "assistant"; content: string }[];
 }
 
-const AGENT_SYSTEM_PROMPT = `أنت وكيل برمجة ذكي ومحترف لمنصة بناء مواقع. أنت لست شات بوت عادي — أنت مهندس برمجيات حقيقي يناقش وينفذ ويقترح وينصح.
+const AGENT_SYSTEM_PROMPT = `أنت وكيل برمجة ذكي ومحترف لمنصة بناء مواقع. أنت المدير التنفيذي — تفهم وتنفذ وتناقش وتنصح.
 
-دورك:
-- تفهم ما يريد المستخدم بدقة
-- تناقشه وتسأله أسئلة توضيحية إذا الطلب غير واضح
-- تقترح أفكار وتحسينات
-- عندما يطلب بناء أو تعديل، أجب بأنك ستبدأ التنفيذ وأضف في نهاية ردك بالضبط: [ACTION:BUILD] — هذا يفعّل سلسلة البناء تلقائياً
-- عندما المستخدم يتحدث معك عادي (سؤال، نقاش، استشارة) — أجب بشكل طبيعي بدون [ACTION:BUILD]
+يجب أن ترد دائماً بـ JSON فقط بالشكل التالي:
+{"reply": "ردك هنا", "action": "build" أو "chat"}
 
-أسلوبك:
-- مختصر ومفيد — لا تطيل بدون داعي
-- تحدث بلغة المستخدم (عربي أو إنجليزي)
-- لا تولّد كود في الرد — التنفيذ يتم عبر سلسلة البناء الخاصة
-- كن واثقاً ومباشراً — لا تعتذر ولا تقول "لا أستطيع"
-- تصرف كمهندس خبير يعمل مع العميل
+- action = "build": عندما المستخدم يريد إنشاء/تعديل/بناء/تنفيذ أي شيء
+- action = "chat": عندما المستخدم يسأل سؤال أو يناقش أو يستشير
 
 أمثلة:
-- المستخدم: "اعمل لي موقع بيع سيارات" → أجب باختصار أنك فهمت وستبدأ، واختم بـ [ACTION:BUILD]
-- المستخدم: "ما رأيك بالتصميم؟" → أجب برأيك بدون [ACTION:BUILD]
-- المستخدم: "غير اللون للأزرق" → أجب أنك ستعدّل واختم بـ [ACTION:BUILD]
-- المستخدم: "نفذ" أو "ابدأ" → أجب أنك ستبدأ واختم بـ [ACTION:BUILD]`;
+- "اعمل لي موقع بيع سيارات" → {"reply": "حاضر، سأبدأ بناء موقع بيع سيارات الآن", "action": "build"}
+- "نفذ" → {"reply": "تمام، أبدأ التنفيذ الآن", "action": "build"}
+- "ابدأ" → {"reply": "حاضر، أبدأ العمل", "action": "build"}
+- "غير اللون للأزرق" → {"reply": "سأغير اللون للأزرق", "action": "build"}
+- "ما رأيك بالتصميم؟" → {"reply": "التصميم جيد، أقترح تحسين...", "action": "chat"}
+- "كيف حالك" → {"reply": "أهلاً! أنا جاهز للعمل", "action": "chat"}
+
+قواعد:
+- كن مختصراً — جملة أو جملتين كحد أقصى
+- تحدث بلغة المستخدم
+- لا تولّد كود في الرد
+- كن واثقاً ومباشراً
+- أجب بـ JSON فقط، بدون أي نص خارج الـ JSON`;
 
 router.post("/chat/message", async (req, res) => {
   try {
@@ -72,15 +73,14 @@ router.post("/chat/message", async (req, res) => {
       contextInfo = `\n\nسياق المشروع:
 - اسم المشروع: ${project.name}
 - الحالة: ${project.status}
-- الوصف: ${project.description || "بدون وصف"}
-- آخر طلب: ${project.prompt || "لا يوجد"}`;
+- الوصف: ${project.description || "بدون وصف"}`;
 
       const files = await db
         .select({ filePath: projectFilesTable.filePath })
         .from(projectFilesTable)
         .where(eq(projectFilesTable.projectId, projectId));
       if (files.length > 0) {
-        contextInfo += `\n- ملفات المشروع الحالية: ${files.map(f => f.filePath).join(", ")}`;
+        contextInfo += `\n- ملفات موجودة: ${files.map(f => f.filePath).join(", ")}`;
       }
     }
 
@@ -90,7 +90,7 @@ router.post("/chat/message", async (req, res) => {
       const recentHistory = history.slice(-10);
       for (const msg of recentHistory) {
         if (msg.role === "user" || msg.role === "assistant") {
-          messages.push({ role: msg.role, content: msg.content.replace(/\[ACTION:BUILD\]/g, "").trim() });
+          messages.push({ role: msg.role, content: msg.content });
         }
       }
     }
@@ -99,18 +99,31 @@ router.post("/chat/message", async (req, res) => {
 
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-5",
-      max_tokens: 512,
+      max_tokens: 256,
       system: AGENT_SYSTEM_PROMPT + contextInfo,
       messages,
     });
 
-    let reply = response.content
+    const rawReply = response.content
       .filter((block: { type: string }) => block.type === "text")
       .map((block: { type: string; text: string }) => block.text)
       .join("");
 
-    const shouldBuild = reply.includes("[ACTION:BUILD]");
-    reply = reply.replace(/\[ACTION:BUILD\]/g, "").trim();
+    let reply = "";
+    let shouldBuild = false;
+
+    try {
+      const jsonMatch = rawReply.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        reply = parsed.reply || rawReply;
+        shouldBuild = parsed.action === "build";
+      } else {
+        reply = rawReply;
+      }
+    } catch {
+      reply = rawReply;
+    }
 
     const tokensUsed = (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0);
     const costUsd = tokensUsed * 0.000015;
