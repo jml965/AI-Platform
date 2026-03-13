@@ -210,7 +210,12 @@ async function syncProjectFiles(projectId: string, workDir: string) {
     const fullPath = join(workDir, normalizedPath);
     const dir = join(fullPath, "..");
     mkdirSync(dir, { recursive: true });
-    writeFileSync(fullPath, file.content, "utf-8");
+    const dataUriMatch = file.content.match(/^data:[^;]+;base64,(.+)$/s);
+    if (dataUriMatch) {
+      writeFileSync(fullPath, Buffer.from(dataUriMatch[1], "base64"));
+    } else {
+      writeFileSync(fullPath, file.content, "utf-8");
+    }
   }
 }
 

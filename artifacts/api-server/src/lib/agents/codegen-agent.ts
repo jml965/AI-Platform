@@ -179,7 +179,7 @@ MULTI-PAGE PROJECTS:
       const result = this.parseResponse(content);
 
       const rawFramework = context.framework || result.framework;
-      const framework: ProjectFramework = isValidFramework(rawFramework) ? rawFramework : "static";
+      const framework: ProjectFramework = isValidFramework(rawFramework) ? rawFramework : "react-vite";
       const template = getProjectTemplate(framework);
 
       const mergedFiles = this.mergeWithTemplate(template.baseFiles, result.files);
