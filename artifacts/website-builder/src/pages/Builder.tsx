@@ -675,6 +675,55 @@ export default function Builder() {
     var twMerge = function(s) { return s; };
     function cva(base, config) { return function(props) { return base; }; }
 
+    var __iconSvgPaths = {
+      Car: 'M7 17h10M5 13l1.5-4.5h11L19 13M6 17a1 1 0 1 0 2 0 1 1 0 0 0-2 0m10 0a1 1 0 1 0 2 0 1 1 0 0 0-2 0M3 13h18v4H3z',
+      Menu: 'M4 6h16M4 12h16M4 18h16',
+      X: 'M18 6L6 18M6 6l12 12',
+      Search: 'M21 21l-6-6m2-5a7 7 0 1 1-14 0 7 7 0 0 1 14 0z',
+      MapPin: 'M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0zm-9 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
+      Phone: 'M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z',
+      Mail: 'M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2zm16 2l-8 5-8-5',
+      Calendar: 'M19 4H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zM16 2v4M8 2v4M3 10h18',
+      Clock: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 6v4l3 3',
+      Check: 'M20 6L9 17l-5-5',
+      Filter: 'M22 3H2l8 9.46V19l4 2v-8.54L22 3z',
+      Globe: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z',
+      ChevronDown: 'M6 9l6 6 6-6', ChevronLeft: 'M15 18l-6-6 6-6', ChevronRight: 'M9 18l6-6-6-6',
+      DollarSign: 'M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6',
+      Fuel: 'M3 22V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v17M13 10h2a2 2 0 0 1 2 2v3a2 2 0 0 0 4 0V8l-4-4',
+      Gauge: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 6l3 6',
+      Settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4',
+      Shield: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
+      User: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z',
+      Users: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75',
+      Award: 'M12 2l3 6 7 1-5 5 1.5 7L12 17.5 5.5 21 7 14l-5-5 7-1z',
+      CreditCard: 'M1 4h22v16H1zM1 10h22',
+      AlertCircle: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 6v4m0 4h.01',
+      Star: 'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z',
+      Heart: 'M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z',
+      Facebook: 'M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z',
+      Twitter: 'M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1-7 2c9 5 20 0 20-11.5',
+      Instagram: 'M16 2H8a6 6 0 0 0-6 6v8a6 6 0 0 0 6 6h8a6 6 0 0 0 6-6V8a6 6 0 0 0-6-6zm-4 14a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm5-9a1 1 0 1 1 0-2 1 1 0 0 1 0 2z'
+    };
+    function __makeIcon(name) {
+      return function(props) {
+        var p = props || {};
+        var size = p.size || p.width || 24;
+        var color = p.color || 'currentColor';
+        var cls = p.className || '';
+        var pathD = __iconSvgPaths[name] || 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z';
+        var paths = pathD.split(/(?<=z)(?=[A-Z])/i);
+        var children = paths.map(function(d, i) { return React.createElement('path', { key: i, d: d }); });
+        return React.createElement('svg', {
+          xmlns: 'http://www.w3.org/2000/svg', width: size, height: size,
+          viewBox: '0 0 24 24', fill: 'none', stroke: color,
+          strokeWidth: p.strokeWidth || 2, strokeLinecap: 'round', strokeLinejoin: 'round',
+          className: cls, style: p.style
+        }, children);
+      };
+    }
+    var AlertCircle=__makeIcon('AlertCircle'),Award=__makeIcon('Award'),Calendar=__makeIcon('Calendar'),Car=__makeIcon('Car'),Check=__makeIcon('Check'),ChevronDown=__makeIcon('ChevronDown'),ChevronLeft=__makeIcon('ChevronLeft'),ChevronRight=__makeIcon('ChevronRight'),Clock=__makeIcon('Clock'),CreditCard=__makeIcon('CreditCard'),DollarSign=__makeIcon('DollarSign'),Facebook=__makeIcon('Facebook'),Filter=__makeIcon('Filter'),Fuel=__makeIcon('Fuel'),Gauge=__makeIcon('Gauge'),Globe=__makeIcon('Globe'),Heart=__makeIcon('Heart'),Instagram=__makeIcon('Instagram'),Mail=__makeIcon('Mail'),MapPin=__makeIcon('MapPin'),Menu=__makeIcon('Menu'),Phone=__makeIcon('Phone'),Search=__makeIcon('Search'),Settings=__makeIcon('Settings'),Shield=__makeIcon('Shield'),Star=__makeIcon('Star'),Sun=__makeIcon('Star'),Moon=__makeIcon('Star'),Twitter=__makeIcon('Twitter'),User=__makeIcon('User'),Users=__makeIcon('Users'),X=__makeIcon('X'),ArrowRight=__makeIcon('ChevronRight'),ArrowLeft=__makeIcon('ChevronLeft'),Plus=__makeIcon('Check'),Minus=__makeIcon('X'),Eye=__makeIcon('Search'),EyeOff=__makeIcon('X'),Trash=__makeIcon('X'),Trash2=__makeIcon('X'),Edit=__makeIcon('Settings'),Edit2=__makeIcon('Settings'),Copy=__makeIcon('CreditCard'),Download=__makeIcon('ChevronDown'),Upload=__makeIcon('ChevronDown'),Share=__makeIcon('Globe'),Share2=__makeIcon('Globe'),ExternalLink=__makeIcon('Globe'),Link=__makeIcon('Globe'),Home=__makeIcon('Car'),Loader=__makeIcon('Settings'),Loader2=__makeIcon('Settings'),RefreshCw=__makeIcon('Settings'),RotateCw=__makeIcon('Settings'),Info=__makeIcon('AlertCircle'),HelpCircle=__makeIcon('AlertCircle'),Bell=__makeIcon('AlertCircle'),BellRing=__makeIcon('AlertCircle'),Zap=__makeIcon('Star'),Sparkles=__makeIcon('Star'),ShoppingCart=__makeIcon('CreditCard'),ShoppingBag=__makeIcon('CreditCard'),Package=__makeIcon('CreditCard'),Tag=__makeIcon('DollarSign'),Bookmark=__makeIcon('Star'),Image=__makeIcon('CreditCard'),Camera=__makeIcon('Search'),Video=__makeIcon('CreditCard'),FileText=__makeIcon('CreditCard'),File=__makeIcon('CreditCard'),Folder=__makeIcon('CreditCard'),Paperclip=__makeIcon('CreditCard'),Send=__makeIcon('ChevronRight'),MessageCircle=__makeIcon('AlertCircle'),MessageSquare=__makeIcon('CreditCard');
+
     try {
       var code = document.getElementById('__component_code__').textContent;
       code = code.replace(/^import\\s+[\\s\\S]*?from\\s+.+$/gm, '');
