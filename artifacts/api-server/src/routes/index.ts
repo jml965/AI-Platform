@@ -14,6 +14,7 @@ import plannerRouter from "./planner";
 import deploymentsRouter from "./deployments";
 import domainsRouter from "./domains";
 import notificationsRouter from "./notifications";
+import snapshotsRouter from "./snapshots";
 import { requireAuth } from "../middlewares/authSession";
 
 const router: IRouter = Router();
@@ -35,5 +36,6 @@ router.use(plannerRouter);
 router.use(deploymentsRouter);
 router.use(domainsRouter);
 router.use(notificationsRouter);
+router.use(snapshotsRouter);
 
 export default router;

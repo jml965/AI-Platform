@@ -156,6 +156,7 @@ DNS verification supports both A records (platform IP) and CNAME records (platfo
 - `sessions` — OIDC session storage for Replit Auth (sid, session data, expiry)
 - `qa_reports` — QA validation reports with 3-phase checks (lint/runtime/functional), scores, retry tracking, cost tracking, fix attempts JSONB
 - `domains` — Custom domains linked to projects with DNS verification status, SSL certificate tracking
+- `snapshots` — Project backup snapshots storing all project files as JSONB for one-click restore and comparison
 
 ## Agent Engine
 
@@ -187,6 +188,7 @@ Routes in `artifacts/api-server/src/routes/`:
 - `qa.ts` — QA reports listing, latest report, run QA, stats summary
 - `monitoring.ts` — System health, stats, performance, alerts for production monitoring
 - `sandbox.ts` — Sandbox lifecycle management, SSE streaming
+- `snapshots.ts` — CRUD for project snapshots (backup/restore), compare with current files
 
 ## Website Builder UI
 

@@ -20,3 +20,4 @@ export * from "./sandbox-instances";
 export * from "./deployments";
 export * from "./notification-preferences";
 export * from "./domains";
+export * from "./snapshots";

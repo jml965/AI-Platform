@@ -27,6 +27,7 @@ import type {
   CheckoutResponse,
   CreateCheckoutRequest,
   CreateProjectRequest,
+  CreateSnapshotRequest,
   CreateTeamRequest,
   CreditBalance,
   DeployProjectRequest,
@@ -49,6 +50,9 @@ import type {
   ProjectFile,
   ProjectFileListResponse,
   ProjectListResponse,
+  Snapshot,
+  SnapshotCompareResponse,
+  SnapshotListResponse,
   StartBuildRequest,
   Subscription,
   SuccessResponse,
@@ -1433,6 +1437,570 @@ export function useGetProjectFile<
   const queryOptions = getGetProjectFileQueryOptions(
     projectId,
     fileId,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Returns all backup snapshots for a project
+ * @summary List snapshots
+ */
+export const getListSnapshotsUrl = (projectId: string) => {
+  return `/api/projects/${projectId}/snapshots`;
+};
+
+export const listSnapshots = async (
+  projectId: string,
+  options?: RequestInit,
+): Promise<SnapshotListResponse> => {
+  return customFetch<SnapshotListResponse>(getListSnapshotsUrl(projectId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListSnapshotsQueryKey = (projectId: string) => {
+  return [`/api/projects/${projectId}/snapshots`] as const;
+};
+
+export const getListSnapshotsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listSnapshots>>,
+  TError = ErrorType<unknown>,
+>(
+  projectId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listSnapshots>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListSnapshotsQueryKey(projectId);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listSnapshots>>> = ({
+    signal,
+  }) => listSnapshots(projectId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!projectId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listSnapshots>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListSnapshotsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listSnapshots>>
+>;
+export type ListSnapshotsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List snapshots
+ */
+
+export function useListSnapshots<
+  TData = Awaited<ReturnType<typeof listSnapshots>>,
+  TError = ErrorType<unknown>,
+>(
+  projectId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listSnapshots>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListSnapshotsQueryOptions(projectId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Create a backup snapshot of the current project files
+ * @summary Create snapshot
+ */
+export const getCreateSnapshotUrl = (projectId: string) => {
+  return `/api/projects/${projectId}/snapshots`;
+};
+
+export const createSnapshot = async (
+  projectId: string,
+  createSnapshotRequest: CreateSnapshotRequest,
+  options?: RequestInit,
+): Promise<Snapshot> => {
+  return customFetch<Snapshot>(getCreateSnapshotUrl(projectId), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createSnapshotRequest),
+  });
+};
+
+export const getCreateSnapshotMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createSnapshot>>,
+    TError,
+    { projectId: string; data: BodyType<CreateSnapshotRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createSnapshot>>,
+  TError,
+  { projectId: string; data: BodyType<CreateSnapshotRequest> },
+  TContext
+> => {
+  const mutationKey = ["createSnapshot"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createSnapshot>>,
+    { projectId: string; data: BodyType<CreateSnapshotRequest> }
+  > = (props) => {
+    const { projectId, data } = props ?? {};
+
+    return createSnapshot(projectId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateSnapshotMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createSnapshot>>
+>;
+export type CreateSnapshotMutationBody = BodyType<CreateSnapshotRequest>;
+export type CreateSnapshotMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create snapshot
+ */
+export const useCreateSnapshot = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createSnapshot>>,
+    TError,
+    { projectId: string; data: BodyType<CreateSnapshotRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createSnapshot>>,
+  TError,
+  { projectId: string; data: BodyType<CreateSnapshotRequest> },
+  TContext
+> => {
+  return useMutation(getCreateSnapshotMutationOptions(options));
+};
+
+/**
+ * Returns a single snapshot with its file data
+ * @summary Get snapshot details
+ */
+export const getGetSnapshotUrl = (projectId: string, snapshotId: string) => {
+  return `/api/projects/${projectId}/snapshots/${snapshotId}`;
+};
+
+export const getSnapshot = async (
+  projectId: string,
+  snapshotId: string,
+  options?: RequestInit,
+): Promise<Snapshot> => {
+  return customFetch<Snapshot>(getGetSnapshotUrl(projectId, snapshotId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetSnapshotQueryKey = (
+  projectId: string,
+  snapshotId: string,
+) => {
+  return [`/api/projects/${projectId}/snapshots/${snapshotId}`] as const;
+};
+
+export const getGetSnapshotQueryOptions = <
+  TData = Awaited<ReturnType<typeof getSnapshot>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  projectId: string,
+  snapshotId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getSnapshot>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetSnapshotQueryKey(projectId, snapshotId);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getSnapshot>>> = ({
+    signal,
+  }) => getSnapshot(projectId, snapshotId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!(projectId && snapshotId),
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getSnapshot>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetSnapshotQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getSnapshot>>
+>;
+export type GetSnapshotQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get snapshot details
+ */
+
+export function useGetSnapshot<
+  TData = Awaited<ReturnType<typeof getSnapshot>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  projectId: string,
+  snapshotId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getSnapshot>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetSnapshotQueryOptions(
+    projectId,
+    snapshotId,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Delete a backup snapshot
+ * @summary Delete snapshot
+ */
+export const getDeleteSnapshotUrl = (projectId: string, snapshotId: string) => {
+  return `/api/projects/${projectId}/snapshots/${snapshotId}`;
+};
+
+export const deleteSnapshot = async (
+  projectId: string,
+  snapshotId: string,
+  options?: RequestInit,
+): Promise<SuccessResponse> => {
+  return customFetch<SuccessResponse>(
+    getDeleteSnapshotUrl(projectId, snapshotId),
+    {
+      ...options,
+      method: "DELETE",
+    },
+  );
+};
+
+export const getDeleteSnapshotMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteSnapshot>>,
+    TError,
+    { projectId: string; snapshotId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteSnapshot>>,
+  TError,
+  { projectId: string; snapshotId: string },
+  TContext
+> => {
+  const mutationKey = ["deleteSnapshot"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteSnapshot>>,
+    { projectId: string; snapshotId: string }
+  > = (props) => {
+    const { projectId, snapshotId } = props ?? {};
+
+    return deleteSnapshot(projectId, snapshotId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteSnapshotMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteSnapshot>>
+>;
+
+export type DeleteSnapshotMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Delete snapshot
+ */
+export const useDeleteSnapshot = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteSnapshot>>,
+    TError,
+    { projectId: string; snapshotId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteSnapshot>>,
+  TError,
+  { projectId: string; snapshotId: string },
+  TContext
+> => {
+  return useMutation(getDeleteSnapshotMutationOptions(options));
+};
+
+/**
+ * Restore project files from a snapshot
+ * @summary Restore snapshot
+ */
+export const getRestoreSnapshotUrl = (
+  projectId: string,
+  snapshotId: string,
+) => {
+  return `/api/projects/${projectId}/snapshots/${snapshotId}/restore`;
+};
+
+export const restoreSnapshot = async (
+  projectId: string,
+  snapshotId: string,
+  options?: RequestInit,
+): Promise<SuccessResponse> => {
+  return customFetch<SuccessResponse>(
+    getRestoreSnapshotUrl(projectId, snapshotId),
+    {
+      ...options,
+      method: "POST",
+    },
+  );
+};
+
+export const getRestoreSnapshotMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof restoreSnapshot>>,
+    TError,
+    { projectId: string; snapshotId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof restoreSnapshot>>,
+  TError,
+  { projectId: string; snapshotId: string },
+  TContext
+> => {
+  const mutationKey = ["restoreSnapshot"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof restoreSnapshot>>,
+    { projectId: string; snapshotId: string }
+  > = (props) => {
+    const { projectId, snapshotId } = props ?? {};
+
+    return restoreSnapshot(projectId, snapshotId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RestoreSnapshotMutationResult = NonNullable<
+  Awaited<ReturnType<typeof restoreSnapshot>>
+>;
+
+export type RestoreSnapshotMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Restore snapshot
+ */
+export const useRestoreSnapshot = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof restoreSnapshot>>,
+    TError,
+    { projectId: string; snapshotId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof restoreSnapshot>>,
+  TError,
+  { projectId: string; snapshotId: string },
+  TContext
+> => {
+  return useMutation(getRestoreSnapshotMutationOptions(options));
+};
+
+/**
+ * Compare current project files with a snapshot
+ * @summary Compare snapshot
+ */
+export const getCompareSnapshotUrl = (
+  projectId: string,
+  snapshotId: string,
+) => {
+  return `/api/projects/${projectId}/snapshots/${snapshotId}/compare`;
+};
+
+export const compareSnapshot = async (
+  projectId: string,
+  snapshotId: string,
+  options?: RequestInit,
+): Promise<SnapshotCompareResponse> => {
+  return customFetch<SnapshotCompareResponse>(
+    getCompareSnapshotUrl(projectId, snapshotId),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getCompareSnapshotQueryKey = (
+  projectId: string,
+  snapshotId: string,
+) => {
+  return [
+    `/api/projects/${projectId}/snapshots/${snapshotId}/compare`,
+  ] as const;
+};
+
+export const getCompareSnapshotQueryOptions = <
+  TData = Awaited<ReturnType<typeof compareSnapshot>>,
+  TError = ErrorType<unknown>,
+>(
+  projectId: string,
+  snapshotId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof compareSnapshot>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getCompareSnapshotQueryKey(projectId, snapshotId);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof compareSnapshot>>> = ({
+    signal,
+  }) => compareSnapshot(projectId, snapshotId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!(projectId && snapshotId),
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof compareSnapshot>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type CompareSnapshotQueryResult = NonNullable<
+  Awaited<ReturnType<typeof compareSnapshot>>
+>;
+export type CompareSnapshotQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Compare snapshot
+ */
+
+export function useCompareSnapshot<
+  TData = Awaited<ReturnType<typeof compareSnapshot>>,
+  TError = ErrorType<unknown>,
+>(
+  projectId: string,
+  snapshotId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof compareSnapshot>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getCompareSnapshotQueryOptions(
+    projectId,
+    snapshotId,
     options,
   );
 

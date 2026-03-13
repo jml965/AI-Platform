@@ -6,7 +6,7 @@ import {
   FileCode2, User, Bot, Search, ChevronRight, ChevronDown,
   FileText, FileJson, FileImage, File, Folder, ArrowLeft, Clock,
   RotateCw, Monitor, Smartphone, Tablet, Laptop, ChevronLeft,
-  Terminal as TerminalIcon, Rocket, ExternalLink, Square, RefreshCw, Globe
+  Terminal as TerminalIcon, Rocket, ExternalLink, Square, RefreshCw, Globe, Archive
 } from "lucide-react";
 import { format } from "date-fns";
 import { useI18n } from "@/lib/i18n";
@@ -30,6 +30,7 @@ import BuildProgress, { inferPhase } from "@/components/builder/BuildProgress";
 import CodeEditor from "@/components/builder/CodeEditor";
 import ProjectPlan from "@/components/builder/ProjectPlan";
 import DomainSettings from "@/components/builder/DomainSettings";
+import SnapshotsPanel from "@/components/builder/SnapshotsPanel";
 import { useUpdateFile } from "@/hooks/useUpdateFile";
 import "@/components/builder/prism-theme.css";
 
@@ -67,6 +68,7 @@ export default function Builder() {
   const [showDeviceMenu, setShowDeviceMenu] = useState(false);
   const [showTerminal, setShowTerminal] = useState(true);
   const [planApproved, setPlanApproved] = useState(false);
+  const [rightTab, setRightTab] = useState<"library" | "snapshots">("library");
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const [showDeployPanel, setShowDeployPanel] = useState(false);
@@ -889,11 +891,37 @@ export default function Builder() {
       </div>
 
       <div className="w-[240px] flex flex-col bg-[#0d1117] flex-shrink-0">
-        <div className="h-9 flex items-center px-3 border-b border-[#1c2333] bg-[#161b22] flex-shrink-0">
-          <span className="text-xs font-semibold text-[#e1e4e8] uppercase tracking-wider">{t.library}</span>
+        <div className="h-9 flex items-center border-b border-[#1c2333] bg-[#161b22] flex-shrink-0 px-1">
+          <button
+            onClick={() => setRightTab("library")}
+            className={cn(
+              "px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors",
+              rightTab === "library"
+                ? "bg-[#0d1117] text-[#e1e4e8] shadow-sm"
+                : "text-[#8b949e] hover:text-[#e1e4e8] hover:bg-[#1c2333]"
+            )}
+          >
+            {t.library}
+          </button>
+          <button
+            onClick={() => setRightTab("snapshots")}
+            className={cn(
+              "px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors flex items-center gap-1",
+              rightTab === "snapshots"
+                ? "bg-[#0d1117] text-[#e1e4e8] shadow-sm"
+                : "text-[#8b949e] hover:text-[#e1e4e8] hover:bg-[#1c2333]"
+            )}
+          >
+            <Archive className="w-3 h-3" />
+            {t.snapshots}
+          </button>
         </div>
 
-        <FileLibrary files={files} onFileSelect={(idx) => { setSelectedFileIndex(idx); setCenterTab("code"); }} />
+        {rightTab === "library" ? (
+          <FileLibrary files={files} onFileSelect={(idx) => { setSelectedFileIndex(idx); setCenterTab("code"); }} />
+        ) : (
+          id ? <SnapshotsPanel projectId={id} /> : null
+        )}
       </div>
     </div>
   );

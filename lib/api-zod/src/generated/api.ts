@@ -258,6 +258,114 @@ export const GetProjectFileResponse = zod.object({
 });
 
 /**
+ * Returns all backup snapshots for a project
+ * @summary List snapshots
+ */
+export const ListSnapshotsParams = zod.object({
+  projectId: zod.coerce.string().uuid(),
+});
+
+export const ListSnapshotsResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      id: zod.string().uuid(),
+      projectId: zod.string().uuid(),
+      label: zod.string(),
+      description: zod.string().optional(),
+      fileCount: zod.number(),
+      createdAt: zod.date(),
+    }),
+  ),
+});
+
+/**
+ * Create a backup snapshot of the current project files
+ * @summary Create snapshot
+ */
+export const CreateSnapshotParams = zod.object({
+  projectId: zod.coerce.string().uuid(),
+});
+
+export const CreateSnapshotBody = zod.object({
+  label: zod.string(),
+  description: zod.string().optional(),
+});
+
+/**
+ * Returns a single snapshot with its file data
+ * @summary Get snapshot details
+ */
+export const GetSnapshotParams = zod.object({
+  projectId: zod.coerce.string().uuid(),
+  snapshotId: zod.coerce.string().uuid(),
+});
+
+export const GetSnapshotResponse = zod.object({
+  id: zod.string().uuid(),
+  projectId: zod.string().uuid(),
+  label: zod.string(),
+  description: zod.string().optional(),
+  filesData: zod.array(
+    zod.object({
+      filePath: zod.string(),
+      content: zod.string(),
+      fileType: zod.string(),
+    }),
+  ),
+  createdAt: zod.date(),
+});
+
+/**
+ * Delete a backup snapshot
+ * @summary Delete snapshot
+ */
+export const DeleteSnapshotParams = zod.object({
+  projectId: zod.coerce.string().uuid(),
+  snapshotId: zod.coerce.string().uuid(),
+});
+
+export const DeleteSnapshotResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
+ * Restore project files from a snapshot
+ * @summary Restore snapshot
+ */
+export const RestoreSnapshotParams = zod.object({
+  projectId: zod.coerce.string().uuid(),
+  snapshotId: zod.coerce.string().uuid(),
+});
+
+export const RestoreSnapshotResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
+ * Compare current project files with a snapshot
+ * @summary Compare snapshot
+ */
+export const CompareSnapshotParams = zod.object({
+  projectId: zod.coerce.string().uuid(),
+  snapshotId: zod.coerce.string().uuid(),
+});
+
+export const CompareSnapshotResponse = zod.object({
+  added: zod.array(zod.string()),
+  removed: zod.array(zod.string()),
+  modified: zod.array(
+    zod.object({
+      filePath: zod.string(),
+      snapshotContent: zod.string(),
+      currentContent: zod.string(),
+    }),
+  ),
+  unchanged: zod.array(zod.string()),
+});
+
+/**
  * Submit a build request to generate a website via AI agents
  * @summary Start building
  */

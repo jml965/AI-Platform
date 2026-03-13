@@ -365,6 +365,134 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProjectFile"
 
+  /projects/{projectId}/snapshots:
+    get:
+      operationId: listSnapshots
+      tags: [projects]
+      summary: List snapshots
+      description: Returns all backup snapshots for a project
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: Snapshot list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SnapshotListResponse"
+    post:
+      operationId: createSnapshot
+      tags: [projects]
+      summary: Create snapshot
+      description: Create a backup snapshot of the current project files
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSnapshotRequest"
+      responses:
+        "201":
+          description: Snapshot created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Snapshot"
+
+  /projects/{projectId}/snapshots/{snapshotId}:
+    get:
+      operationId: getSnapshot
+      tags: [projects]
+      summary: Get snapshot details
+      description: Returns a single snapshot with its file data
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - name: snapshotId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Snapshot details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Snapshot"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteSnapshot
+      tags: [projects]
+      summary: Delete snapshot
+      description: Delete a backup snapshot
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - name: snapshotId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /projects/{projectId}/snapshots/{snapshotId}/restore:
+    post:
+      operationId: restoreSnapshot
+      tags: [projects]
+      summary: Restore snapshot
+      description: Restore project files from a snapshot
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - name: snapshotId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Restored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /projects/{projectId}/snapshots/{snapshotId}/compare:
+    get:
+      operationId: compareSnapshot
+      tags: [projects]
+      summary: Compare snapshot
+      description: Compare current project files with a snapshot
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - name: snapshotId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Comparison result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SnapshotCompareResponse"
+
   /build/start:
     post:
       operationId: startBuild
@@ -1375,6 +1503,131 @@ components:
             $ref: "#/components/schemas/ProjectFile"
       required:
         - data
+
+    Snapshot:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        label:
+          type: string
+        description:
+          type: string
+        filesData:
+          type: array
+          items:
+            $ref: "#/components/schemas/SnapshotFile"
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - projectId
+        - label
+        - filesData
+        - createdAt
+
+    SnapshotFile:
+      type: object
+      properties:
+        filePath:
+          type: string
+        content:
+          type: string
+        fileType:
+          type: string
+      required:
+        - filePath
+        - content
+        - fileType
+
+    CreateSnapshotRequest:
+      type: object
+      properties:
+        label:
+          type: string
+        description:
+          type: string
+      required:
+        - label
+
+    SnapshotListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SnapshotSummary"
+      required:
+        - data
+
+    SnapshotSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        label:
+          type: string
+        description:
+          type: string
+        fileCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - projectId
+        - label
+        - fileCount
+        - createdAt
+
+    SnapshotCompareResponse:
+      type: object
+      properties:
+        added:
+          type: array
+          items:
+            type: string
+        removed:
+          type: array
+          items:
+            type: string
+        modified:
+          type: array
+          items:
+            $ref: "#/components/schemas/SnapshotFileDiff"
+        unchanged:
+          type: array
+          items:
+            type: string
+      required:
+        - added
+        - removed
+        - modified
+        - unchanged
+
+    SnapshotFileDiff:
+      type: object
+      properties:
+        filePath:
+          type: string
+        snapshotContent:
+          type: string
+        currentContent:
+          type: string
+      required:
+        - filePath
+        - snapshotContent
+        - currentContent
 
     StartBuildRequest:
       type: object

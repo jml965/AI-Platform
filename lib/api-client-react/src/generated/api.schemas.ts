@@ -114,6 +114,52 @@ export interface ProjectFileListResponse {
   data: ProjectFile[];
 }
 
+export interface SnapshotFile {
+  filePath: string;
+  content: string;
+  fileType: string;
+}
+
+export interface Snapshot {
+  id: string;
+  projectId: string;
+  label: string;
+  description?: string;
+  filesData: SnapshotFile[];
+  createdAt: string;
+}
+
+export interface CreateSnapshotRequest {
+  label: string;
+  description?: string;
+}
+
+export interface SnapshotSummary {
+  id: string;
+  projectId: string;
+  label: string;
+  description?: string;
+  fileCount: number;
+  createdAt: string;
+}
+
+export interface SnapshotListResponse {
+  data: SnapshotSummary[];
+}
+
+export interface SnapshotFileDiff {
+  filePath: string;
+  snapshotContent: string;
+  currentContent: string;
+}
+
+export interface SnapshotCompareResponse {
+  added: string[];
+  removed: string[];
+  modified: SnapshotFileDiff[];
+  unchanged: string[];
+}
+
 export interface StartBuildRequest {
   projectId: string;
   prompt: string;
