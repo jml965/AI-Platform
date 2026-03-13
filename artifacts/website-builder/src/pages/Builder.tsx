@@ -532,14 +532,31 @@ export default function Builder() {
 
     const stripImportsExports = (code: string, fallbackName: string): string => {
       let c = code;
-      c = c.replace(/^import\s+.*?['"].*?['"]\s*;?\s*$/gm, '');
-      c = c.replace(/^import\s+type\s+.*$/gm, '');
+      c = c.replace(/^import\s[\s\S]*?from\s+['"].*?['"]\s*;?\s*$/gm, '');
+      c = c.replace(/^import\s+['"].*?['"]\s*;?\s*$/gm, '');
+      c = c.replace(/^import\s+type\s+[\s\S]*?from\s+['"].*?['"]\s*;?\s*$/gm, '');
+
       c = c.replace(/export\s+default\s+function\s+(\w+)/g, 'function $1');
+      c = c.replace(/export\s+default\s+class\s+(\w+)/g, 'class $1');
       c = c.replace(/export\s+default\s+(\w+)\s*;?/g, '');
+
       c = c.replace(/export\s+(const|function|class|let|var)\s+/g, '$1 ');
-      c = c.replace(/export\s+\{[^}]*\}\s*;?/g, '');
+
+      c = c.replace(/export\s+type\s+/g, 'type ');
+      c = c.replace(/export\s+interface\s+/g, 'interface ');
+      c = c.replace(/export\s+enum\s+/g, 'enum ');
+
+      c = c.replace(/export\s+\{[^}]*\}\s*(from\s+['"].*?['"])?\s*;?/g, '');
+
+      c = c.replace(/^export\s+default\s+/gm, 'var _default = ');
+
       c = c.replace(/:\s*React\.FC(<[^>]*>)?/g, '');
       c = c.replace(/:\s*React\.ReactNode/g, '');
+      c = c.replace(/:\s*React\.CSSProperties/g, '');
+      c = c.replace(/:\s*React\.ChangeEvent<[^>]*>/g, '');
+      c = c.replace(/:\s*React\.FormEvent<[^>]*>/g, '');
+      c = c.replace(/:\s*React\.MouseEvent<[^>]*>/g, '');
+
       c = c.replace(/<(\w+)(\s[^>]*)?\s*\/>/g, (m, tag, attrs) => {
         if (/^[a-z]/.test(tag)) return m;
         return `<${tag}${attrs || ''} />`;
@@ -614,6 +631,14 @@ export default function Builder() {
 
     try {
       var code = document.getElementById('__component_code__').textContent;
+      code = code.replace(/^import\\s[\\s\\S]*?from\\s+['\"].*?['\"]\\s*;?\\s*$/gm, '');
+      code = code.replace(/^import\\s+['\"].*?['\"]\\s*;?\\s*$/gm, '');
+      code = code.replace(/export\\s+default\\s+function\\s+(\\w+)/g, 'function $1');
+      code = code.replace(/export\\s+default\\s+class\\s+(\\w+)/g, 'class $1');
+      code = code.replace(/export\\s+default\\s+(\\w+)\\s*;?/g, '');
+      code = code.replace(/export\\s+(const|function|class|let|var|type|interface|enum)\\s+/g, '$1 ');
+      code = code.replace(/export\\s+\\{[^}]*\\}\\s*(from\\s+['\"].*?['\"])?\\s*;?/g, '');
+      code = code.replace(/^export\\s+default\\s+/gm, 'var _default = ');
       var transformed = Babel.transform(code, { presets: ['react', 'typescript'], filename: 'preview.tsx' }).code;
       (new Function(transformed))();
       var root = ReactDOM.createRoot(document.getElementById('root'));
