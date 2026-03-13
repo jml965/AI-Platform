@@ -8,7 +8,7 @@ import {
   FileText, FileJson, FileImage, File, Folder, ArrowLeft, Clock,
   RotateCw, Monitor, Smartphone, Tablet, Laptop, ChevronLeft,
   Terminal as TerminalIcon, Rocket, ExternalLink, Square, RefreshCw, Globe, Archive, BarChart3,
-  Smartphone as SmartphoneIcon, Users, Lock, Unlock
+  Smartphone as SmartphoneIcon, Users, Lock, Unlock, Paintbrush
 } from "lucide-react";
 import { format } from "date-fns";
 import { useI18n } from "@/lib/i18n";
@@ -38,6 +38,8 @@ import PwaSettingsPanel from "@/components/builder/PwaSettings";
 import CollaborationPanel, { CollaboratorAvatars, FileLockIndicator } from "@/components/builder/CollaborationPanel";
 import { useCollaboration } from "@/hooks/useCollaboration";
 import { useUpdateFile } from "@/hooks/useUpdateFile";
+import { useCSSEditor } from "@/hooks/useCSSEditor";
+import CSSEditorPanel from "@/components/builder/CSSEditorPanel";
 import "@/components/builder/prism-theme.css";
 
 interface ChatMessage {
@@ -80,6 +82,8 @@ export default function Builder() {
 
   const [showDeployPanel, setShowDeployPanel] = useState(false);
   const [showPwaPanel, setShowPwaPanel] = useState(false);
+  const [cssEditorActive, setCssEditorActive] = useState(false);
+  const [cssSaving, setCssSaving] = useState(false);
 
   const { data: project } = useGetProject(id || "");
   const { data: me } = useGetMe({ query: { queryKey: ["getMe"], retry: false } });
@@ -106,6 +110,19 @@ export default function Builder() {
   const deployMut = useDeployProject();
   const undeployMut = useUndeployProject();
   const redeployMut = useRedeployProject();
+
+  const cssEditor = useCSSEditor(iframeRef);
+
+  const handleToggleCSSEditor = useCallback(() => {
+    if (cssEditorActive) {
+      cssEditor.deactivate();
+      setCssEditorActive(false);
+    } else {
+      cssEditor.activate();
+      setCssEditorActive(true);
+      setCenterTab("canvas");
+    }
+  }, [cssEditorActive, cssEditor]);
 
   const { data: deploymentStatus, refetch: refetchDeployment } = useGetDeploymentStatus(id || "", {
     query: {
@@ -261,6 +278,39 @@ export default function Builder() {
   const isDeployed = deploymentStatus?.status === "active";
   const canDeploy = project?.status === "ready" && !isBuilding;
   const files = projectFiles?.data || [];
+
+  const handleSaveCSS = useCallback(async () => {
+    if (!id || cssEditor.changeCount === 0) return;
+    setCssSaving(true);
+    try {
+      const generatedCSS = cssEditor.generateCSS();
+      const cssFile = files.find(f => f.filePath?.endsWith(".css"));
+      if (cssFile?.id) {
+        const newContent = (cssFile.content || "") + "\n\n/* Visual Editor Changes */\n" + generatedCSS;
+        await updateFileMut.mutateAsync({
+          projectId: id,
+          fileId: cssFile.id,
+          content: newContent,
+        });
+      } else {
+        const htmlFileForCSS = files.find(f => f.filePath?.endsWith(".html"));
+        if (htmlFileForCSS?.id && htmlFileForCSS.content) {
+          const styleTag = `<style>\n/* Visual Editor Changes */\n${generatedCSS}\n</style>`;
+          const newContent = htmlFileForCSS.content.replace("</head>", `${styleTag}\n</head>`);
+          await updateFileMut.mutateAsync({
+            projectId: id,
+            fileId: htmlFileForCSS.id,
+            content: newContent,
+          });
+        }
+      }
+      cssEditor.clearAll();
+    } catch (err) {
+      console.error("Failed to save CSS:", err);
+    } finally {
+      setCssSaving(false);
+    }
+  }, [id, cssEditor, files, updateFileMut]);
 
   const htmlFile = files.find((f) => f.filePath?.endsWith('.html'));
   const hasPreview = !!htmlFile?.content;
@@ -715,6 +765,21 @@ export default function Builder() {
 
           <div className="flex-1" />
 
+          {(hasPreview || previewUrl) && !isBuilding && (
+            <button
+              onClick={handleToggleCSSEditor}
+              className={cn(
+                "px-2 py-1 text-[11px] font-medium rounded-md transition-colors flex items-center gap-1.5 me-1",
+                cssEditorActive
+                  ? "bg-[#1f6feb]/20 text-[#58a6ff] ring-1 ring-[#1f6feb]/50"
+                  : "text-[#8b949e] hover:text-[#e1e4e8] hover:bg-[#1c2333]"
+              )}
+            >
+              <Paintbrush className="w-3.5 h-3.5" />
+              {t.css_editor_tab}
+            </button>
+          )}
+
           <button
             onClick={() => setShowTerminal(v => !v)}
             className={cn(
@@ -988,66 +1053,83 @@ export default function Builder() {
         </div>
       </div>
 
-      <div className="w-[240px] flex flex-col bg-[#0d1117] flex-shrink-0">
-        <div className="h-9 flex items-center border-b border-[#1c2333] bg-[#161b22] flex-shrink-0 px-1">
-          <button
-            onClick={() => setRightTab("library")}
-            className={cn(
-              "px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors",
-              rightTab === "library"
-                ? "bg-[#0d1117] text-[#e1e4e8] shadow-sm"
-                : "text-[#8b949e] hover:text-[#e1e4e8] hover:bg-[#1c2333]"
-            )}
-          >
-            {t.library}
-          </button>
-          <button
-            onClick={() => setRightTab("snapshots")}
-            className={cn(
-              "px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors flex items-center gap-1",
-              rightTab === "snapshots"
-                ? "bg-[#0d1117] text-[#e1e4e8] shadow-sm"
-                : "text-[#8b949e] hover:text-[#e1e4e8] hover:bg-[#1c2333]"
-            )}
-          >
-            <Archive className="w-3 h-3" />
-            {t.snapshots}
-          </button>
-          <button
-            onClick={() => setRightTab("collab")}
-            className={cn(
-              "px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors flex items-center gap-1.5",
-              rightTab === "collab"
-                ? "bg-[#0d1117] text-[#e1e4e8] shadow-sm"
-                : "text-[#8b949e] hover:text-[#e1e4e8] hover:bg-[#1c2333]"
-            )}
-          >
-            <Users className="w-3 h-3" />
-            {t.collab_panel_title}
-            {collaborators.length > 1 && (
-              <span className="text-[9px] bg-[#1f6feb]/20 text-[#58a6ff] px-1.5 rounded-full">
-                {collaborators.length}
-              </span>
-            )}
-          </button>
-        </div>
+      {cssEditorActive ? (
+        <CSSEditorPanel
+          selectedElement={cssEditor.selectedElement}
+          onChangeProperty={cssEditor.changeProperty}
+          onUndo={cssEditor.undo}
+          onRedo={cssEditor.redo}
+          onSave={handleSaveCSS}
+          onClose={handleToggleCSSEditor}
+          onClear={cssEditor.clearAll}
+          canUndo={cssEditor.canUndo}
+          canRedo={cssEditor.canRedo}
+          changeCount={cssEditor.changeCount}
+          generatedCSS={cssEditor.generateCSS()}
+          isSaving={cssSaving}
+        />
+      ) : (
+        <div className="w-[240px] flex flex-col bg-[#0d1117] flex-shrink-0">
+          <div className="h-9 flex items-center border-b border-[#1c2333] bg-[#161b22] flex-shrink-0 px-1">
+            <button
+              onClick={() => setRightTab("library")}
+              className={cn(
+                "px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors",
+                rightTab === "library"
+                  ? "bg-[#0d1117] text-[#e1e4e8] shadow-sm"
+                  : "text-[#8b949e] hover:text-[#e1e4e8] hover:bg-[#1c2333]"
+              )}
+            >
+              {t.library}
+            </button>
+            <button
+              onClick={() => setRightTab("snapshots")}
+              className={cn(
+                "px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors flex items-center gap-1",
+                rightTab === "snapshots"
+                  ? "bg-[#0d1117] text-[#e1e4e8] shadow-sm"
+                  : "text-[#8b949e] hover:text-[#e1e4e8] hover:bg-[#1c2333]"
+              )}
+            >
+              <Archive className="w-3 h-3" />
+              {t.snapshots}
+            </button>
+            <button
+              onClick={() => setRightTab("collab")}
+              className={cn(
+                "px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors flex items-center gap-1.5",
+                rightTab === "collab"
+                  ? "bg-[#0d1117] text-[#e1e4e8] shadow-sm"
+                  : "text-[#8b949e] hover:text-[#e1e4e8] hover:bg-[#1c2333]"
+              )}
+            >
+              <Users className="w-3 h-3" />
+              {t.collab_panel_title}
+              {collaborators.length > 1 && (
+                <span className="text-[9px] bg-[#1f6feb]/20 text-[#58a6ff] px-1.5 rounded-full">
+                  {collaborators.length}
+                </span>
+              )}
+            </button>
+          </div>
 
-        {rightTab === "library" ? (
-          <FileLibrary files={files} onFileSelect={(idx) => { setSelectedFileIndex(idx); setCenterTab("code"); }} />
-        ) : rightTab === "snapshots" ? (
-          id ? <SnapshotsPanel projectId={id} /> : null
-        ) : (
-          <CollaborationPanel
-            collaborators={collaborators}
-            fileLocks={fileLocks}
-            notifications={notifications}
-            connected={wsConnected}
-            currentUserId={me?.id}
-            onLockFile={lockFile}
-            onUnlockFile={unlockFile}
-          />
-        )}
-      </div>
+          {rightTab === "library" ? (
+            <FileLibrary files={files} onFileSelect={(idx) => { setSelectedFileIndex(idx); setCenterTab("code"); }} />
+          ) : rightTab === "snapshots" ? (
+            id ? <SnapshotsPanel projectId={id} /> : null
+          ) : (
+            <CollaborationPanel
+              collaborators={collaborators}
+              fileLocks={fileLocks}
+              notifications={notifications}
+              connected={wsConnected}
+              currentUserId={me?.id}
+              onLockFile={lockFile}
+              onUnlockFile={unlockFile}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }
