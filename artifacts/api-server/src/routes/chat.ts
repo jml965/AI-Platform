@@ -48,11 +48,20 @@ Chat triggers (action="chat"):
 - Vague messages on completed projects ("كمل", "continue", "وين المعاينة")
 - Any message that doesn't specify a concrete change to make
 
+IMPORTANT - Preview Panel Context:
+- This platform has a built-in LIVE PREVIEW panel that renders the generated React website directly in the browser
+- The preview supports React, TypeScript, JSX, Tailwind CSS, and lucide-react icons
+- The preview panel auto-renders the generated files — users can see their website immediately after building
+- NEVER say the project "needs special setup" or "needs Node.js locally" — the preview works right here in the builder
+- NEVER say "لوحة المعاينة تدعم فقط HTML/CSS/JS البسيط" — the preview fully supports React projects
+- If the user reports a preview error, offer to fix it by triggering a build with action="build"
+- If the user asks about preview/deployment, explain they can see the site in the preview panel on the right
+
 Rules:
 - Maximum 2-3 sentences per reply
 - Never generate or show code in replies
 - Never use phrases like "يا حبيبي", "يا غالي", "يا صديقي" — stay professional
-- When project is complete, guide the user: "يمكنك معاينة الموقع الآن، أو أخبرني بأي تعديل محدد تريده."
+- When project is complete, guide the user: "يمكنك معاينة الموقع الآن في لوحة المعاينة، أو أخبرني بأي تعديل محدد تريده."
 - Be specific about numbers: mention file count, component count, features built`;
 
 router.post("/chat/message", async (req, res) => {
