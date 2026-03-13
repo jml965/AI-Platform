@@ -298,6 +298,10 @@ export async function generatePlan(
   return { buildId, plan, tokensUsed: result.tokensUsed };
 }
 
+function detectLang(text: string): "ar" | "en" {
+  return /[\u0600-\u06FF]/.test(text) ? "ar" : "en";
+}
+
 async function executeBuildPipeline(
   buildId: string,
   projectId: string,
@@ -307,6 +311,7 @@ async function executeBuildPipeline(
 ) {
   const build = activeBuilds.get(buildId)!;
   build.status = "in_progress";
+  const lang = detectLang(prompt);
 
   const codegenAgent = new CodeGenAgent(constitution);
   const reviewerAgent = new ReviewerAgent(constitution);
@@ -318,18 +323,29 @@ async function executeBuildPipeline(
   let totalCost = 0;
 
   try {
-    await logExecution(buildId, projectId, null, "system", "build_started", "in_progress", { prompt });
+    await logExecution(buildId, projectId, null, "system", "build_started", "in_progress", {
+      prompt,
+      message: lang === "ar" ? `بدأ بناء المشروع — "${prompt.slice(0, 80)}"` : `Build started — "${prompt.slice(0, 80)}"`,
+    });
+
+    await logExecution(buildId, projectId, null, "system", "analyzing_request", "in_progress", {
+      message: lang === "ar" ? "أحلل طلبك وأحدد نوع المشروع والتقنيات المطلوبة..." : "Analyzing your request and determining project type and required technologies...",
+    });
 
     const limitCheck = await checkSpendingLimits(userId, projectId);
     if (!limitCheck.allowed) {
       await logExecution(buildId, projectId, null, "system", "limit_exceeded", "failed", {
         reason: limitCheck.reason,
+        message: lang === "ar" ? "تجاوز حد الاستخدام — لا يمكن المتابعة" : "Usage limit exceeded — cannot proceed",
       });
       await finalizeBuild(buildId, projectId, "failed", totalTokens, totalCost);
       return;
     }
 
     if (build.cancelRequested) {
+      await logExecution(buildId, projectId, null, "system", "build_cancelled", "failed", {
+        message: lang === "ar" ? "تم إلغاء البناء بناءً على طلبك" : "Build cancelled by user request",
+      });
       await finalizeBuild(buildId, projectId, "cancelled", totalTokens, totalCost);
       return;
     }
@@ -348,8 +364,9 @@ async function executeBuildPipeline(
 
     if (isSurgicalEdit) {
       const surgicalTaskId = await createTask(buildId, projectId, "surgical_edit", prompt);
-      await logExecution(buildId, projectId, surgicalTaskId, "surgical_edit", "surgical_edit", "in_progress", {
+      await logExecution(buildId, projectId, surgicalTaskId, "surgical_edit", "analyzing_changes", "in_progress", {
         existingFileCount: existingFiles.length,
+        message: lang === "ar" ? `أحلل ${existingFiles.length} ملف موجود وأحدد التعديلات المطلوبة...` : `Analyzing ${existingFiles.length} existing files to determine required changes...`,
       });
 
       const surgicalResult = await surgicalEditAgent.execute(context);
@@ -397,7 +414,11 @@ async function executeBuildPipeline(
     }
 
     const codegenTaskId = await createTask(buildId, projectId, "codegen", prompt);
-    await logExecution(buildId, projectId, codegenTaskId, "codegen", "generate_code", "in_progress");
+    await logExecution(buildId, projectId, codegenTaskId, "codegen", "generate_code", "in_progress", {
+      message: lang === "ar"
+        ? "أبدأ الآن بكتابة الكود... أحلل البنية المطلوبة وأحدد الملفات والمكونات"
+        : "Starting code generation... analyzing required structure, files, and components",
+    });
 
     const codegenResult = await codegenAgent.execute(context);
     totalTokens += codegenResult.tokensUsed;
@@ -412,13 +433,23 @@ async function executeBuildPipeline(
       await failTask(codegenTaskId, codegenResult.error ?? "Unknown error", codegenResult.durationMs);
     }
 
-    await logExecution(
-      buildId, projectId, codegenTaskId, "codegen", "generate_code",
-      codegenResult.success ? "completed" : "failed",
-      { tokensUsed: codegenResult.tokensUsed, error: codegenResult.error },
-      codegenResult.tokensUsed,
-      codegenResult.durationMs
-    );
+    {
+      const _genFiles = (codegenResult.data?.files as GeneratedFile[]) || [];
+      const _genNames = _genFiles.map(f => f.filePath);
+      const _genDur = Math.round((codegenResult.durationMs || 0) / 1000);
+      await logExecution(
+        buildId, projectId, codegenTaskId, "codegen", "generate_code",
+        codegenResult.success ? "completed" : "failed",
+        {
+          tokensUsed: codegenResult.tokensUsed, error: codegenResult.error,
+          fileCount: _genNames.length, files: _genNames.slice(0, 25),
+          message: codegenResult.success
+            ? (lang === "ar" ? `تم توليد ${_genNames.length} ملف في ${_genDur} ثانية:\n${_genNames.map(f => `  📄 ${f}`).join("\n")}` : `Generated ${_genNames.length} files in ${_genDur}s:\n${_genNames.map(f => `  📄 ${f}`).join("\n")}`)
+            : (lang === "ar" ? `فشل توليد الكود: ${codegenResult.error}` : `Code generation failed: ${codegenResult.error}`),
+        },
+        codegenResult.tokensUsed, codegenResult.durationMs
+      );
+    }
 
     if (!codegenResult.success) {
       console.error(`Build ${buildId} codegen failed:`, codegenResult.error);
@@ -449,7 +480,11 @@ async function executeBuildPipeline(
     }
 
     const reviewTaskId = await createTask(buildId, projectId, "reviewer");
-    await logExecution(buildId, projectId, reviewTaskId, "reviewer", "review_code", "in_progress");
+    await logExecution(buildId, projectId, reviewTaskId, "reviewer", "review_code", "in_progress", {
+      message: lang === "ar"
+        ? "أراجع الكود المُولَّد... أبحث عن أخطاء، مشاكل أمنية، وأفضل الممارسات"
+        : "Reviewing generated code... checking for errors, security issues, and best practices",
+    });
 
     const reviewResult = await reviewerAgent.execute(context);
     totalTokens += reviewResult.tokensUsed;
@@ -505,6 +540,9 @@ async function executeBuildPipeline(
         const fixTaskId = await createTask(buildId, projectId, "fixer");
         await logExecution(buildId, projectId, fixTaskId, "fixer", "fix_code", "in_progress", {
           issueCount: errorIssues.length,
+          message: lang === "ar"
+            ? `وجدت ${errorIssues.length} خطأ — أصلحها الآن:\n${errorIssues.slice(0, 5).map(i => `  🔧 ${i.file || ''}: ${i.message}`).join("\n")}`
+            : `Found ${errorIssues.length} error(s) — fixing now:\n${errorIssues.slice(0, 5).map(i => `  🔧 ${i.file || ''}: ${i.message}`).join("\n")}`,
         });
 
         context.tokensUsedSoFar = totalTokens;
@@ -566,9 +604,13 @@ async function executeBuildPipeline(
     const generatedDirectories = codegenResult.data?.directories as string[] | undefined;
 
     const saveTaskId = await createTask(buildId, projectId, "filemanager");
+    const _fileNames = generatedFiles.map(f => f.filePath);
     await logExecution(buildId, projectId, saveTaskId, "filemanager", "save_files", "in_progress", {
       fileCount: generatedFiles.length,
       directoryCount: generatedDirectories?.length ?? 0,
+      message: lang === "ar"
+        ? `أحفظ ${generatedFiles.length} ملف في المشروع:\n${_fileNames.slice(0, 10).map(f => `  💾 ${f}`).join("\n")}${_fileNames.length > 10 ? `\n  ... و ${_fileNames.length - 10} ملف آخر` : ""}`
+        : `Saving ${generatedFiles.length} files to project:\n${_fileNames.slice(0, 10).map(f => `  💾 ${f}`).join("\n")}${_fileNames.length > 10 ? `\n  ... and ${_fileNames.length - 10} more` : ""}`,
     });
 
     const saveResult = await fileManager.saveFiles(projectId, generatedFiles, generatedDirectories);
@@ -582,7 +624,12 @@ async function executeBuildPipeline(
     await logExecution(
       buildId, projectId, saveTaskId, "filemanager", "save_files",
       saveResult.success ? "completed" : "failed",
-      saveResult.data,
+      {
+        ...saveResult.data as Record<string, unknown>,
+        message: saveResult.success
+          ? (lang === "ar" ? `تم حفظ ${generatedFiles.length} ملف بنجاح` : `Successfully saved ${generatedFiles.length} files`)
+          : (lang === "ar" ? "فشل حفظ بعض الملفات" : "Failed to save some files"),
+      },
       0,
       saveResult.durationMs
     );
@@ -801,6 +848,7 @@ async function executeBuildPipelineWithPlan(
 ) {
   const build = activeBuilds.get(buildId)!;
   build.status = "in_progress";
+  const lang = detectLang(prompt);
 
   const codegenAgent = new CodeGenAgent(constitution);
   const reviewerAgent = new ReviewerAgent(constitution);
@@ -811,7 +859,12 @@ async function executeBuildPipelineWithPlan(
   let totalCost = 0;
 
   try {
-    await logExecution(buildId, projectId, null, "system", "build_started_with_plan", "in_progress", { prompt, plan });
+    await logExecution(buildId, projectId, null, "system", "build_started_with_plan", "in_progress", {
+      prompt, plan,
+      message: lang === "ar"
+        ? `بدأ البناء بخطة من ${plan.steps?.length || 0} خطوات — "${prompt.slice(0, 80)}"`
+        : `Build started with ${plan.steps?.length || 0}-step plan — "${prompt.slice(0, 80)}"`,
+    });
 
     const limitCheck = await checkSpendingLimits(userId, projectId);
     if (!limitCheck.allowed) {
@@ -865,13 +918,23 @@ ${prompt}`;
       await failTask(codegenTaskId, codegenResult.error ?? "Unknown error", codegenResult.durationMs);
     }
 
-    await logExecution(
-      buildId, projectId, codegenTaskId, "codegen", "generate_code",
-      codegenResult.success ? "completed" : "failed",
-      { tokensUsed: codegenResult.tokensUsed, error: codegenResult.error },
-      codegenResult.tokensUsed,
-      codegenResult.durationMs
-    );
+    {
+      const _genFiles = (codegenResult.data?.files as GeneratedFile[]) || [];
+      const _genNames = _genFiles.map(f => f.filePath);
+      const _genDur = Math.round((codegenResult.durationMs || 0) / 1000);
+      await logExecution(
+        buildId, projectId, codegenTaskId, "codegen", "generate_code",
+        codegenResult.success ? "completed" : "failed",
+        {
+          tokensUsed: codegenResult.tokensUsed, error: codegenResult.error,
+          fileCount: _genNames.length, files: _genNames.slice(0, 25),
+          message: codegenResult.success
+            ? (lang === "ar" ? `تم توليد ${_genNames.length} ملف في ${_genDur} ثانية:\n${_genNames.map(f => `  📄 ${f}`).join("\n")}` : `Generated ${_genNames.length} files in ${_genDur}s:\n${_genNames.map(f => `  📄 ${f}`).join("\n")}`)
+            : (lang === "ar" ? `فشل توليد الكود: ${codegenResult.error}` : `Code generation failed: ${codegenResult.error}`),
+        },
+        codegenResult.tokensUsed, codegenResult.durationMs
+      );
+    }
 
     if (!codegenResult.success) {
       console.error(`Build ${buildId} codegen failed:`, codegenResult.error);
@@ -902,7 +965,11 @@ ${prompt}`;
     }
 
     const reviewTaskId = await createTask(buildId, projectId, "reviewer");
-    await logExecution(buildId, projectId, reviewTaskId, "reviewer", "review_code", "in_progress");
+    await logExecution(buildId, projectId, reviewTaskId, "reviewer", "review_code", "in_progress", {
+      message: lang === "ar"
+        ? "أراجع الكود المُولَّد... أبحث عن أخطاء، مشاكل أمنية، وأفضل الممارسات"
+        : "Reviewing generated code... checking for errors, security issues, and best practices",
+    });
 
     const reviewResult = await reviewerAgent.execute(context);
     totalTokens += reviewResult.tokensUsed;
