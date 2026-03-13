@@ -646,6 +646,15 @@ export default function Builder() {
 
     const stripImportsExports = (code: string, fallbackName: string): string => {
       let c = code;
+      c = c.replace(/^import\s+\{([^}]+)\}\s+from\s+['"]lucide-react['"]\s*;?\s*$/gm, (_m, names) => {
+        const iconNames = names.split(',').map((n: string) => n.trim()).filter(Boolean);
+        return iconNames.map((n: string) => {
+          const parts = n.split(/\s+as\s+/);
+          const original = parts[0].trim();
+          const alias = (parts[1] || parts[0]).trim();
+          return `var ${alias} = __icons['${original}'];`;
+        }).join('\n');
+      });
       c = c.replace(/^import\s[\s\S]*?from\s+['"].*?['"]\s*;?\s*$/gm, '');
       c = c.replace(/^import\s+['"].*?['"]\s*;?\s*$/gm, '');
       c = c.replace(/^import\s+type\s+[\s\S]*?from\s+['"].*?['"]\s*;?\s*$/gm, '');
@@ -893,42 +902,93 @@ export default function Builder() {
         }, children);
       };
     }
-    var AlertCircle=__makeIcon('AlertCircle'),Award=__makeIcon('Award'),Calendar=__makeIcon('Calendar'),Car=__makeIcon('Car'),Check=__makeIcon('Check'),ChevronDown=__makeIcon('ChevronDown'),ChevronLeft=__makeIcon('ChevronLeft'),ChevronRight=__makeIcon('ChevronRight'),ChevronUp=__makeIcon('ChevronDown'),Clock=__makeIcon('Clock'),CreditCard=__makeIcon('CreditCard'),DollarSign=__makeIcon('DollarSign'),Facebook=__makeIcon('Facebook'),Filter=__makeIcon('Filter'),Fuel=__makeIcon('Fuel'),Gauge=__makeIcon('Gauge'),Globe=__makeIcon('Globe'),Heart=__makeIcon('Heart'),Instagram=__makeIcon('Instagram'),Mail=__makeIcon('Mail'),MapPin=__makeIcon('MapPin'),Menu=__makeIcon('Menu'),Phone=__makeIcon('Phone'),Search=__makeIcon('Search'),Settings=__makeIcon('Settings'),Shield=__makeIcon('Shield'),Star=__makeIcon('Star'),Sun=__makeIcon('Star'),Moon=__makeIcon('Star'),Twitter=__makeIcon('Twitter'),User=__makeIcon('User'),Users=__makeIcon('Users'),X=__makeIcon('X'),ArrowRight=__makeIcon('ChevronRight'),ArrowLeft=__makeIcon('ChevronLeft'),ArrowUp=__makeIcon('ChevronDown'),ArrowDown=__makeIcon('ChevronDown'),Plus=__makeIcon('Check'),Minus=__makeIcon('X'),Eye=__makeIcon('Search'),EyeOff=__makeIcon('X'),Trash=__makeIcon('X'),Trash2=__makeIcon('X'),Edit=__makeIcon('Settings'),Edit2=__makeIcon('Settings'),Edit3=__makeIcon('Settings'),Copy=__makeIcon('CreditCard'),Download=__makeIcon('ChevronDown'),Upload=__makeIcon('ChevronDown'),Share=__makeIcon('Globe'),Share2=__makeIcon('Globe'),ExternalLink=__makeIcon('Globe'),Link=__makeIcon('Globe'),Home=__makeIcon('Car'),Loader=__makeIcon('Settings'),Loader2=__makeIcon('Settings'),RefreshCw=__makeIcon('Settings'),RotateCw=__makeIcon('Settings'),RotateCcw=__makeIcon('Settings'),Info=__makeIcon('AlertCircle'),HelpCircle=__makeIcon('AlertCircle'),Bell=__makeIcon('AlertCircle'),BellRing=__makeIcon('AlertCircle'),Zap=__makeIcon('Star'),Sparkles=__makeIcon('Star'),ShoppingCart=__makeIcon('CreditCard'),ShoppingBag=__makeIcon('CreditCard'),Package=__makeIcon('CreditCard'),Tag=__makeIcon('DollarSign'),Bookmark=__makeIcon('Star'),Image=__makeIcon('CreditCard'),Camera=__makeIcon('Search'),Video=__makeIcon('CreditCard'),FileText=__makeIcon('CreditCard'),File=__makeIcon('CreditCard'),Folder=__makeIcon('CreditCard'),Paperclip=__makeIcon('CreditCard'),Send=__makeIcon('ChevronRight'),MessageCircle=__makeIcon('AlertCircle'),MessageSquare=__makeIcon('CreditCard'),Truck=__makeIcon('Car'),Grid=__makeIcon('Menu'),List=__makeIcon('Menu'),Lock=__makeIcon('Shield'),Save=__makeIcon('Check'),HeadphonesIcon=__makeIcon('Phone'),Headphones=__makeIcon('Phone'),Wifi=__makeIcon('Globe'),WifiOff=__makeIcon('X'),Battery=__makeIcon('CreditCard'),Power=__makeIcon('Zap'),Layers=__makeIcon('CreditCard'),Layout=__makeIcon('CreditCard'),Maximize=__makeIcon('CreditCard'),Minimize=__makeIcon('X'),AlertTriangle=__makeIcon('AlertCircle'),ThumbsUp=__makeIcon('Check'),ThumbsDown=__makeIcon('X'),LogIn=__makeIcon('ChevronRight'),LogOut=__makeIcon('ChevronRight'),UserPlus=__makeIcon('User'),UserMinus=__makeIcon('User'),UserCheck=__makeIcon('User'),Percent=__makeIcon('DollarSign'),Hash=__makeIcon('Menu'),AtSign=__makeIcon('Mail'),Gift=__makeIcon('Star'),Repeat=__makeIcon('Settings'),MoreHorizontal=__makeIcon('Menu'),MoreVertical=__makeIcon('Menu'),Sliders=__makeIcon('Settings'),Target=__makeIcon('Search'),Crosshair=__makeIcon('Search'),Compass=__makeIcon('Globe'),Navigation=__makeIcon('MapPin'),Map=__makeIcon('Globe'),Linkedin=__makeIcon('Globe'),Youtube=__makeIcon('Globe'),Github=__makeIcon('Globe'),Chrome=__makeIcon('Globe'),Smartphone=__makeIcon('CreditCard'),Monitor=__makeIcon('CreditCard'),Printer=__makeIcon('CreditCard'),Mic=__makeIcon('Phone'),Volume2=__makeIcon('Phone'),VolumeX=__makeIcon('X');
+    var __icons = new Proxy({}, { get: function(t, name) { return __makeIcon(String(name)); } });
+
+    // DO NOT define icons as global vars - they conflict with component names (Home, Link, Menu, etc.)
+    // Instead, icons are accessed via __icons registry. The import transform below handles this.
+    // Only define icons that will NEVER conflict with component names as convenience globals:
+    var AlertCircle=__makeIcon('AlertCircle'),Award=__makeIcon('Award'),Calendar=__makeIcon('Calendar'),Car=__makeIcon('Car'),Check=__makeIcon('Check'),ChevronDown=__makeIcon('ChevronDown'),ChevronLeft=__makeIcon('ChevronLeft'),ChevronRight=__makeIcon('ChevronRight'),ChevronUp=__makeIcon('ChevronDown'),Clock=__makeIcon('Clock'),CreditCard=__makeIcon('CreditCard'),DollarSign=__makeIcon('DollarSign'),Facebook=__makeIcon('Facebook'),Filter=__makeIcon('Filter'),Fuel=__makeIcon('Fuel'),Gauge=__makeIcon('Gauge'),Globe=__makeIcon('Globe'),Heart=__makeIcon('Heart'),Instagram=__makeIcon('Instagram'),Mail=__makeIcon('Mail'),MapPin=__makeIcon('MapPin'),Phone=__makeIcon('Phone'),Settings=__makeIcon('Settings'),Shield=__makeIcon('Shield'),Star=__makeIcon('Star'),Sun=__makeIcon('Star'),Moon=__makeIcon('Star'),Twitter=__makeIcon('Twitter'),Users=__makeIcon('Users'),ArrowRight=__makeIcon('ChevronRight'),ArrowLeft=__makeIcon('ChevronLeft'),ArrowUp=__makeIcon('ChevronDown'),ArrowDown=__makeIcon('ChevronDown'),Plus=__makeIcon('Check'),Minus=__makeIcon('X'),Eye=__makeIcon('Search'),EyeOff=__makeIcon('X'),Trash=__makeIcon('X'),Trash2=__makeIcon('X'),Edit=__makeIcon('Settings'),Edit2=__makeIcon('Settings'),Edit3=__makeIcon('Settings'),Copy=__makeIcon('CreditCard'),Download=__makeIcon('ChevronDown'),Upload=__makeIcon('ChevronDown'),Share=__makeIcon('Globe'),Share2=__makeIcon('Globe'),ExternalLink=__makeIcon('Globe'),Loader=__makeIcon('Settings'),Loader2=__makeIcon('Settings'),RefreshCw=__makeIcon('Settings'),RotateCw=__makeIcon('Settings'),RotateCcw=__makeIcon('Settings'),Info=__makeIcon('AlertCircle'),HelpCircle=__makeIcon('AlertCircle'),Bell=__makeIcon('AlertCircle'),BellRing=__makeIcon('AlertCircle'),Zap=__makeIcon('Star'),Sparkles=__makeIcon('Star'),ShoppingCart=__makeIcon('CreditCard'),ShoppingBag=__makeIcon('CreditCard'),Package=__makeIcon('CreditCard'),Tag=__makeIcon('DollarSign'),Bookmark=__makeIcon('Star'),Image=__makeIcon('CreditCard'),Camera=__makeIcon('Search'),Video=__makeIcon('CreditCard'),FileText=__makeIcon('CreditCard'),File=__makeIcon('CreditCard'),Folder=__makeIcon('CreditCard'),Paperclip=__makeIcon('CreditCard'),Send=__makeIcon('ChevronRight'),MessageCircle=__makeIcon('AlertCircle'),MessageSquare=__makeIcon('CreditCard'),Truck=__makeIcon('Car'),Grid=__makeIcon('Menu'),List=__makeIcon('Menu'),Lock=__makeIcon('Shield'),Save=__makeIcon('Check'),HeadphonesIcon=__makeIcon('Phone'),Headphones=__makeIcon('Phone'),Wifi=__makeIcon('Globe'),WifiOff=__makeIcon('X'),Battery=__makeIcon('CreditCard'),Power=__makeIcon('Zap'),Layers=__makeIcon('CreditCard'),Layout=__makeIcon('CreditCard'),Maximize=__makeIcon('CreditCard'),Minimize=__makeIcon('X'),AlertTriangle=__makeIcon('AlertCircle'),ThumbsUp=__makeIcon('Check'),ThumbsDown=__makeIcon('X'),LogIn=__makeIcon('ChevronRight'),LogOut=__makeIcon('ChevronRight'),UserPlus=__makeIcon('User'),UserMinus=__makeIcon('User'),UserCheck=__makeIcon('User'),Percent=__makeIcon('DollarSign'),Hash=__makeIcon('Menu'),AtSign=__makeIcon('Mail'),Gift=__makeIcon('Star'),Repeat=__makeIcon('Settings'),MoreHorizontal=__makeIcon('Menu'),MoreVertical=__makeIcon('Menu'),Sliders=__makeIcon('Settings'),Target=__makeIcon('Search'),Crosshair=__makeIcon('Search'),Compass=__makeIcon('Globe'),Navigation=__makeIcon('MapPin'),Map=__makeIcon('Globe'),Linkedin=__makeIcon('Globe'),Youtube=__makeIcon('Globe'),Github=__makeIcon('Globe'),Chrome=__makeIcon('Globe'),Smartphone=__makeIcon('CreditCard'),Monitor=__makeIcon('CreditCard'),Printer=__makeIcon('CreditCard'),Mic=__makeIcon('Phone'),Volume2=__makeIcon('Phone'),VolumeX=__makeIcon('X');
 
     try {
       var rawCode = document.getElementById('__component_code__').textContent;
       var fileChunks = rawCode.split('// __FILE_SEPARATOR__');
-      for (var fi = 0; fi < fileChunks.length; fi++) {
-        var chunk = fileChunks[fi];
-        chunk = chunk.replace(/^import\\s+[\\s\\S]*?from\\s+.+$/gm, '');
-        chunk = chunk.replace(/^import\\s+['"].+['"].*$/gm, '');
-        chunk = chunk.replace(/export\\s+default\\s+function\\s+(\\w+)/g, 'function $1');
-        chunk = chunk.replace(/export\\s+default\\s+class\\s+(\\w+)/g, 'class $1');
-        chunk = chunk.replace(/export\\s+default\\s+(\\w+)\\s*;?$/gm, '');
-        chunk = chunk.replace(/export\\s+(const|function|class|let|var|type|interface|enum)\\s+/g, '$1 ');
-        chunk = chunk.replace(/export\\s+\\{[^}]*\\}/g, '');
-        chunk = chunk.replace(/^export\\s+default\\s+/gm, 'var _default = ');
-        chunk = chunk.replace(/^(?:const|let|var)\\s+\\w+\\s*=\\s*(?:React\\.)?lazy\\s*\\(.*?\\)\\s*;?\\s*$/gm, '');
-        chunk = chunk.replace(/import\\.meta\\.env\\.\\w+/g, '""');
-        chunk = chunk.replace(/import\\.meta/g, '({})');
-        chunk = chunk.replace(/process\\.env\\.\\w+/g, '""');
-        chunk = chunk.replace(/\\bconst \\{ [^}]+ \\} = require\\([^)]+\\);?/g, '');
-        chunk = chunk.replace(/\\brequire\\([^)]+\\)/g, '({})');
+      var chunkErrors = [];
+      var __exports = {};
+      function processChunk(code, idx) {
+        var fileLabel = (code.match(/\\/\\/ __FILE__:\\s*(.+)/) || [])[1] || ('chunk-' + idx);
+
+        // 1. Extract names that should be exported to global scope BEFORE stripping
+        var exportedNames = [];
+        var defMatch = code.match(/export\\s+default\\s+(?:function|class)\\s+(\\w+)/);
+        if (defMatch) exportedNames.push(defMatch[1]);
+        var defNameMatch = code.match(/export\\s+default\\s+(\\w+)\\s*;/);
+        if (defNameMatch && exportedNames.indexOf(defNameMatch[1]) === -1) exportedNames.push(defNameMatch[1]);
+        var declMatches = code.match(/(?:export\\s+)?(?:const|let|var|function)\\s+(\\w+)/g);
+        if (declMatches) {
+          declMatches.forEach(function(d) {
+            var nm = d.match(/(\\w+)$/);
+            if (nm && exportedNames.indexOf(nm[1]) === -1) exportedNames.push(nm[1]);
+          });
+        }
+
+        // 2. Convert lucide-react imports to local icon vars (scoped inside IIFE)
+        code = code.replace(/^import\\s+\\{([^}]+)\\}\\s+from\\s+['"]lucide-react['"]\\s*;?\\s*$/gm, function(m, names) {
+          return names.split(',').map(function(n) { n = n.trim(); if (!n) return ''; var parts = n.split(/\\s+as\\s+/); var orig = parts[0].trim(); var alias = (parts[1] || parts[0]).trim(); return 'var ' + alias + ' = __icons[\"' + orig + '\"];'; }).join('\\n');
+        });
+
+        // 3. Strip remaining imports
+        code = code.replace(/^import\\s+[\\s\\S]*?from\\s+.+$/gm, '');
+        code = code.replace(/^import\\s+['"].+['"].*$/gm, '');
+
+        // 4. Strip exports
+        code = code.replace(/export\\s+default\\s+function\\s+(\\w+)/g, 'function $1');
+        code = code.replace(/export\\s+default\\s+class\\s+(\\w+)/g, 'class $1');
+        code = code.replace(/export\\s+default\\s+(\\w+)\\s*;?$/gm, '');
+        code = code.replace(/export\\s+(const|function|class|let|var|type|interface|enum)\\s+/g, '$1 ');
+        code = code.replace(/export\\s+\\{[^}]*\\}/g, '');
+        code = code.replace(/^export\\s+default\\s+/gm, 'var _default = ');
+
+        // 5. Other cleanups
+        code = code.replace(/^(?:const|let|var)\\s+\\w+\\s*=\\s*(?:React\\.)?lazy\\s*\\(.*?\\)\\s*;?\\s*$/gm, '');
+        code = code.replace(/import\\.meta\\.env\\.\\w+/g, '""');
+        code = code.replace(/import\\.meta/g, '({})');
+        code = code.replace(/process\\.env\\.\\w+/g, '""');
+        code = code.replace(/\\bconst \\{ [^}]+ \\} = require\\([^)]+\\);?/g, '');
+        code = code.replace(/\\brequire\\([^)]+\\)/g, '({})');
+
         try {
-          var transformed = Babel.transform(chunk, { presets: ['react', 'typescript'], filename: 'file' + fi + '.tsx' }).code;
+          var transformed = Babel.transform(code, { presets: ['react', 'typescript'], filename: fileLabel }).code;
           transformed = transformed.replace(/\\bconst\\s+/g, 'var ');
           transformed = transformed.replace(/\\blet\\s+/g, 'var ');
+
+          // 6. Wrap in IIFE so icon vars stay local, export component names to global
+          var exportStmts = exportedNames.filter(function(n) { return n && n !== '_default' && n.length > 1; }).map(function(n) {
+            return 'if (typeof ' + n + ' !== "undefined") __exports["' + n + '"] = ' + n + ';';
+          }).join('\\n');
+          // Import previously exported globals into this IIFE scope
+          var importStmts = Object.keys(__exports).map(function(k) {
+            return 'var ' + k + ' = __exports["' + k + '"];';
+          }).join('\\n');
+          transformed = '(function() {\\n' + importStmts + '\\n' + transformed + '\\n' + exportStmts + '\\n})();';
+
           (0, eval)(transformed);
         } catch(chunkErr) {
-          console.warn('Chunk ' + fi + ' eval error:', chunkErr.message);
+          console.warn('[Preview] Error in ' + fileLabel + ':', chunkErr.message, chunkErr.stack);
+          chunkErrors.push({ file: fileLabel, error: chunkErr.message });
         }
       }
+      for (var fi = 0; fi < fileChunks.length; fi++) {
+        processChunk(fileChunks[fi], fi);
+      }
+      // Copy exports to window for compatibility
+      Object.keys(__exports).forEach(function(k) { window[k] = __exports[k]; });
       var root = ReactDOM.createRoot(document.getElementById('root'));
-      var AppComp = window.App || (typeof App !== 'undefined' ? App : null);
+      var AppComp = __exports.App || window.App || null;
       if (!AppComp) {
         var possibleNames = ['App', 'HomePage', 'Home', 'Main', 'Page', 'Root', 'Landing', 'LandingPage', 'Dashboard', 'Layout', 'AppLayout'];
         for (var i = 0; i < possibleNames.length; i++) {
-          try { AppComp = window[possibleNames[i]] || eval(possibleNames[i]); if (typeof AppComp === 'function') break; AppComp = null; } catch(ex) { AppComp = null; }
+          if (__exports[possibleNames[i]] && typeof __exports[possibleNames[i]] === 'function') { AppComp = __exports[possibleNames[i]]; break; }
+          try { if (window[possibleNames[i]] && typeof window[possibleNames[i]] === 'function') { AppComp = window[possibleNames[i]]; break; } } catch(ex) {}
         }
       }
       if (AppComp) {
@@ -964,9 +1024,11 @@ export default function Builder() {
     } catch(e) {
       console.error('Preview render error:', e);
       var errMsg = (e.message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      var errStack = (e.stack || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       var errLine = '';
       if (e.loc) errLine = '<p style="font-size:12px;color:#888;margin-top:4px">Line ' + e.loc.line + ', Column ' + e.loc.column + '</p>';
-      document.getElementById('root').innerHTML = '<div style="padding:40px;text-align:center;font-family:sans-serif;color:#666"><h3 style="margin-bottom:12px;color:#e53e3e">Preview Error</h3><pre style="text-align:left;background:#f7f7f7;padding:16px;border-radius:8px;font-size:13px;white-space:pre-wrap;word-break:break-word;max-height:300px;overflow:auto;color:#c53030">' + errMsg + '</pre>' + errLine + '</div>';
+      var chunkInfo = chunkErrors.length > 0 ? '<p style="font-size:12px;color:#888;margin-top:8px">File errors: ' + chunkErrors.map(function(ce) { return ce.file + ': ' + ce.error; }).join('; ') + '</p>' : '';
+      document.getElementById('root').innerHTML = '<div style="padding:40px;text-align:center;font-family:sans-serif;color:#666"><h3 style="margin-bottom:12px;color:#e53e3e">Preview Error</h3><pre style="text-align:left;background:#f7f7f7;padding:16px;border-radius:8px;font-size:13px;white-space:pre-wrap;word-break:break-word;max-height:300px;overflow:auto;color:#c53030">' + errMsg + '</pre><pre style="text-align:left;background:#f0f0f0;padding:12px;border-radius:8px;font-size:11px;white-space:pre-wrap;word-break:break-word;max-height:200px;overflow:auto;color:#666;margin-top:8px">' + errStack + '</pre>' + errLine + chunkInfo + '</div>';
     }
   <\/script>
 </body>
