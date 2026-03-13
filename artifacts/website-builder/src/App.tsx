@@ -12,6 +12,7 @@ import QualityAssurance from "@/pages/QualityAssurance";
 import Monitoring from "@/pages/Monitoring";
 import NotificationSettings from "@/pages/NotificationSettings";
 import Templates from "@/pages/Templates";
+import AdminDashboard from "@/pages/AdminDashboard";
 import NotFound from "@/pages/not-found";
 import { useGetMe } from "@workspace/api-client-react";
 import { Loader2 } from "lucide-react";
@@ -39,9 +40,43 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function AdminGuard({ children }: { children: React.ReactNode }) {
+  const { data: user, isLoading, isError } = useGetMe({
+    query: { queryKey: ["getMe"], retry: false, refetchOnWindowFocus: false }
+  });
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (isError || !user) {
+    return <Login />;
+  }
+
+  if ((user as any).role !== "admin") {
+    return (
+      <div className="min-h-screen bg-[#0d1117] flex items-center justify-center text-center">
+        <div>
+          <p className="text-red-400 text-lg mb-2">Access Denied</p>
+          <p className="text-[#8b949e]">Admin access required</p>
+        </div>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}
+
 function Router() {
   return (
     <Switch>
+      <Route path="/admin">
+        <AdminGuard><AdminDashboard /></AdminGuard>
+      </Route>
       <Route path="/">
         <AuthGuard><Dashboard /></AuthGuard>
       </Route>

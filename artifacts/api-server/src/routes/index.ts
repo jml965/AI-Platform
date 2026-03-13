@@ -22,6 +22,7 @@ import seoRouter from "./seo";
 import pluginsRouter from "./plugins";
 import translationsRouter from "./translations";
 import chatRouter from "./chat";
+import adminRouter from "./admin";
 import { requireAuth } from "../middlewares/authSession";
 
 const router: IRouter = Router();
@@ -51,5 +52,6 @@ router.use(seoRouter);
 router.use(pluginsRouter);
 router.use(translationsRouter);
 router.use(chatRouter);
+router.use(adminRouter);
 
 export default router;
