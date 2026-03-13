@@ -83,6 +83,8 @@ export default function Builder() {
   const [activeBuildId, setActiveBuildId] = useState<string | null>(() => {
     return localStorage.getItem(`latestBuild_${id}`);
   });
+  const [lastCompletedBuildId, setLastCompletedBuildId] = useState<string | null>(null);
+  const [retainedLogs, setRetainedLogs] = useState<ExecutionLog[]>([]);
   const [centerTab, setCenterTab] = useState<"canvas" | "domains" | "seo">("canvas");
   const [selectedFileIndex, setSelectedFileIndex] = useState(0);
   const [selectedDevice, setSelectedDevice] = useState("responsive");
@@ -211,18 +213,20 @@ export default function Builder() {
     }
   });
 
-  const { data: buildLogs } = useGetBuildLogs(activeBuildId || "", {
+  const logsBuildId = activeBuildId || lastCompletedBuildId;
+  const { data: buildLogs } = useGetBuildLogs(logsBuildId || "", {
     query: {
-      queryKey: ["getBuildLogs", activeBuildId || ""],
-      enabled: !!activeBuildId,
+      queryKey: ["getBuildLogs", logsBuildId || ""],
+      enabled: !!logsBuildId,
       refetchInterval: () => {
+        if (!activeBuildId) return false;
         const isTerminal = buildStatus?.status === "completed" || buildStatus?.status === "failed" || buildStatus?.status === "cancelled";
         return isTerminal ? false : 3000;
       }
     }
   });
 
-  const logs = buildLogs?.data || [];
+  const logs = buildLogs?.data || retainedLogs;
 
   const { data: projectFiles } = useListProjectFiles(id || "", {
     query: {
@@ -256,50 +260,29 @@ export default function Builder() {
   };
 
   useEffect(() => {
-    if (!activeBuildId || !logs.length) return;
-    const newLogs = logs.slice(prevLogCountRef.current);
-    if (newLogs.length === 0) return;
     prevLogCountRef.current = logs.length;
-
-    const statusIcons: Record<string, string> = {
-      started: "🔄",
-      completed: "✅",
-      failed: "❌",
-      in_progress: "⏳",
-    };
-
-    const logMessages: ChatMessage[] = newLogs.map(log => {
-      const agent = agentNames[log.agentType] || { en: log.agentType, ar: log.agentType };
-      const agentLabel = lang === "ar" ? agent.ar : agent.en;
-      const icon = statusIcons[log.status] || "📋";
-      const details = log.details as Record<string, unknown> | null;
-      const message = (details?.message as string) || log.action || "";
-      const logStatus = log.status === "completed" ? "done" as const : log.status === "failed" ? "error" as const : "running" as const;
-
-      return {
-        id: `log-${log.id || crypto.randomUUID()}`,
-        role: "assistant" as const,
-        content: `${icon} **${agentLabel}**\n${message}`,
-        buildId: activeBuildId,
-        timestamp: new Date(log.createdAt || Date.now()),
-        isLog: true,
-        logAgent: log.agentType,
-        logStatus,
-      };
-    });
-
-    if (logMessages.length > 0) {
-      setMessages(prev => [...prev, ...logMessages]);
-    }
-  }, [logs, activeBuildId, lang]);
+  }, [logs]);
 
   useEffect(() => {
     if (activeBuildId && project?.status === "ready" && buildStatus?.status !== "in_progress" && buildStatus?.status !== "pending") {
+      if (logs.length > 0) setRetainedLogs([...logs]);
+      setLastCompletedBuildId(activeBuildId);
+      const finalStatus = buildStatus?.status || "completed";
+      setMessages(prev => [...prev, {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: finalStatus === "failed"
+          ? (lang === "ar" ? "❌ فشل البناء — راجع سجل التنفيذ لمعرفة التفاصيل" : "❌ Build failed — check the execution log for details")
+          : finalStatus === "cancelled"
+          ? (lang === "ar" ? "🛑 تم إيقاف البناء" : "🛑 Build cancelled")
+          : (lang === "ar" ? "✅ اكتمل البناء — المشروع جاهز في المعاينة!" : "✅ Build complete — project is ready in preview!"),
+        timestamp: new Date(),
+      }]);
       setActiveBuildId(null);
       if (id) localStorage.removeItem(`latestBuild_${id}`);
       setPreviewKey(k => k + 1);
     }
-  }, [project?.status, activeBuildId, buildStatus?.status, id]);
+  }, [project?.status, activeBuildId, buildStatus?.status, id, logs, lang]);
 
   const buildIdSetTime = useRef<number>(0);
   useEffect(() => {
@@ -325,6 +308,8 @@ export default function Builder() {
       const noStatusYet = !buildStatus && elapsed > 10000;
       if (isStale || noStatusYet) {
         console.log("[PREVIEW] Clearing stale build ID:", activeBuildId, "project:", project.status, "build:", buildStatus?.status, "elapsed:", elapsed);
+        if (logs.length > 0) setRetainedLogs([...logs]);
+        setLastCompletedBuildId(activeBuildId);
         setActiveBuildId(null);
         if (id) localStorage.removeItem(`latestBuild_${id}`);
         setPreviewKey(k => k + 1);
@@ -453,6 +438,8 @@ export default function Builder() {
           }
         } else {
           console.log("[BUILD] Build started by server:", chatRes.buildId);
+          setRetainedLogs([]);
+          setLastCompletedBuildId(null);
           setActiveBuildId(chatRes.buildId);
           localStorage.setItem(`latestBuild_${id}`, chatRes.buildId);
           setPlanApproved(false);
@@ -460,7 +447,9 @@ export default function Builder() {
           setMessages(prev => [...prev, {
             id: crypto.randomUUID(),
             role: "assistant",
-            content: t.agents_working,
+            content: lang === "ar"
+              ? "🚀 بدأ البناء — تابع سجل التنفيذ أدناه لمشاهدة عمل الوكلاء مباشرة"
+              : "🚀 Build started — follow the execution log below to watch agents work live",
             buildId: chatRes.buildId,
             timestamp: new Date(),
           }]);
