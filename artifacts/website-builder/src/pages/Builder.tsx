@@ -569,29 +569,26 @@ export default function Builder() {
   const currentPhase = inferPhase(buildStatus?.status, logs);
   const phaseFailed = buildStatus?.status === "failed";
 
-  const serverUrl = useMemo(() => {
-    if (!id || !buildStatus) return null;
-    if (buildStatus.status === "completed") {
-      const serverLog = logs.find(l =>
-        l.action.toLowerCase().includes("server") &&
-        l.details &&
-        typeof l.details === "object" &&
-        "url" in l.details
-      );
-      if (serverLog?.details && "url" in serverLog.details) {
-        const url = serverLog.details.url as string;
-        try {
-          const parsed = new URL(url);
-          if (parsed.protocol === "http:" || parsed.protocol === "https:") {
-            return url;
-          }
-        } catch {}
-      }
+  const sandboxProxyUrl = useMemo(() => {
+    if (!id) return null;
+    const allLogs = logs;
+    const runnerLog = allLogs.find(l =>
+      l.agentType === "package_runner" &&
+      l.status === "completed" &&
+      l.details &&
+      typeof l.details === "object" &&
+      "sandboxId" in l.details &&
+      "serverStarted" in l.details &&
+      (l.details as any).serverStarted === true
+    );
+    if (runnerLog) {
+      const baseUrl = import.meta.env.VITE_API_URL || "";
+      return `${baseUrl}/api/sandbox/proxy/${id}/`;
     }
     return null;
-  }, [id, buildStatus?.status, logs]);
+  }, [id, logs]);
 
-  const previewUrl = serverUrl || null;
+  const previewUrl = sandboxProxyUrl;
 
   const buildPreviewHtml = (): string => {
     if (!htmlFile?.content) return "";
@@ -1167,16 +1164,28 @@ export default function Builder() {
 
   const DEVICES = [
     { id: "responsive", label: t.device_responsive, Icon: Monitor, width: null, height: null, group: null },
-    { id: "iphone17", label: t.device_iphone17, Icon: Smartphone, width: 393, height: 852, group: "phone" },
-    { id: "iphone14", label: t.device_iphone14, Icon: Smartphone, width: 390, height: 844, group: "phone" },
-    { id: "iphonese", label: t.device_iphonese, Icon: Smartphone, width: 375, height: 667, group: "phone" },
-    { id: "samsung_s25", label: t.device_samsung_s25, Icon: Smartphone, width: 412, height: 915, group: "phone" },
-    { id: "ipad_pro", label: t.device_ipad_pro, Icon: Tablet, width: 1024, height: 1366, group: "tablet" },
-    { id: "ipad_air", label: t.device_ipad_air, Icon: Tablet, width: 820, height: 1180, group: "tablet" },
-    { id: "samsung_tab", label: t.device_samsung_tab, Icon: Tablet, width: 800, height: 1280, group: "tablet" },
-    { id: "laptop", label: t.device_laptop, Icon: Laptop, width: 1280, height: 800, group: "desktop" },
-    { id: "desktop", label: t.device_desktop, Icon: Monitor, width: 1440, height: 900, group: "desktop" },
-    { id: "fullhd", label: t.device_fullhd, Icon: Monitor, width: 1920, height: 1080, group: "desktop" },
+    { id: "iphone16_pro_max", label: "iPhone 16 Pro Max", Icon: Smartphone, width: 440, height: 956, group: "phone" },
+    { id: "iphone16_pro", label: "iPhone 16 Pro", Icon: Smartphone, width: 402, height: 874, group: "phone" },
+    { id: "iphone16", label: "iPhone 16", Icon: Smartphone, width: 393, height: 852, group: "phone" },
+    { id: "iphone14", label: "iPhone 14", Icon: Smartphone, width: 390, height: 844, group: "phone" },
+    { id: "iphonese", label: "iPhone SE", Icon: Smartphone, width: 375, height: 667, group: "phone" },
+    { id: "pixel_9_pro", label: "Pixel 9 Pro", Icon: Smartphone, width: 412, height: 915, group: "phone" },
+    { id: "pixel_9", label: "Pixel 9", Icon: Smartphone, width: 412, height: 892, group: "phone" },
+    { id: "samsung_s25_ultra", label: "Galaxy S25 Ultra", Icon: Smartphone, width: 412, height: 915, group: "phone" },
+    { id: "samsung_s25", label: "Galaxy S25", Icon: Smartphone, width: 412, height: 892, group: "phone" },
+    { id: "samsung_a15", label: "Galaxy A15", Icon: Smartphone, width: 384, height: 854, group: "phone" },
+    { id: "ipad_pro_13", label: "iPad Pro 13\"", Icon: Tablet, width: 1032, height: 1376, group: "tablet" },
+    { id: "ipad_pro_11", label: "iPad Pro 11\"", Icon: Tablet, width: 834, height: 1194, group: "tablet" },
+    { id: "ipad_air", label: "iPad Air", Icon: Tablet, width: 820, height: 1180, group: "tablet" },
+    { id: "ipad_mini", label: "iPad Mini", Icon: Tablet, width: 768, height: 1024, group: "tablet" },
+    { id: "samsung_tab_s9", label: "Galaxy Tab S9", Icon: Tablet, width: 800, height: 1280, group: "tablet" },
+    { id: "surface_pro", label: "Surface Pro", Icon: Tablet, width: 912, height: 1368, group: "tablet" },
+    { id: "macbook_air", label: "MacBook Air 13\"", Icon: Laptop, width: 1280, height: 800, group: "desktop" },
+    { id: "macbook_pro_16", label: "MacBook Pro 16\"", Icon: Laptop, width: 1728, height: 1117, group: "desktop" },
+    { id: "desktop_hd", label: "Desktop HD", Icon: Monitor, width: 1440, height: 900, group: "desktop" },
+    { id: "fullhd", label: "Full HD", Icon: Monitor, width: 1920, height: 1080, group: "desktop" },
+    { id: "imac_24", label: "iMac 24\"", Icon: Monitor, width: 2048, height: 1152, group: "desktop" },
+    { id: "ultrawide", label: "Ultrawide", Icon: Monitor, width: 2560, height: 1080, group: "desktop" },
   ];
 
   const currentDevice = DEVICES.find(d => d.id === selectedDevice) ?? DEVICES[0];
@@ -1803,7 +1812,7 @@ export default function Builder() {
                 <ChevronDown className="w-3 h-3 opacity-60" />
               </button>
               {showDeviceMenu && (
-                <div className="absolute end-0 top-full mt-1 w-52 bg-[#161b22] border border-[#30363d] rounded-lg shadow-xl z-50 overflow-hidden py-1">
+                <div className="absolute end-0 top-full mt-1 w-56 max-h-[420px] overflow-y-auto bg-[#161b22] border border-[#30363d] rounded-lg shadow-xl z-50 py-1">
                   {[
                     { group: null, label: null },
                     { group: "phone", label: "📱" },
@@ -1862,41 +1871,28 @@ export default function Builder() {
                   </div>
                 </div>
               ) : (hasPreview || previewUrl) ? (
-                <div className="w-full h-full flex items-start justify-center overflow-auto bg-[#0d1117]">
-                  <div
-                    className="flex-shrink-0 bg-[#161b22] overflow-hidden"
-                    style={{
-                      width: currentDevice.width ? `${currentDevice.width}px` : "100%",
-                      height: currentDevice.width ? `${currentDevice.height}px` : "100%",
-                      maxWidth: "100%",
-                      transition: "width 300ms ease, height 300ms ease",
-                      borderRadius: currentDevice.group === "phone" ? "16px" : currentDevice.group === "tablet" ? "8px" : "0",
-                      boxShadow: currentDevice.width ? "0 0 0 1px #30363d, 0 8px 32px rgba(0,0,0,0.5)" : "none",
-                      marginTop: currentDevice.width ? "16px" : "0",
-                    }}
-                  >
-                    {previewUrl ? (
-                      <iframe
-                        key={`url-${previewKey}`}
-                        ref={iframeRef}
-                        src={previewUrl}
-                        className="border-0 bg-white"
-                        style={{ width: "100%", height: "100%", display: "block" }}
-                        title={t.live_preview}
-                      />
-                    ) : (
-                      <iframe
-                        key={`doc-${previewKey}`}
-                        ref={iframeRef}
-                        srcDoc={buildPreviewHtml()}
-                        sandbox="allow-scripts"
-                        className="border-0 bg-white"
-                        style={{ width: "100%", height: "100%", display: "block" }}
-                        title={t.live_preview}
-                      />
-                    )}
-                  </div>
-                </div>
+                <DevicePreviewFrame device={currentDevice} previewKey={previewKey}>
+                  {previewUrl ? (
+                    <iframe
+                      key={`url-${previewKey}`}
+                      ref={iframeRef}
+                      src={previewUrl}
+                      className="border-0 bg-white"
+                      style={{ width: "100%", height: "100%", display: "block" }}
+                      title={t.live_preview}
+                    />
+                  ) : (
+                    <iframe
+                      key={`doc-${previewKey}`}
+                      ref={iframeRef}
+                      srcDoc={buildPreviewHtml()}
+                      sandbox="allow-scripts"
+                      className="border-0 bg-white"
+                      style={{ width: "100%", height: "100%", display: "block" }}
+                      title={t.live_preview}
+                    />
+                  )}
+                </DevicePreviewFrame>
               ) : (
                 <div className="h-full flex items-center justify-center text-[#484f58]">
                   <div className="text-center">
@@ -2546,6 +2542,71 @@ function ExecutionLogTimeline({ logs, isBuilding }: { logs: ExecutionLog[]; isBu
         )}
         <div ref={logEndRef} />
       </div>
+    </div>
+  );
+}
+
+function DevicePreviewFrame({ device, previewKey, children }: {
+  device: { id: string; width: number | null; height: number | null; group: string | null };
+  previewKey: number;
+  children: React.ReactNode;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+
+  useEffect(() => {
+    if (!device.width || !containerRef.current) {
+      setScale(1);
+      return;
+    }
+    const container = containerRef.current.parentElement;
+    if (!container) return;
+
+    const updateScale = () => {
+      const cw = container.clientWidth - 32;
+      const ch = container.clientHeight - 32;
+      const sw = cw / device.width!;
+      const sh = ch / device.height!;
+      const s = Math.min(sw, sh, 1);
+      setScale(Math.round(s * 100) / 100);
+    };
+
+    updateScale();
+    const ro = new ResizeObserver(updateScale);
+    ro.observe(container);
+    return () => ro.disconnect();
+  }, [device.width, device.height, previewKey]);
+
+  if (!device.width) {
+    return (
+      <div className="w-full h-full bg-[#0d1117] overflow-hidden">
+        {children}
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full h-full flex items-center justify-center overflow-hidden bg-[#0d1117]" ref={containerRef}>
+      <div
+        className="flex-shrink-0 bg-[#161b22] overflow-hidden relative"
+        style={{
+          width: `${device.width}px`,
+          height: `${device.height}px`,
+          transform: scale < 1 ? `scale(${scale})` : undefined,
+          transformOrigin: "center center",
+          transition: "transform 300ms ease",
+          borderRadius: device.group === "phone" ? "24px" : device.group === "tablet" ? "12px" : "4px",
+          boxShadow: "0 0 0 1px #30363d, 0 8px 32px rgba(0,0,0,0.5)",
+          border: device.group === "phone" ? "6px solid #21262d" : device.group === "tablet" ? "4px solid #21262d" : "none",
+        }}
+      >
+        {children}
+      </div>
+      {scale < 1 && (
+        <div className="absolute bottom-2 start-2 text-[10px] text-[#484f58] font-mono bg-[#0d1117]/80 px-1.5 py-0.5 rounded">
+          {Math.round(scale * 100)}%
+        </div>
+      )}
     </div>
   );
 }

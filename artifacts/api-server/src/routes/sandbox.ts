@@ -1,4 +1,5 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
+import http from "http";
 import {
   createSandbox,
   stopSandbox,
@@ -242,6 +243,84 @@ router.get("/sandbox/:sandboxId/stream", requireSandboxAccess, async (req, res) 
     });
   } catch (error) {
     res.status(500).json({ error: { code: "INTERNAL", message: "Failed to stream output" } });
+  }
+});
+
+const SAFE_PROXY_HEADERS = new Set([
+  "accept", "accept-encoding", "accept-language", "cache-control",
+  "content-type", "content-length", "if-modified-since", "if-none-match",
+  "range", "user-agent", "referer", "origin",
+]);
+
+router.use("/sandbox/proxy", async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+
+    const pathAfterProxy = req.url.startsWith("/") ? req.url.slice(1) : req.url;
+    const slashIdx = pathAfterProxy.indexOf("/");
+    const projectId = slashIdx === -1 ? pathAfterProxy.split("?")[0] : pathAfterProxy.slice(0, slashIdx);
+
+    if (!projectId) {
+      res.status(400).json({ error: { code: "VALIDATION", message: "projectId is required" } });
+      return;
+    }
+
+    const projectIds = await getUserProjectIds(userId);
+    if (!projectIds.includes(projectId)) {
+      res.status(403).json({ error: { code: "FORBIDDEN", message: "Access denied" } });
+      return;
+    }
+
+    const sandboxId = getProjectSandbox(projectId);
+    if (!sandboxId) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "No active sandbox" } });
+      return;
+    }
+
+    const status = getSandboxStatus(sandboxId);
+    if (!status || status.status !== "running") {
+      res.status(503).json({ error: { code: "NOT_RUNNING", message: "Sandbox not running" } });
+      return;
+    }
+
+    const targetPath = slashIdx === -1 ? "/" : "/" + pathAfterProxy.slice(slashIdx + 1);
+    const cleanPath = targetPath.split("?")[0];
+    const queryString = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+
+    const safeHeaders: Record<string, string | string[] | undefined> = {
+      host: `127.0.0.1:${status.port}`,
+    };
+    for (const [key, val] of Object.entries(req.headers)) {
+      if (SAFE_PROXY_HEADERS.has(key.toLowerCase())) {
+        safeHeaders[key] = val;
+      }
+    }
+
+    const proxyReq = http.request(
+      {
+        hostname: "127.0.0.1",
+        port: status.port,
+        path: cleanPath + queryString,
+        method: req.method,
+        headers: safeHeaders,
+      },
+      (proxyRes) => {
+        res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
+        proxyRes.pipe(res, { end: true });
+      }
+    );
+
+    proxyReq.on("error", () => {
+      if (!res.headersSent) {
+        res.status(502).json({ error: { code: "PROXY_ERROR", message: "Cannot reach sandbox server" } });
+      }
+    });
+
+    req.pipe(proxyReq, { end: true });
+  } catch (error) {
+    if (!res.headersSent) {
+      res.status(500).json({ error: { code: "INTERNAL", message: "Proxy error" } });
+    }
   }
 });
 
