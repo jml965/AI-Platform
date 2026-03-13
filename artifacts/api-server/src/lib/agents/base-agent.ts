@@ -73,23 +73,43 @@ export abstract class BaseAgent {
       .filter(m => m.role !== "system")
       .map(m => ({ role: m.role as "user" | "assistant", content: m.content }));
 
-    const stream = anthropic.messages.stream({
-      model: this.modelConfig.model,
-      max_tokens: maxCompletion,
-      system: systemMessage?.content,
-      messages: chatMessages,
-    });
+    const MAX_RETRIES = 3;
+    const RETRY_DELAYS = [5000, 15000, 30000];
 
-    const response = await stream.finalMessage();
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const stream = anthropic.messages.stream({
+          model: this.modelConfig.model,
+          max_tokens: maxCompletion,
+          system: systemMessage?.content,
+          messages: chatMessages,
+        });
 
-    const content = response.content
-      .filter((block: { type: string }) => block.type === "text")
-      .map((block: { type: string; text: string }) => block.text)
-      .join("");
+        const response = await stream.finalMessage();
 
-    const tokensUsed = (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0);
+        const content = response.content
+          .filter((block: { type: string }) => block.type === "text")
+          .map((block: { type: string; text: string }) => block.text)
+          .join("");
 
-    return { content, tokensUsed };
+        const tokensUsed = (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0);
+
+        return { content, tokensUsed };
+      } catch (error: any) {
+        const errorStr = typeof error === "object" ? JSON.stringify(error) : String(error);
+        const isRetryable = errorStr.includes("overloaded") || errorStr.includes("529") || errorStr.includes("rate_limit") || errorStr.includes("500") || errorStr.includes("503");
+
+        if (isRetryable && attempt < MAX_RETRIES) {
+          const delay = RETRY_DELAYS[attempt] || 30000;
+          console.log(`[${this.agentType}] Anthropic overloaded/rate-limited, retry ${attempt + 1}/${MAX_RETRIES} in ${delay / 1000}s`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    throw new Error("Max retries exceeded for Anthropic API call");
   }
 
   abstract execute(context: BuildContext): Promise<AgentResult>;
