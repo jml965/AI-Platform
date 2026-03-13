@@ -261,25 +261,6 @@ export default function Builder() {
     }
   }, [buildStatus?.status, activeBuildId]);
 
-  const isBuildRequest = useCallback((text: string): boolean => {
-    const strongBuildKeywords = [
-      /\b(نفذ|ابدأ|شغل|ابني|أنشئ|انشئ|اعمل|صمم|اصنع|ولد|جهز)\b/,
-      /\b(build|create|make|generate|develop|start)\b/i,
-    ];
-    const contextKeywords = [
-      /\b(موقع|صفحة|تطبيق|مشروع|واجهة|صفحه|متجر|مدونة|لوحة)\b/,
-      /\b(website|page|app|site|landing|portfolio|store|shop|dashboard|blog)\b/i,
-      /\b(غير|عدل|أضف|اضف|احذف|ازل|حدث|بدل|حسن|طور)\b/,
-      /\b(change|modify|add|remove|update|fix|edit|replace|improve)\b/i,
-    ];
-    const hasStrongKeyword = strongBuildKeywords.some(kw => kw.test(text));
-    const hasContext = contextKeywords.some(kw => kw.test(text));
-    if (hasStrongKeyword && hasContext) return true;
-    if (hasStrongKeyword && text.trim().split(/\s+/).length <= 3) return true;
-    const allKeywords = [...strongBuildKeywords, ...contextKeywords];
-    const matchCount = allKeywords.filter(kw => kw.test(text)).length;
-    return matchCount >= 2;
-  }, []);
 
   const sendChatMessage = useCallback(async (text: string, chatHistory: ChatMessage[]) => {
     const baseUrl = import.meta.env.VITE_API_URL || "";
@@ -300,7 +281,7 @@ export default function Builder() {
       throw new Error(err?.error?.message || "Chat failed");
     }
 
-    return res.json() as Promise<{ reply: string; tokensUsed: number; costUsd: number }>;
+    return res.json() as Promise<{ reply: string; shouldBuild: boolean; buildPrompt?: string; tokensUsed: number; costUsd: number }>;
   }, [id]);
 
   const handleGenerate = async () => {
@@ -314,51 +295,52 @@ export default function Builder() {
     setMessages(prev => [...prev, userMsg]);
     const currentPrompt = prompt;
     setPrompt("");
+    setIsChatLoading(true);
 
-    if (isBuildRequest(currentPrompt)) {
-      try {
-        const res = await startBuildMut.mutateAsync({
-          data: { projectId: id, prompt: currentPrompt }
-        });
-        setActiveBuildId(res.buildId);
-        localStorage.setItem(`latestBuild_${id}`, res.buildId);
-        setPlanApproved(false);
+    try {
+      const chatRes = await sendChatMessage(currentPrompt, [...messages, userMsg]);
 
-        setMessages(prev => [...prev, {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: t.agents_working,
-          buildId: res.buildId,
-          timestamp: new Date(),
-        }]);
-      } catch (err) {
-        setMessages(prev => [...prev, {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: t.unknown_error,
-          timestamp: new Date(),
-        }]);
+      setMessages(prev => [...prev, {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: chatRes.reply,
+        timestamp: new Date(),
+      }]);
+
+      if (chatRes.shouldBuild) {
+        try {
+          const buildRes = await startBuildMut.mutateAsync({
+            data: { projectId: id, prompt: chatRes.buildPrompt || currentPrompt }
+          });
+          setActiveBuildId(buildRes.buildId);
+          localStorage.setItem(`latestBuild_${id}`, buildRes.buildId);
+          setPlanApproved(false);
+
+          setMessages(prev => [...prev, {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: t.agents_working,
+            buildId: buildRes.buildId,
+            timestamp: new Date(),
+          }]);
+        } catch (err) {
+          setMessages(prev => [...prev, {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: t.unknown_error,
+            timestamp: new Date(),
+          }]);
+        }
       }
-    } else {
-      setIsChatLoading(true);
-      try {
-        const chatRes = await sendChatMessage(currentPrompt, [...messages, userMsg]);
-        setMessages(prev => [...prev, {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: chatRes.reply,
-          timestamp: new Date(),
-        }]);
-      } catch (err) {
-        setMessages(prev => [...prev, {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: t.unknown_error,
-          timestamp: new Date(),
-        }]);
-      } finally {
-        setIsChatLoading(false);
-      }
+    } catch (err) {
+      setMessages(prev => [...prev, {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: t.unknown_error,
+        timestamp: new Date(),
+      }]);
+    } finally {
+      setIsChatLoading(false);
     }
   };
 
