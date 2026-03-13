@@ -823,10 +823,10 @@ export default function Builder() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className={cn(
-                        "rounded-lg px-3 py-2 text-[13px] leading-relaxed",
+                        "text-[13px] leading-relaxed",
                         msg.role === "user"
-                          ? "bg-[#1f6feb]/10 border border-[#1f6feb]/20 text-[#e1e4e8]"
-                          : "bg-[#161b22] border border-[#1c2333] text-[#c9d1d9]"
+                          ? "text-[#e1e4e8]"
+                          : "text-[#c9d1d9]"
                       )}>
                         {msg.role === "assistant" ? (
                           <div className="whitespace-pre-wrap">
@@ -876,9 +876,9 @@ export default function Builder() {
               <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 bg-emerald-500/20 text-emerald-400">
                 <Bot className="w-3 h-3" />
               </div>
-              <div className="bg-[#161b22] border border-[#1c2333] rounded-lg px-3 py-2 flex items-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin text-[#8b949e]" />
-                {isChatLoading && <span className="text-[11px] text-[#8b949e]">{lang === "ar" ? "يفكر..." : "Thinking..."}</span>}
+              <div className="flex items-center gap-2 pt-1">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-[#8b949e]" />
+                <span className="text-[12px] text-[#8b949e]">{isChatLoading ? (lang === "ar" ? "يفكر..." : "Thinking...") : (lang === "ar" ? "يعمل..." : "Working...")}</span>
               </div>
             </div>
           )}
