@@ -770,55 +770,7 @@ export default function Builder() {
             </div>
           )}
 
-          {logs.length > 0 && (
-            <div className="space-y-2 mt-2">
-              <div className="flex items-center gap-2 px-1">
-                <div className="flex-1 h-px bg-[#1c2333]" />
-                <span className="text-[10px] text-[#8b949e] font-semibold uppercase tracking-wider">{t.execution_log}</span>
-                <div className="flex-1 h-px bg-[#1c2333]" />
-              </div>
-              {logs.map((log, i) => {
-                const time = log.createdAt ? new Date(log.createdAt).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "";
-                const isCompleted = log.status === "completed" || log.status === "success";
-                const isFailed = log.status === "failed" || log.status === "error";
-                const isRunning = log.status === "in_progress" || log.status === "running" || log.status === "pending";
-                const detailStr = log.details && typeof log.details === "object"
-                  ? Object.entries(log.details as Record<string, unknown>).filter(([k]) => k !== "type").map(([k, v]) => `${k} ${typeof v === "string" ? v : JSON.stringify(v)}`).join("  ")
-                  : "";
-                return (
-                  <motion.div
-                    key={log.id || i}
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.05 }}
-                    className="flex items-center gap-3 bg-[#161b22] border border-[#1c2333] rounded-xl px-3 py-2.5"
-                  >
-                    <span className="text-[11px] text-[#484f58] font-mono flex-shrink-0">{time}</span>
-                    <div className="flex-1 min-w-0 text-center">
-                      <p className="text-[12px] font-bold text-[#e1e4e8] uppercase tracking-wide">{log.agentType || "SYSTEM"}</p>
-                      <p className="text-[11px] text-[#8b949e]">{log.action}</p>
-                      {detailStr && <p className="text-[10px] text-[#484f58] font-mono mt-0.5">{detailStr}</p>}
-                    </div>
-                    <div className={cn(
-                      "w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border-2",
-                      isCompleted ? "border-emerald-500/50 bg-emerald-500/10" :
-                      isFailed ? "border-red-400/50 bg-red-400/10" :
-                      isRunning ? "border-[#58a6ff]/50 bg-[#58a6ff]/10" :
-                      "border-[#8b949e]/30 bg-[#8b949e]/5"
-                    )}>
-                      {isCompleted ? (
-                        <svg className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                      ) : isFailed ? (
-                        <span className="text-red-400 text-sm font-bold">!</span>
-                      ) : (
-                        <Loader2 className="w-4 h-4 text-[#58a6ff] animate-spin" />
-                      )}
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </div>
-          )}
+          {logs.length > 0 && <ExecutionLogTimeline logs={logs} isBuilding={isBuilding} />}
 
           <div ref={chatEndRef} />
         </div>
@@ -1563,6 +1515,127 @@ function InlineFileTree({ files, selectedIndex, onFileSelect }: { files: Project
       ) : (
         <div className="text-center text-[#484f58] text-xs mt-8">
           {t.no_files}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ExecutionLogTimeline({ logs, isBuilding }: { logs: ExecutionLog[]; isBuilding: boolean }) {
+  const { t } = useI18n();
+  const [expanded, setExpanded] = useState(true);
+  const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
+
+  const toggleStep = (idx: number) => {
+    setExpandedSteps(prev => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  };
+
+  const completedCount = logs.filter(l => l.status === "completed" || l.status === "success").length;
+  const failedCount = logs.filter(l => l.status === "failed" || l.status === "error").length;
+  const runningCount = logs.filter(l => l.status === "in_progress" || l.status === "running" || l.status === "pending").length;
+
+  return (
+    <div className="mt-3">
+      <button
+        onClick={() => setExpanded(v => !v)}
+        className="flex items-center gap-2 w-full px-1 py-1 text-[#8b949e] hover:text-[#e1e4e8] transition-colors"
+      >
+        {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+        <Code2 className="w-3.5 h-3.5" />
+        <span className="text-[11px] font-semibold uppercase tracking-wider">{t.execution_log}</span>
+        <span className="text-[10px] text-[#484f58] ms-auto">
+          {logs.length} {t.terminal_lines}
+          {completedCount > 0 && <span className="text-emerald-400 ms-1">✓{completedCount}</span>}
+          {failedCount > 0 && <span className="text-red-400 ms-1">✗{failedCount}</span>}
+          {runningCount > 0 && <span className="text-[#58a6ff] ms-1">⟳{runningCount}</span>}
+        </span>
+      </button>
+
+      {expanded && (
+        <div className="ms-2 border-s border-[#1c2333] ps-3 mt-1 space-y-0.5">
+          {logs.map((log, i) => {
+            const time = log.createdAt ? new Date(log.createdAt).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "";
+            const isCompleted = log.status === "completed" || log.status === "success";
+            const isFailed = log.status === "failed" || log.status === "error";
+            const isRunning = log.status === "in_progress" || log.status === "running" || log.status === "pending";
+            const stepExpanded = expandedSteps.has(i);
+            const hasDetails = log.details && typeof log.details === "object" && Object.keys(log.details as Record<string, unknown>).filter(k => k !== "type").length > 0;
+            const detailEntries = hasDetails
+              ? Object.entries(log.details as Record<string, unknown>).filter(([k]) => k !== "type")
+              : [];
+
+            return (
+              <motion.div
+                key={log.id || i}
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.03 }}
+              >
+                <button
+                  onClick={() => (hasDetails || log.action) && toggleStep(i)}
+                  className="flex items-center gap-2 w-full py-1 px-1 rounded hover:bg-[#1c2333]/50 transition-colors group text-start"
+                >
+                  <div className="flex-shrink-0 w-4 h-4 flex items-center justify-center">
+                    {isCompleted ? (
+                      <svg className="w-3.5 h-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                    ) : isFailed ? (
+                      <svg className="w-3.5 h-3.5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                    ) : isRunning ? (
+                      <Loader2 className="w-3.5 h-3.5 text-[#58a6ff] animate-spin" />
+                    ) : (
+                      <div className="w-1.5 h-1.5 rounded-full bg-[#484f58]" />
+                    )}
+                  </div>
+                  <span className={cn(
+                    "text-[11px] font-bold uppercase tracking-wide flex-shrink-0",
+                    isCompleted ? "text-emerald-400" :
+                    isFailed ? "text-red-400" :
+                    isRunning ? "text-[#58a6ff]" :
+                    "text-[#8b949e]"
+                  )}>
+                    {log.agentType || "SYSTEM"}
+                  </span>
+                  <span className="text-[11px] text-[#c9d1d9] truncate">{log.action}</span>
+                  <span className="text-[10px] text-[#484f58] ms-auto flex-shrink-0 font-mono">{time}</span>
+                  {hasDetails && (
+                    <ChevronRight className={cn("w-3 h-3 text-[#484f58] transition-transform flex-shrink-0", stepExpanded && "rotate-90")} />
+                  )}
+                </button>
+
+                <AnimatePresence>
+                  {stepExpanded && detailEntries.length > 0 && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="ms-6 py-1 space-y-0.5">
+                        {detailEntries.map(([k, v]) => (
+                          <div key={k} className="flex items-center gap-2 text-[10px]">
+                            <span className="text-[#484f58]">{k}:</span>
+                            <span className="text-[#8b949e] font-mono">{typeof v === "string" ? v : JSON.stringify(v)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            );
+          })}
+
+          {isBuilding && (
+            <div className="flex items-center gap-2 py-1 px-1">
+              <Loader2 className="w-3.5 h-3.5 text-[#58a6ff] animate-spin" />
+              <span className="text-[11px] text-[#58a6ff] animate-pulse">{t.agents_working}</span>
+            </div>
+          )}
         </div>
       )}
     </div>
