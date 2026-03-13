@@ -14,22 +14,40 @@ interface ChatRequest {
   history?: { role: "user" | "assistant"; content: string }[];
 }
 
-const AGENT_SYSTEM_PROMPT = `You are an expert AI website builder assistant. You communicate naturally in the user's language.
+const AGENT_SYSTEM_PROMPT = `You are an expert AI website builder assistant integrated into a website builder platform. You help users create and modify websites.
 
-Your ONLY job is to decide: does the user want to BUILD/MODIFY something, or just CHAT?
+You communicate naturally in the user's language (Arabic or English). You are aware that you are part of a build system that generates complete websites from user descriptions.
 
-CRITICAL: You must respond with ONLY a valid JSON object. No markdown, no code blocks, no extra text.
+Your job:
+1. Decide if the user wants to BUILD/MODIFY something, or just CHAT
+2. Give helpful, contextual replies about their project
 
-Format: {"reply":"your short reply","action":"build"} or {"reply":"your short reply","action":"chat"}
+CRITICAL: Respond with ONLY a valid JSON object. No markdown, no code blocks.
+
+Format: {"reply":"your reply here","action":"build"} or {"reply":"your reply here","action":"chat"}
+
+When action="build":
+- Confirm what you'll build in 1-2 sentences
+- Be specific about what will be created/changed
+
+When action="chat":
+- Answer their question helpfully
+- If they seem confused, explain what you can do: build websites, modify designs, add features, fix issues
+- If the message is vague or just a greeting, introduce yourself as the website builder assistant and explain capabilities
+
+Build triggers (action="build"):
+- ANY request to create, modify, build, edit, change, fix, add, remove, update a website
+- Commands: "نفذ", "ابدأ", "اعمل", "غير", "عدل", "build", "create", "make", "start", "كمل", "صمم"
+
+Chat triggers (action="chat"):
+- Questions, greetings, discussions with no build intent
+- Asking about project status, capabilities, or help
 
 Rules:
-- action="build" for ANY request to create, modify, build, edit, change, fix, add, remove, update a website or any part of it
-- action="build" for commands like "نفذ", "ابدأ", "اعمل", "غير", "عدل", "build", "create", "make", "start", "do it", "كمل"
-- action="chat" ONLY for pure questions, greetings, or discussions with NO build intent
-- Keep reply to 1-2 sentences max
-- Reply in the same language as the user
-- Do NOT generate any code or HTML in your reply
-- Do NOT wrap your response in code blocks or markdown`;
+- Keep replies to 2-3 sentences max
+- Reply in same language as user
+- Do NOT generate code in replies
+- Be aware of the project context provided below`;
 
 router.post("/chat/message", async (req, res) => {
   try {
@@ -65,18 +83,30 @@ router.post("/chat/message", async (req, res) => {
 
     let contextInfo = "";
     if (project) {
+      const statusMap: Record<string, string> = {
+        draft: "New project, not built yet",
+        building: "Currently being built by AI agents",
+        ready: "Built and ready to preview",
+        failed: "Last build failed",
+        deployed: "Live and deployed",
+      };
       contextInfo = `\n\nProject context:
-- Name: ${project.name}
-- Status: ${project.status}
-- Description: ${project.description || "none"}`;
+- Project name: "${project.name}"
+- Current status: ${statusMap[project.status || ""] || project.status}
+- Description: ${project.description || "No description set"}`;
 
       const files = await db
         .select({ filePath: projectFilesTable.filePath })
         .from(projectFilesTable)
         .where(eq(projectFilesTable.projectId, projectId));
       if (files.length > 0) {
-        contextInfo += `\n- Existing files: ${files.map(f => f.filePath).join(", ")}`;
+        contextInfo += `\n- Has ${files.length} files: ${files.map(f => f.filePath).join(", ")}`;
+        contextInfo += `\n- The project is already built. User can ask to modify/rebuild it, or ask questions about it.`;
+      } else {
+        contextInfo += `\n- No files yet. User needs to describe what website they want to build.`;
       }
+    } else {
+      contextInfo = `\n\nNo project selected. Help the user understand they can create a project and describe what they want to build.`;
     }
 
     const messages: { role: "user" | "assistant"; content: string }[] = [];

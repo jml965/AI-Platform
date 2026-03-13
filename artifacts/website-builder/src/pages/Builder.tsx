@@ -86,6 +86,7 @@ export default function Builder() {
   const [selectedFileIndex, setSelectedFileIndex] = useState(0);
   const [selectedDevice, setSelectedDevice] = useState("responsive");
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [previewKey, setPreviewKey] = useState(0);
   const [showDeviceMenu, setShowDeviceMenu] = useState(false);
   
   const [planApproved, setPlanApproved] = useState(false);
@@ -292,7 +293,7 @@ export default function Builder() {
 
   useEffect(() => {
     if (buildStatus?.status === "completed" && activeBuildId) {
-      const alreadyReplied = messages.some(m => m.buildId === activeBuildId && m.content === t.preview_ready);
+      const alreadyReplied = messages.some(m => m.buildId === activeBuildId && m.content?.includes(t.preview_ready));
       if (!alreadyReplied) {
         prevLogCountRef.current = 0;
         setMessages(prev => [...prev, {
@@ -303,15 +304,10 @@ export default function Builder() {
           timestamp: new Date(),
         }]);
         queryClient.invalidateQueries({ queryKey: ["listProjectFiles", id] });
+        queryClient.invalidateQueries({ queryKey: ["getProject", id] });
         setTimeout(() => {
-          if (iframeRef.current) {
-            const content = iframeRef.current.srcdoc;
-            if (content) {
-              iframeRef.current.srcdoc = "";
-              setTimeout(() => { if (iframeRef.current) iframeRef.current.srcdoc = content; }, 100);
-            }
-          }
-        }, 1500);
+          setPreviewKey(k => k + 1);
+        }, 2000);
       }
     } else if (buildStatus?.status === "failed" && activeBuildId) {
       const alreadyReplied = messages.some(m => m.buildId === activeBuildId && m.content?.includes(t.status_failed));
@@ -333,7 +329,7 @@ export default function Builder() {
   const sendChatMessage = useCallback(async (text: string, chatHistory: ChatMessage[]) => {
     const baseUrl = import.meta.env.VITE_API_URL || "";
     const history = chatHistory
-      .filter(m => m.role === "user" || m.role === "assistant")
+      .filter(m => (m.role === "user" || m.role === "assistant") && !m.isLog)
       .slice(-10)
       .map(m => ({ role: m.role, content: m.content }));
 
@@ -571,6 +567,8 @@ export default function Builder() {
       ? 'rtl' : 'ltr';
     const htmlLang = dir === 'rtl' ? 'ar' : 'en';
 
+    const safeComponentCode = componentScripts.replace(/<\/script/gi, '<\\/script');
+
     return `<!DOCTYPE html>
 <html lang="${htmlLang}" dir="${dir}">
 <head>
@@ -585,41 +583,46 @@ export default function Builder() {
 </head>
 <body>
   <div id="root"></div>
-  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
-  <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
-  <script type="text/babel" data-presets="react,typescript">
-    const { useState, useEffect, useCallback, useMemo, useRef, createContext, useContext, Fragment } = React;
-    const useNavigate = () => (p) => { window.location.hash = p; };
-    const useParams = () => ({});
-    const useLocation = () => ({ pathname: window.location.hash.slice(1) || '/' });
-    const Link = ({ to, children, className, style, ...rest }) => React.createElement('a', { href: to || '#', className, style, onClick: (e) => { e.preventDefault(); window.location.hash = to || '/'; } }, children);
-    const NavLink = Link;
-    const BrowserRouter = ({ children }) => React.createElement(Fragment, null, children);
-    const Routes = ({ children }) => {
-      const [path, setPath] = React.useState(window.location.hash.slice(1) || '/');
-      React.useEffect(() => {
-        const handler = () => setPath(window.location.hash.slice(1) || '/');
+  <script type="text/plain" id="__component_code__">${safeComponentCode}<\/script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin><\/script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin><\/script>
+  <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"><\/script>
+  <script>
+    var useState = React.useState, useEffect = React.useEffect, useCallback = React.useCallback,
+        useMemo = React.useMemo, useRef = React.useRef, createContext = React.createContext,
+        useContext = React.useContext, Fragment = React.Fragment;
+    var useNavigate = function() { return function(p) { window.location.hash = p; }; };
+    var useParams = function() { return {}; };
+    var useLocation = function() { return { pathname: window.location.hash.slice(1) || '/' }; };
+    var Link = function(props) { return React.createElement('a', { href: props.to || '#', className: props.className, style: props.style, onClick: function(e) { e.preventDefault(); window.location.hash = props.to || '/'; } }, props.children); };
+    var NavLink = Link;
+    var BrowserRouter = function(props) { return React.createElement(Fragment, null, props.children); };
+    var Routes = function(props) {
+      var _s = React.useState(window.location.hash.slice(1) || '/');
+      var path = _s[0], setPath = _s[1];
+      React.useEffect(function() {
+        var handler = function() { setPath(window.location.hash.slice(1) || '/'); };
         window.addEventListener('hashchange', handler);
-        return () => window.removeEventListener('hashchange', handler);
+        return function() { window.removeEventListener('hashchange', handler); };
       }, []);
-      const routes = React.Children.toArray(children);
-      const match = routes.find(r => r.props?.path === path) || routes.find(r => r.props?.path === '/' || r.props?.index);
-      return match?.props?.element || null;
+      var routes = React.Children.toArray(props.children);
+      var match = routes.find(function(r) { return r.props && r.props.path === path; }) || routes.find(function(r) { return r.props && (r.props.path === '/' || r.props.index); });
+      return match && match.props ? match.props.element : null;
     };
-    const Route = ({ path, element }) => null;
-    const Outlet = () => null;
-
-    ${componentScripts}
+    var Route = function() { return null; };
+    var Outlet = function() { return null; };
 
     try {
-      const root = ReactDOM.createRoot(document.getElementById('root'));
+      var code = document.getElementById('__component_code__').textContent;
+      var transformed = Babel.transform(code, { presets: ['react', 'typescript'], filename: 'preview.tsx' }).code;
+      (new Function(transformed))();
+      var root = ReactDOM.createRoot(document.getElementById('root'));
       root.render(React.createElement(typeof App !== 'undefined' ? App : 'div', null, typeof App === 'undefined' ? 'Preview' : null));
     } catch(e) {
       console.error('Preview render error:', e);
-      document.getElementById('root').innerHTML = '<div style="padding:40px;text-align:center;font-family:sans-serif;color:#666"><h3 style="margin-bottom:12px">⚙️ Preview Loading...</h3><p style="font-size:14px">' + e.message + '</p></div>';
+      document.getElementById('root').innerHTML = '<div style="padding:40px;text-align:center;font-family:sans-serif;color:#666"><h3 style="margin-bottom:12px">Preview Error</h3><p style="font-size:14px">' + e.message + '</p></div>';
     }
-  </script>
+  <\/script>
 </body>
 </html>`;
   };
@@ -685,18 +688,8 @@ export default function Builder() {
   const currentDevice = DEVICES.find(d => d.id === selectedDevice) ?? DEVICES[0];
 
   const handleRefresh = () => {
-    if (!iframeRef.current) return;
     setIsRefreshing(true);
-    const iframe = iframeRef.current;
-    const src = iframe.src;
-    if (src && src !== "about:blank") {
-      iframe.src = "";
-      setTimeout(() => { iframe.src = src; }, 50);
-    } else {
-      const content = iframe.srcdoc;
-      iframe.srcdoc = "";
-      setTimeout(() => { iframe.srcdoc = content; }, 50);
-    }
+    setPreviewKey(k => k + 1);
     setTimeout(() => setIsRefreshing(false), 600);
   };
 
@@ -1285,6 +1278,7 @@ export default function Builder() {
                   >
                     {previewUrl ? (
                       <iframe
+                        key={`url-${previewKey}`}
                         ref={iframeRef}
                         src={previewUrl}
                         className="border-0 bg-white"
@@ -1293,6 +1287,7 @@ export default function Builder() {
                       />
                     ) : (
                       <iframe
+                        key={`doc-${previewKey}`}
                         ref={iframeRef}
                         srcDoc={buildPreviewHtml()}
                         sandbox="allow-scripts"
