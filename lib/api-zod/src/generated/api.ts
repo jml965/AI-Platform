@@ -769,6 +769,99 @@ export const AcceptTeamInviteResponse = zod.object({
 });
 
 /**
+ * Deploy a project to a public URL with a subdomain
+ * @summary Deploy a project
+ */
+export const DeployProjectBody = zod.object({
+  projectId: zod.string().uuid(),
+});
+
+export const DeployProjectResponse = zod.object({
+  id: zod.string().uuid(),
+  projectId: zod.string().uuid(),
+  subdomain: zod.string(),
+  url: zod.string(),
+  status: zod.enum(["deploying", "active", "stopped", "failed"]),
+  version: zod.number(),
+  projectName: zod.string().optional(),
+  lastDeployedAt: zod.date().optional(),
+  createdAt: zod.date().optional(),
+});
+
+/**
+ * Returns the deployment status for a project
+ * @summary Get deployment status
+ */
+export const GetDeploymentStatusParams = zod.object({
+  projectId: zod.coerce.string().uuid(),
+});
+
+export const GetDeploymentStatusResponse = zod.object({
+  id: zod.string().uuid(),
+  projectId: zod.string().uuid(),
+  subdomain: zod.string(),
+  url: zod.string(),
+  status: zod.enum(["deploying", "active", "stopped", "failed"]),
+  version: zod.number(),
+  projectName: zod.string().optional(),
+  lastDeployedAt: zod.date().optional(),
+  createdAt: zod.date().optional(),
+});
+
+/**
+ * Stop and remove a deployed project
+ * @summary Undeploy a project
+ */
+export const UndeployProjectParams = zod.object({
+  projectId: zod.coerce.string().uuid(),
+});
+
+export const UndeployProjectResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
+ * Redeploy a project with latest changes
+ * @summary Redeploy a project
+ */
+export const RedeployProjectParams = zod.object({
+  projectId: zod.coerce.string().uuid(),
+});
+
+export const RedeployProjectResponse = zod.object({
+  id: zod.string().uuid(),
+  projectId: zod.string().uuid(),
+  subdomain: zod.string(),
+  url: zod.string(),
+  status: zod.enum(["deploying", "active", "stopped", "failed"]),
+  version: zod.number(),
+  projectName: zod.string().optional(),
+  lastDeployedAt: zod.date().optional(),
+  createdAt: zod.date().optional(),
+});
+
+/**
+ * Returns all deployments for the current user
+ * @summary List all deployments
+ */
+export const ListDeploymentsResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      id: zod.string().uuid(),
+      projectId: zod.string().uuid(),
+      subdomain: zod.string(),
+      url: zod.string(),
+      status: zod.enum(["deploying", "active", "stopped", "failed"]),
+      version: zod.number(),
+      projectName: zod.string().optional(),
+      lastDeployedAt: zod.date().optional(),
+      createdAt: zod.date().optional(),
+    }),
+  ),
+});
+
+/**
  * Returns the preview URL for a generated website
  * @summary Live preview
  */

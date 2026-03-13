@@ -442,6 +442,36 @@ export interface PreviewResponse {
   status: PreviewResponseStatus;
 }
 
+export interface DeployProjectRequest {
+  projectId: string;
+}
+
+export type DeploymentResponseStatus =
+  (typeof DeploymentResponseStatus)[keyof typeof DeploymentResponseStatus];
+
+export const DeploymentResponseStatus = {
+  deploying: "deploying",
+  active: "active",
+  stopped: "stopped",
+  failed: "failed",
+} as const;
+
+export interface DeploymentResponse {
+  id: string;
+  projectId: string;
+  subdomain: string;
+  url: string;
+  status: DeploymentResponseStatus;
+  version: number;
+  projectName?: string;
+  lastDeployedAt?: string;
+  createdAt?: string;
+}
+
+export interface DeploymentListResponse {
+  data: DeploymentResponse[];
+}
+
 export type GetAuthProvider200Provider =
   (typeof GetAuthProvider200Provider)[keyof typeof GetAuthProvider200Provider];
 

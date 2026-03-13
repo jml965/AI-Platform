@@ -11,6 +11,7 @@ import qaRouter from "./qa";
 import sandboxRouter from "./sandbox";
 import monitoringRouter from "./monitoring";
 import plannerRouter from "./planner";
+import deploymentsRouter from "./deployments";
 import { requireAuth } from "../middlewares/authSession";
 
 const router: IRouter = Router();
@@ -29,5 +30,6 @@ router.use(qaRouter);
 router.use(sandboxRouter);
 router.use(monitoringRouter);
 router.use(plannerRouter);
+router.use(deploymentsRouter);
 
 export default router;

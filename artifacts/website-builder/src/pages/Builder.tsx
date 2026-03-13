@@ -6,7 +6,7 @@ import {
   FileCode2, User, Bot, Search, ChevronRight, ChevronDown,
   FileText, FileJson, FileImage, File, Folder, ArrowLeft, Clock,
   RotateCw, Monitor, Smartphone, Tablet, Laptop, ChevronLeft,
-  Terminal as TerminalIcon, ExternalLink
+  Terminal as TerminalIcon, Rocket, ExternalLink, Square, RefreshCw, Globe
 } from "lucide-react";
 import { format } from "date-fns";
 import { useI18n } from "@/lib/i18n";
@@ -19,7 +19,11 @@ import {
   useGetBuildStatus,
   useGetBuildLogs,
   useListProjectFiles,
-  useGetTokenSummary
+  useGetTokenSummary,
+  useDeployProject,
+  useGetDeploymentStatus,
+  useUndeployProject,
+  useRedeployProject,
 } from "@workspace/api-client-react";
 import BuildTerminal from "@/components/builder/Terminal";
 import BuildProgress, { inferPhase } from "@/components/builder/BuildProgress";
@@ -64,10 +68,27 @@ export default function Builder() {
   const [planApproved, setPlanApproved] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
+  const [showDeployPanel, setShowDeployPanel] = useState(false);
+
   const { data: project } = useGetProject(id || "");
   const { data: tokenSummary } = useGetTokenSummary();
   const startBuildMut = useStartBuild();
   const updateFileMut = useUpdateFile();
+  const deployMut = useDeployProject();
+  const undeployMut = useUndeployProject();
+  const redeployMut = useRedeployProject();
+
+  const { data: deploymentStatus, refetch: refetchDeployment } = useGetDeploymentStatus(id || "", {
+    query: {
+      queryKey: ["getDeploymentStatus", id || ""],
+      enabled: !!id,
+      refetchInterval: (query: { state: { data?: { status?: string } } }) => {
+        const status = query.state.data?.status;
+        return status === "deploying" ? 2000 : false;
+      },
+      retry: false,
+    }
+  });
 
   const { data: buildStatus } = useGetBuildStatus(activeBuildId || "", {
     query: {
@@ -173,10 +194,43 @@ export default function Builder() {
     }
   };
 
+  const handleDeploy = async () => {
+    if (!id) return;
+    try {
+      await deployMut.mutateAsync({ data: { projectId: id } });
+      refetchDeployment();
+    } catch (err) {
+      console.error("Deploy failed:", err);
+    }
+  };
+
+  const handleUndeploy = async () => {
+    if (!id || !confirm(t.deploy_confirm_undeploy)) return;
+    try {
+      await undeployMut.mutateAsync({ projectId: id });
+      refetchDeployment();
+    } catch (err) {
+      console.error("Undeploy failed:", err);
+    }
+  };
+
+  const handleRedeploy = async () => {
+    if (!id) return;
+    try {
+      await redeployMut.mutateAsync({ projectId: id });
+      refetchDeployment();
+    } catch (err) {
+      console.error("Redeploy failed:", err);
+    }
+  };
+
   const isBuilding = buildStatus?.status === "pending" || buildStatus?.status === "in_progress" || startBuildMut.isPending;
 
   const logs = buildLogs?.data || [];
   const actionCount = logs.length;
+  const isDeploying = deployMut.isPending || redeployMut.isPending || deploymentStatus?.status === "deploying";
+  const isDeployed = deploymentStatus?.status === "active";
+  const canDeploy = project?.status === "ready" && !isBuilding;
   const files = projectFiles?.data || [];
 
   const htmlFile = files.find((f) => f.filePath?.endsWith('.html'));
@@ -321,7 +375,116 @@ export default function Builder() {
             {isBuilding && <span className="w-1.5 h-1.5 rounded-full bg-[#58a6ff] animate-pulse" />}
             {t.agent_label} • {actionCount}
           </span>
+          <button
+            onClick={() => setShowDeployPanel(v => !v)}
+            disabled={!canDeploy && !isDeployed && !deploymentStatus}
+            className={cn(
+              "text-[11px] px-2.5 py-1 rounded-full font-medium flex items-center gap-1.5 flex-shrink-0 transition-all",
+              isDeployed
+                ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30"
+                : isDeploying
+                  ? "bg-yellow-500/20 text-yellow-400"
+                  : deploymentStatus?.status === "stopped"
+                    ? "bg-[#484f58]/20 text-[#8b949e] hover:bg-[#484f58]/30"
+                    : "bg-[#1f6feb]/20 text-[#58a6ff] hover:bg-[#1f6feb]/30 disabled:opacity-40"
+            )}
+          >
+            {isDeploying ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : isDeployed ? (
+              <Globe className="w-3 h-3" />
+            ) : (
+              <Rocket className="w-3 h-3" />
+            )}
+            {isDeploying ? t.deploying : isDeployed ? t.deploy_status_active : t.deploy}
+          </button>
         </div>
+
+        <AnimatePresence>
+          {showDeployPanel && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="overflow-hidden border-b border-[#1c2333]"
+            >
+              <div className="p-3 bg-[#161b22] space-y-2">
+                {!canDeploy && !deploymentStatus && (
+                  <p className="text-[11px] text-[#8b949e]">{t.deploy_not_ready}</p>
+                )}
+
+                {deploymentStatus && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className={cn(
+                        "w-2 h-2 rounded-full",
+                        deploymentStatus.status === "active" ? "bg-emerald-400" :
+                        deploymentStatus.status === "deploying" ? "bg-yellow-400 animate-pulse" :
+                        deploymentStatus.status === "stopped" ? "bg-[#484f58]" : "bg-red-400"
+                      )} />
+                      <span className="text-[11px] font-medium text-[#e1e4e8]">
+                        {t[`deploy_status_${deploymentStatus.status}` as keyof typeof t] || deploymentStatus.status}
+                      </span>
+                      <span className="text-[10px] text-[#484f58]">v{deploymentStatus.version}</span>
+                    </div>
+
+                    {deploymentStatus.url && (
+                      <a
+                        href={deploymentStatus.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 text-[11px] text-[#58a6ff] hover:underline truncate"
+                      >
+                        <ExternalLink className="w-3 h-3 flex-shrink-0" />
+                        {deploymentStatus.url}
+                      </a>
+                    )}
+
+                    {deploymentStatus.lastDeployedAt && (
+                      <p className="text-[10px] text-[#484f58]">
+                        {t.deploy_last_deployed}: {format(new Date(deploymentStatus.lastDeployedAt), 'yyyy-MM-dd HH:mm')}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex gap-2 pt-1">
+                  {(!deploymentStatus || deploymentStatus.status === "stopped" || deploymentStatus.status === "failed") && canDeploy && (
+                    <button
+                      onClick={handleDeploy}
+                      disabled={isDeploying}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1f6feb] text-white text-[11px] font-medium rounded-md hover:bg-[#388bfd] disabled:opacity-50 transition-colors"
+                    >
+                      {isDeploying ? <Loader2 className="w-3 h-3 animate-spin" /> : <Rocket className="w-3 h-3" />}
+                      {isDeploying ? t.deploying : t.deploy_btn}
+                    </button>
+                  )}
+
+                  {deploymentStatus?.status === "active" && (
+                    <>
+                      <button
+                        onClick={handleRedeploy}
+                        disabled={isDeploying || !canDeploy}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1f6feb] text-white text-[11px] font-medium rounded-md hover:bg-[#388bfd] disabled:opacity-50 transition-colors"
+                      >
+                        {redeployMut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                        {redeployMut.isPending ? t.redeploying : t.redeploy}
+                      </button>
+                      <button
+                        onClick={handleUndeploy}
+                        disabled={undeployMut.isPending}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/20 text-red-400 text-[11px] font-medium rounded-md hover:bg-red-500/30 disabled:opacity-50 transition-colors"
+                      >
+                        {undeployMut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Square className="w-3 h-3" />}
+                        {undeployMut.isPending ? t.undeploying : t.undeploy}
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <div className="flex-1 overflow-y-auto p-3 space-y-3">
           {messages.length === 0 && !startBuildMut.isPending && (

@@ -43,6 +43,26 @@ API endpoints (all under `/api/sandbox`, auth required):
 
 Limits: Max 10 concurrent sandboxes, 64-512MB memory, 30-600s timeout, auto-cleanup after 10min inactivity.
 
+## Deployment System
+
+Deployment management allowing users to deploy projects to public URLs with subdomains.
+
+Key files:
+- `lib/db/src/schema/deployments.ts` — DB table tracking deployment state (unique per project)
+- `artifacts/api-server/src/lib/deployment-manager.ts` — Deployment lifecycle manager (deploy, undeploy, redeploy, status)
+- `artifacts/api-server/src/routes/deployments.ts` — REST API endpoints
+
+API endpoints (all under `/api/deployments`, auth required):
+- `POST /deployments/deploy` — Deploy a project (creates subdomain URL)
+- `GET /deployments/:projectId/status` — Get deployment status
+- `POST /deployments/:projectId/undeploy` — Stop a deployment
+- `POST /deployments/:projectId/redeploy` — Redeploy with latest changes
+- `GET /deployments` — List all user deployments
+
+UI:
+- Builder page: Deploy button in header + expandable deploy panel (status, URL, redeploy/undeploy)
+- Dashboard: Deployed projects section with status cards and management controls
+
 ## Stack
 
 - **Monorepo tool**: pnpm workspaces

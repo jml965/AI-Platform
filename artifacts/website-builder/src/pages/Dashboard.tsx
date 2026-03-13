@@ -2,10 +2,11 @@ import React, { useState } from "react";
 import { Link } from "wouter";
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, LayoutTemplate, Trash2, Loader2, Coins, LogOut, CreditCard, Users, ShieldCheck, Activity } from "lucide-react";
+import { Plus, LayoutTemplate, Trash2, Loader2, Coins, LogOut, CreditCard, Users, ShieldCheck, Activity, Globe, ExternalLink, Square, RefreshCw, Rocket } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import type { Project, ProjectStatus as ProjectStatusType } from "@workspace/api-client-react";
+import type { DeploymentResponse } from "@workspace/api-client-react";
 import { 
   useListProjects, 
   useCreateProject, 
@@ -13,6 +14,9 @@ import {
   useGetTokenSummary,
   useAuthLogout,
   useGetMe,
+  useListDeployments,
+  useUndeployProject,
+  useRedeployProject,
 } from "@workspace/api-client-react";
 
 export default function Dashboard() {
@@ -21,6 +25,7 @@ export default function Dashboard() {
   
   const { data: projectsData, isLoading: loadingProjects, refetch } = useListProjects();
   const { data: tokenSummary } = useGetTokenSummary();
+  const { data: deploymentsData, refetch: refetchDeployments } = useListDeployments();
   const { data: me } = useGetMe({ query: { queryKey: ["getMe"], retry: false } });
   const isAdmin = (me as any)?.role === "admin";
   const logout = useAuthLogout();
@@ -113,6 +118,20 @@ export default function Dashboard() {
           </div>
         )}
       </main>
+
+      {deploymentsData?.data && deploymentsData.data.length > 0 && (
+        <section className="max-w-7xl w-full mx-auto px-6 lg:px-8 pb-8">
+          <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+            <Globe className="w-5 h-5 text-emerald-400" />
+            {t.deploy_section_title}
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {deploymentsData.data.map((dep) => (
+              <DeploymentCard key={dep.id} deployment={dep} refetch={refetchDeployments} />
+            ))}
+          </div>
+        </section>
+      )}
 
       <CreateProjectModal 
         isOpen={isModalOpen} 
@@ -255,5 +274,112 @@ function CreateProjectModal({ isOpen, onClose, onSuccess }: { isOpen: boolean, o
         </form>
       </motion.div>
     </div>
+  );
+}
+
+function DeploymentCard({ deployment, refetch }: { deployment: DeploymentResponse, refetch: () => void }) {
+  const { t } = useI18n();
+  const undeployMut = useUndeployProject();
+  const redeployMut = useRedeployProject();
+
+  const handleUndeploy = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (confirm(t.deploy_confirm_undeploy)) {
+      await undeployMut.mutateAsync({ projectId: deployment.projectId });
+      refetch();
+    }
+  };
+
+  const handleRedeploy = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    await redeployMut.mutateAsync({ projectId: deployment.projectId });
+    refetch();
+  };
+
+  const statusColors: Record<string, string> = {
+    active: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+    deploying: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+    stopped: "bg-secondary text-secondary-foreground border-white/10",
+    failed: "bg-destructive/20 text-destructive-foreground border-destructive/30",
+  };
+
+  const statusLabel = t[`deploy_status_${deployment.status}` as keyof typeof t] || deployment.status;
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className="bg-card border border-white/10 rounded-xl p-4 hover:border-emerald-500/30 transition-all"
+    >
+      <div className="flex justify-between items-start mb-2">
+        <h3 className="font-semibold text-sm truncate flex-1">
+          {deployment.projectName || deployment.subdomain}
+        </h3>
+        <div className={`px-2 py-0.5 rounded text-[10px] font-medium border ${statusColors[deployment.status] || statusColors.stopped}`}>
+          {statusLabel}
+        </div>
+      </div>
+
+      {deployment.url && (
+        <a
+          href={deployment.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1.5 text-xs text-primary hover:underline mb-2 truncate"
+        >
+          <ExternalLink className="w-3 h-3 flex-shrink-0" />
+          {deployment.url}
+        </a>
+      )}
+
+      <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-3">
+        <span>v{deployment.version}</span>
+        {deployment.lastDeployedAt && (
+          <span>{format(new Date(deployment.lastDeployedAt), 'yyyy-MM-dd HH:mm')}</span>
+        )}
+      </div>
+
+      <div className="flex gap-2 pt-2 border-t border-white/5">
+        {deployment.status === "active" && (
+          <>
+            <button
+              onClick={handleRedeploy}
+              disabled={redeployMut.isPending}
+              className="flex items-center gap-1 px-2 py-1 text-[11px] text-primary hover:bg-primary/10 rounded transition-colors disabled:opacity-50"
+            >
+              {redeployMut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+              {t.redeploy}
+            </button>
+            <button
+              onClick={handleUndeploy}
+              disabled={undeployMut.isPending}
+              className="flex items-center gap-1 px-2 py-1 text-[11px] text-destructive hover:bg-destructive/10 rounded transition-colors disabled:opacity-50"
+            >
+              {undeployMut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Square className="w-3 h-3" />}
+              {t.undeploy}
+            </button>
+          </>
+        )}
+        {(deployment.status === "stopped" || deployment.status === "failed") && (
+          <button
+            onClick={handleRedeploy}
+            disabled={redeployMut.isPending}
+            className="flex items-center gap-1 px-2 py-1 text-[11px] text-primary hover:bg-primary/10 rounded transition-colors disabled:opacity-50"
+          >
+            {redeployMut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Rocket className="w-3 h-3" />}
+            {t.deploy_btn}
+          </button>
+        )}
+        <Link
+          href={`/project/${deployment.projectId}`}
+          className="flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground ms-auto"
+        >
+          {t.view}
+        </Link>
+      </div>
+    </motion.div>
   );
 }

@@ -29,6 +29,9 @@ import type {
   CreateProjectRequest,
   CreateTeamRequest,
   CreditBalance,
+  DeployProjectRequest,
+  DeploymentListResponse,
+  DeploymentResponse,
   ErrorResponse,
   ExecutionLogListResponse,
   GetAuthProvider200,
@@ -3941,6 +3944,429 @@ export const useAcceptTeamInvite = <
 > => {
   return useMutation(getAcceptTeamInviteMutationOptions(options));
 };
+
+/**
+ * Deploy a project to a public URL with a subdomain
+ * @summary Deploy a project
+ */
+export const getDeployProjectUrl = () => {
+  return `/api/deployments/deploy`;
+};
+
+export const deployProject = async (
+  deployProjectRequest: DeployProjectRequest,
+  options?: RequestInit,
+): Promise<DeploymentResponse> => {
+  return customFetch<DeploymentResponse>(getDeployProjectUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(deployProjectRequest),
+  });
+};
+
+export const getDeployProjectMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deployProject>>,
+    TError,
+    { data: BodyType<DeployProjectRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deployProject>>,
+  TError,
+  { data: BodyType<DeployProjectRequest> },
+  TContext
+> => {
+  const mutationKey = ["deployProject"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deployProject>>,
+    { data: BodyType<DeployProjectRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return deployProject(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeployProjectMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deployProject>>
+>;
+export type DeployProjectMutationBody = BodyType<DeployProjectRequest>;
+export type DeployProjectMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Deploy a project
+ */
+export const useDeployProject = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deployProject>>,
+    TError,
+    { data: BodyType<DeployProjectRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deployProject>>,
+  TError,
+  { data: BodyType<DeployProjectRequest> },
+  TContext
+> => {
+  return useMutation(getDeployProjectMutationOptions(options));
+};
+
+/**
+ * Returns the deployment status for a project
+ * @summary Get deployment status
+ */
+export const getGetDeploymentStatusUrl = (projectId: string) => {
+  return `/api/deployments/${projectId}/status`;
+};
+
+export const getDeploymentStatus = async (
+  projectId: string,
+  options?: RequestInit,
+): Promise<DeploymentResponse> => {
+  return customFetch<DeploymentResponse>(getGetDeploymentStatusUrl(projectId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetDeploymentStatusQueryKey = (projectId: string) => {
+  return [`/api/deployments/${projectId}/status`] as const;
+};
+
+export const getGetDeploymentStatusQueryOptions = <
+  TData = Awaited<ReturnType<typeof getDeploymentStatus>>,
+  TError = ErrorType<unknown>,
+>(
+  projectId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getDeploymentStatus>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetDeploymentStatusQueryKey(projectId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getDeploymentStatus>>
+  > = ({ signal }) =>
+    getDeploymentStatus(projectId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!projectId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getDeploymentStatus>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetDeploymentStatusQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getDeploymentStatus>>
+>;
+export type GetDeploymentStatusQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get deployment status
+ */
+
+export function useGetDeploymentStatus<
+  TData = Awaited<ReturnType<typeof getDeploymentStatus>>,
+  TError = ErrorType<unknown>,
+>(
+  projectId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getDeploymentStatus>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetDeploymentStatusQueryOptions(projectId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Stop and remove a deployed project
+ * @summary Undeploy a project
+ */
+export const getUndeployProjectUrl = (projectId: string) => {
+  return `/api/deployments/${projectId}/undeploy`;
+};
+
+export const undeployProject = async (
+  projectId: string,
+  options?: RequestInit,
+): Promise<SuccessResponse> => {
+  return customFetch<SuccessResponse>(getUndeployProjectUrl(projectId), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getUndeployProjectMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof undeployProject>>,
+    TError,
+    { projectId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof undeployProject>>,
+  TError,
+  { projectId: string },
+  TContext
+> => {
+  const mutationKey = ["undeployProject"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof undeployProject>>,
+    { projectId: string }
+  > = (props) => {
+    const { projectId } = props ?? {};
+
+    return undeployProject(projectId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UndeployProjectMutationResult = NonNullable<
+  Awaited<ReturnType<typeof undeployProject>>
+>;
+
+export type UndeployProjectMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Undeploy a project
+ */
+export const useUndeployProject = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof undeployProject>>,
+    TError,
+    { projectId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof undeployProject>>,
+  TError,
+  { projectId: string },
+  TContext
+> => {
+  return useMutation(getUndeployProjectMutationOptions(options));
+};
+
+/**
+ * Redeploy a project with latest changes
+ * @summary Redeploy a project
+ */
+export const getRedeployProjectUrl = (projectId: string) => {
+  return `/api/deployments/${projectId}/redeploy`;
+};
+
+export const redeployProject = async (
+  projectId: string,
+  options?: RequestInit,
+): Promise<DeploymentResponse> => {
+  return customFetch<DeploymentResponse>(getRedeployProjectUrl(projectId), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getRedeployProjectMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof redeployProject>>,
+    TError,
+    { projectId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof redeployProject>>,
+  TError,
+  { projectId: string },
+  TContext
+> => {
+  const mutationKey = ["redeployProject"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof redeployProject>>,
+    { projectId: string }
+  > = (props) => {
+    const { projectId } = props ?? {};
+
+    return redeployProject(projectId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RedeployProjectMutationResult = NonNullable<
+  Awaited<ReturnType<typeof redeployProject>>
+>;
+
+export type RedeployProjectMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Redeploy a project
+ */
+export const useRedeployProject = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof redeployProject>>,
+    TError,
+    { projectId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof redeployProject>>,
+  TError,
+  { projectId: string },
+  TContext
+> => {
+  return useMutation(getRedeployProjectMutationOptions(options));
+};
+
+/**
+ * Returns all deployments for the current user
+ * @summary List all deployments
+ */
+export const getListDeploymentsUrl = () => {
+  return `/api/deployments`;
+};
+
+export const listDeployments = async (
+  options?: RequestInit,
+): Promise<DeploymentListResponse> => {
+  return customFetch<DeploymentListResponse>(getListDeploymentsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListDeploymentsQueryKey = () => {
+  return [`/api/deployments`] as const;
+};
+
+export const getListDeploymentsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listDeployments>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listDeployments>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListDeploymentsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listDeployments>>> = ({
+    signal,
+  }) => listDeployments({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listDeployments>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListDeploymentsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listDeployments>>
+>;
+export type ListDeploymentsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List all deployments
+ */
+
+export function useListDeployments<
+  TData = Awaited<ReturnType<typeof listDeployments>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listDeployments>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListDeploymentsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * Returns the preview URL for a generated website

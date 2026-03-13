@@ -24,6 +24,8 @@ tags:
     description: Billing, subscriptions, and credits
   - name: teams
     description: Team management and permissions
+  - name: deployments
+    description: Project deployment management
   - name: preview
     description: Live preview of generated websites
 
@@ -940,6 +942,88 @@ paths:
               schema:
                 $ref: "#/components/schemas/Team"
 
+  /deployments/deploy:
+    post:
+      operationId: deployProject
+      tags: [deployments]
+      summary: Deploy a project
+      description: Deploy a project to a public URL with a subdomain
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeployProjectRequest"
+      responses:
+        "200":
+          description: Deployment created or updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeploymentResponse"
+
+  /deployments/{projectId}/status:
+    get:
+      operationId: getDeploymentStatus
+      tags: [deployments]
+      summary: Get deployment status
+      description: Returns the deployment status for a project
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: Deployment status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeploymentResponse"
+
+  /deployments/{projectId}/undeploy:
+    post:
+      operationId: undeployProject
+      tags: [deployments]
+      summary: Undeploy a project
+      description: Stop and remove a deployed project
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: Undeployed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /deployments/{projectId}/redeploy:
+    post:
+      operationId: redeployProject
+      tags: [deployments]
+      summary: Redeploy a project
+      description: Redeploy a project with latest changes
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: Redeployed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeploymentResponse"
+
+  /deployments:
+    get:
+      operationId: listDeployments
+      tags: [deployments]
+      summary: List all deployments
+      description: Returns all deployments for the current user
+      responses:
+        "200":
+          description: Deployments list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeploymentListResponse"
+
   /preview/{projectId}:
     get:
       operationId: getPreview
@@ -1723,3 +1807,56 @@ components:
       required:
         - projectId
         - status
+
+    DeployProjectRequest:
+      type: object
+      properties:
+        projectId:
+          type: string
+          format: uuid
+      required:
+        - projectId
+
+    DeploymentResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        subdomain:
+          type: string
+        url:
+          type: string
+        status:
+          type: string
+          enum: [deploying, active, stopped, failed]
+        version:
+          type: integer
+        projectName:
+          type: string
+        lastDeployedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - projectId
+        - subdomain
+        - url
+        - status
+        - version
+
+    DeploymentListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeploymentResponse"
+      required:
+        - data
