@@ -1,8 +1,8 @@
 import { Router, type IRouter } from "express";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { db } from "@workspace/db";
-import { projectsTable, usersTable, projectFilesTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { projectsTable, usersTable, projectFilesTable, buildTasksTable } from "@workspace/db/schema";
+import { eq, desc } from "drizzle-orm";
 import { getUserId } from "../middlewares/permissions";
 import { startBuild, checkBuildLimits } from "../lib/agents/execution-engine";
 
@@ -166,7 +166,24 @@ router.post("/chat/message", async (req, res) => {
     if (shouldBuild && projectId && project) {
       try {
         if (project.status === "building") {
-          console.log("[CHAT] Project already building, skipping build start");
+          console.log("[CHAT] Project already building, looking for active build");
+          const { getAllActiveBuilds } = await import("../lib/agents/execution-engine");
+          const activeBuild = getAllActiveBuilds().find(b => b.projectId === projectId);
+          if (activeBuild) {
+            buildId = activeBuild.buildId;
+            console.log("[CHAT] Found active build:", buildId);
+          } else {
+            const [latestBuild] = await db
+              .select({ buildId: buildTasksTable.buildId })
+              .from(buildTasksTable)
+              .where(eq(buildTasksTable.projectId, projectId))
+              .orderBy(desc(buildTasksTable.createdAt))
+              .limit(1);
+            if (latestBuild) {
+              buildId = latestBuild.buildId;
+              console.log("[CHAT] Found latest build from DB:", buildId);
+            }
+          }
         } else {
           const limitCheck = await checkBuildLimits(userId, projectId);
           if (limitCheck.allowed) {

@@ -300,6 +300,16 @@ export default function Builder() {
           buildId: activeBuildId,
           timestamp: new Date(),
         }]);
+        queryClient.invalidateQueries({ queryKey: ["listProjectFiles", id] });
+        setTimeout(() => {
+          if (iframeRef.current) {
+            const content = iframeRef.current.srcdoc;
+            if (content) {
+              iframeRef.current.srcdoc = "";
+              setTimeout(() => { if (iframeRef.current) iframeRef.current.srcdoc = content; }, 100);
+            }
+          }
+        }, 1500);
       }
     } else if (buildStatus?.status === "failed" && activeBuildId) {
       const alreadyReplied = messages.some(m => m.buildId === activeBuildId && m.content?.includes(t.status_failed));
@@ -312,6 +322,7 @@ export default function Builder() {
           buildId: activeBuildId,
           timestamp: new Date(),
         }]);
+        queryClient.invalidateQueries({ queryKey: ["listProjectFiles", id] });
       }
     }
   }, [buildStatus?.status, activeBuildId]);
@@ -494,15 +505,122 @@ export default function Builder() {
 
   const buildPreviewHtml = (): string => {
     if (!htmlFile?.content) return "";
-    return files.reduce((html: string, f) => {
-      if (f.filePath?.endsWith('.css') && f.content) {
-        html = html.replace('</head>', `<style>${f.content}</style></head>`);
-      }
-      if (f.filePath?.endsWith('.js') && f.content) {
-        html = html.replace('</body>', `<script>${f.content}<\/script></body>`);
-      }
-      return html;
-    }, htmlFile.content);
+
+    const cssFiles = files.filter(f => f.filePath?.endsWith('.css') && f.content);
+    const reactFiles = files.filter(f =>
+      f.content &&
+      (f.filePath?.endsWith('.tsx') || f.filePath?.endsWith('.jsx') ||
+       (f.filePath?.endsWith('.ts') && !f.filePath?.endsWith('.config.ts') && !f.filePath?.endsWith('vite-env.d.ts')) ||
+       (f.filePath?.endsWith('.js') && !f.filePath?.endsWith('.config.js') && f.filePath?.startsWith('src/'))) &&
+      !f.filePath?.endsWith('.config.ts') && !f.filePath?.endsWith('.config.js')
+    );
+    const isReactProject = reactFiles.some(f =>
+      f.content?.includes('React') || f.content?.includes('react') ||
+      f.content?.includes('useState') || f.content?.includes('jsx')
+    );
+
+    if (!isReactProject) {
+      return files.reduce((html: string, f) => {
+        if (f.filePath?.endsWith('.css') && f.content) {
+          html = html.replace('</head>', `<style>${f.content}</style></head>`);
+        }
+        if (f.filePath?.endsWith('.js') && f.content) {
+          html = html.replace('</body>', `<script>${f.content}<\/script></body>`);
+        }
+        return html;
+      }, htmlFile.content);
+    }
+
+    const allCSS = cssFiles.map(f => f.content).join('\n');
+
+    const stripImportsExports = (code: string, fallbackName: string): string => {
+      let c = code;
+      c = c.replace(/^import\s+.*?['"].*?['"]\s*;?\s*$/gm, '');
+      c = c.replace(/^import\s+type\s+.*$/gm, '');
+      c = c.replace(/export\s+default\s+function\s+(\w+)/g, 'function $1');
+      c = c.replace(/export\s+default\s+(\w+)\s*;?/g, '');
+      c = c.replace(/export\s+(const|function|class|let|var)\s+/g, '$1 ');
+      c = c.replace(/export\s+\{[^}]*\}\s*;?/g, '');
+      c = c.replace(/:\s*React\.FC(<[^>]*>)?/g, '');
+      c = c.replace(/:\s*React\.ReactNode/g, '');
+      c = c.replace(/<(\w+)(\s[^>]*)?\s*\/>/g, (m, tag, attrs) => {
+        if (/^[a-z]/.test(tag)) return m;
+        return `<${tag}${attrs || ''} />`;
+      });
+      return c;
+    };
+
+    const componentFiles = reactFiles
+      .filter(f => !f.filePath?.includes('main.') && !f.filePath?.includes('index.') && !f.filePath?.includes('vite-env'))
+      .sort((a, b) => {
+        const depthA = (a.filePath?.match(/\//g) || []).length;
+        const depthB = (b.filePath?.match(/\//g) || []).length;
+        if (depthA !== depthB) return depthB - depthA;
+        const isAppA = a.filePath?.includes('App.') ? 1 : 0;
+        const isAppB = b.filePath?.includes('App.') ? 1 : 0;
+        return isAppA - isAppB;
+      });
+
+    const componentScripts = componentFiles.map(f => {
+      const name = f.filePath?.split('/').pop()?.replace(/\.(tsx|jsx|ts|js)$/, '') || 'Component';
+      return stripImportsExports(f.content || '', name);
+    }).join('\n\n');
+
+    const dir = files.some(f => f.content?.includes('dir="rtl"') || f.content?.includes("dir='rtl'") || f.content?.includes('direction: rtl'))
+      ? 'rtl' : 'ltr';
+    const htmlLang = dir === 'rtl' ? 'ar' : 'en';
+
+    return `<!DOCTYPE html>
+<html lang="${htmlLang}" dir="${dir}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Cairo', 'Inter', sans-serif; }
+    ${allCSS}
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
+  <script type="text/babel" data-presets="react,typescript">
+    const { useState, useEffect, useCallback, useMemo, useRef, createContext, useContext, Fragment } = React;
+    const useNavigate = () => (p) => { window.location.hash = p; };
+    const useParams = () => ({});
+    const useLocation = () => ({ pathname: window.location.hash.slice(1) || '/' });
+    const Link = ({ to, children, className, style, ...rest }) => React.createElement('a', { href: to || '#', className, style, onClick: (e) => { e.preventDefault(); window.location.hash = to || '/'; } }, children);
+    const NavLink = Link;
+    const BrowserRouter = ({ children }) => React.createElement(Fragment, null, children);
+    const Routes = ({ children }) => {
+      const [path, setPath] = React.useState(window.location.hash.slice(1) || '/');
+      React.useEffect(() => {
+        const handler = () => setPath(window.location.hash.slice(1) || '/');
+        window.addEventListener('hashchange', handler);
+        return () => window.removeEventListener('hashchange', handler);
+      }, []);
+      const routes = React.Children.toArray(children);
+      const match = routes.find(r => r.props?.path === path) || routes.find(r => r.props?.path === '/' || r.props?.index);
+      return match?.props?.element || null;
+    };
+    const Route = ({ path, element }) => null;
+    const Outlet = () => null;
+
+    ${componentScripts}
+
+    try {
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(React.createElement(typeof App !== 'undefined' ? App : 'div', null, typeof App === 'undefined' ? 'Preview' : null));
+    } catch(e) {
+      console.error('Preview render error:', e);
+      document.getElementById('root').innerHTML = '<div style="padding:40px;text-align:center;font-family:sans-serif;color:#666"><h3 style="margin-bottom:12px">⚙️ Preview Loading...</h3><p style="font-size:14px">' + e.message + '</p></div>';
+    }
+  </script>
+</body>
+</html>`;
   };
 
   const parseInlineMarkdown = (text: string): React.ReactNode[] => {
