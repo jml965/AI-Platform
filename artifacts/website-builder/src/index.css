@@ -112,5 +112,7 @@
 }
 
 .file-row .file-dots {
-  opacity: 1;
+  opacity: 1 !important;
+  display: flex !important;
+  visibility: visible !important;
 }
