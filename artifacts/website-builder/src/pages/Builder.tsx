@@ -13,6 +13,7 @@ import {
   Download, FolderMinus, ChevronsDownUp
 } from "lucide-react";
 import { format } from "date-fns";
+import JSZip from "jszip";
 import { useI18n } from "@/lib/i18n";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { cn } from "@/lib/utils";
@@ -1235,6 +1236,47 @@ export default function Builder() {
     }
   }, [id, queryClient, t]);
 
+  const [downloading, setDownloading] = useState(false);
+  const handleDownloadAll = useCallback(async () => {
+    if (!files.length || downloading) return;
+    setDownloading(true);
+    try {
+      const zip = new JSZip();
+      for (const f of files) {
+        const fPath = (f as any).filePath || (f as any).file_path || "";
+        const content = (f as any).content || "";
+        if (!fPath) continue;
+        const dataUriMatch = content.match(/^data:[^;]+;base64,(.+)$/s);
+        if (dataUriMatch) {
+          try {
+            const binaryStr = atob(dataUriMatch[1]);
+            const bytes = new Uint8Array(binaryStr.length);
+            for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+            zip.file(fPath, bytes);
+          } catch {
+            zip.file(fPath, content);
+          }
+        } else {
+          zip.file(fPath, content);
+        }
+      }
+      const blob = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const projectName = project?.name || "project";
+      a.download = `${projectName.replace(/[^a-zA-Z0-9_-]/g, "_")}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Download failed:", err);
+    } finally {
+      setDownloading(false);
+    }
+  }, [files, downloading, project]);
+
   const handleNavBack = () => {
     try { iframeRef.current?.contentWindow?.history.back(); } catch {}
   };
@@ -1981,6 +2023,14 @@ export default function Builder() {
               <div className="h-8 flex items-center justify-between px-3 border-b border-[#1c2333] bg-[#161b22]">
                 <span className="text-[11px] font-semibold text-[#8b949e] uppercase tracking-wider">{t.explorer}</span>
                 <div className="flex items-center gap-1">
+                  <button
+                    onClick={handleDownloadAll}
+                    disabled={downloading || !files.length}
+                    className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-[#8b949e] hover:text-[#58a6ff] hover:bg-[#1c2333] rounded transition-colors disabled:opacity-50"
+                    title={t.download_all_files}
+                  >
+                    {downloading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                  </button>
                   <input
                     ref={fileInputRef}
                     type="file"
