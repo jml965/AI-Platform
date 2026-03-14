@@ -10,6 +10,8 @@ interface BuildProgressProps {
   failed?: boolean;
   allComplete?: boolean;
   className?: string;
+  totalCostUsd?: number;
+  totalTokensUsed?: number;
 }
 
 const PHASES: { key: BuildPhase; icon: React.ElementType }[] = [
@@ -25,8 +27,8 @@ function getPhaseIndex(phase: BuildPhase | null): number {
   return PHASES.findIndex(p => p.key === phase);
 }
 
-export default function BuildProgress({ currentPhase, failed, allComplete, className }: BuildProgressProps) {
-  const { t } = useI18n();
+export default function BuildProgress({ currentPhase, failed, allComplete, className, totalCostUsd, totalTokensUsed }: BuildProgressProps) {
+  const { t, lang } = useI18n();
   const currentIndex = getPhaseIndex(currentPhase);
 
   if (currentPhase === null) return null;
@@ -81,6 +83,15 @@ export default function BuildProgress({ currentPhase, failed, allComplete, class
           </React.Fragment>
         );
       })}
+
+      {(allComplete || failed) && totalCostUsd != null && totalCostUsd > 0 && (
+        <div className="ms-auto flex items-center gap-2 text-[10px] font-mono text-[#8b949e]">
+          <span>${totalCostUsd.toFixed(4)}</span>
+          {totalTokensUsed != null && totalTokensUsed > 0 && (
+            <span>{totalTokensUsed.toLocaleString()} {lang === "ar" ? "توكن" : "tokens"}</span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

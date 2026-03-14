@@ -36,6 +36,7 @@ interface SandboxProcess {
   lastActivity: Date;
   outputBuffer: string[];
   listeners: Set<(data: string) => void>;
+  lastCommand?: string;
 }
 
 const activeSandboxes = new Map<string, SandboxProcess>();
@@ -305,6 +306,7 @@ export async function startServer(
   }
 
   sandbox.lastActivity = new Date();
+  sandbox.lastCommand = command;
 
   const env = buildSafeEnv(sandbox);
 
@@ -488,6 +490,20 @@ export function getProjectSandbox(projectId: string): string | null {
     }
   }
   return null;
+}
+
+export function getProjectSandboxAny(projectId: string): string | null {
+  for (const [id, sandbox] of activeSandboxes) {
+    if (sandbox.projectId === projectId) {
+      return id;
+    }
+  }
+  return null;
+}
+
+export function getSandboxLastCommand(sandboxId: string): string | null {
+  const sandbox = activeSandboxes.get(sandboxId);
+  return sandbox?.lastCommand ?? null;
 }
 
 export function listUserSandboxes(projectIds: string[]): Array<{

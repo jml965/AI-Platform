@@ -86,6 +86,8 @@ export default function Builder() {
   });
   const [lastCompletedBuildId, setLastCompletedBuildId] = useState<string | null>(null);
   const [retainedLogs, setRetainedLogs] = useState<ExecutionLog[]>([]);
+  const [lastBuildCost, setLastBuildCost] = useState<number | undefined>();
+  const [lastBuildTokens, setLastBuildTokens] = useState<number | undefined>();
   const [selectedFileIndex, setSelectedFileIndex] = useState(0);
   const [selectedDevice, setSelectedDevice] = useState("responsive");
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -265,25 +267,47 @@ export default function Builder() {
   }, [logs]);
 
   useEffect(() => {
-    if (activeBuildId && project?.status === "ready" && buildStatus?.status !== "in_progress" && buildStatus?.status !== "pending") {
+    if (activeBuildId && buildStatus && (buildStatus.status === "completed" || buildStatus.status === "failed" || buildStatus.status === "cancelled")) {
       if (logs.length > 0) setRetainedLogs([...logs]);
       setLastCompletedBuildId(activeBuildId);
-      const finalStatus = buildStatus?.status || "completed";
+      const finalStatus = buildStatus.status;
+      const cost = Number((buildStatus as any)?.totalCostUsd) || 0;
+      const tokens = Number((buildStatus as any)?.totalTokensUsed) || 0;
+      setLastBuildCost(cost || undefined);
+      setLastBuildTokens(tokens || undefined);
+      const costStr = cost ? `$${cost.toFixed(4)}` : "";
+      const tokensStr = tokens ? tokens.toLocaleString() : "";
+
+      let content: string;
+      if (finalStatus === "failed") {
+        content = lang === "ar" ? "❌ فشل البناء — راجع سجل التنفيذ لمعرفة التفاصيل" : "❌ Build failed — check the execution log for details";
+      } else if (finalStatus === "cancelled") {
+        content = lang === "ar" ? "🛑 تم إيقاف البناء" : "🛑 Build cancelled";
+      } else {
+        const costInfo = costStr
+          ? (lang === "ar"
+            ? `\n📊 التكلفة: ${costStr} | التوكنز: ${tokensStr}`
+            : `\n📊 Cost: ${costStr} | Tokens: ${tokensStr}`)
+          : "";
+        content = (lang === "ar"
+          ? "✅ اكتمل البناء — المشروع جاهز في المعاينة!"
+          : "✅ Build complete — project is ready in preview!") + costInfo;
+      }
+
       setMessages(prev => [...prev, {
         id: crypto.randomUUID(),
         role: "assistant",
-        content: finalStatus === "failed"
-          ? (lang === "ar" ? "❌ فشل البناء — راجع سجل التنفيذ لمعرفة التفاصيل" : "❌ Build failed — check the execution log for details")
-          : finalStatus === "cancelled"
-          ? (lang === "ar" ? "🛑 تم إيقاف البناء" : "🛑 Build cancelled")
-          : (lang === "ar" ? "✅ اكتمل البناء — المشروع جاهز في المعاينة!" : "✅ Build complete — project is ready in preview!"),
+        content,
         timestamp: new Date(),
       }]);
+      queryClient.invalidateQueries({ queryKey: ["listProjectFiles", id] });
+      queryClient.invalidateQueries({ queryKey: ["getProject", id] });
+      prevLogCountRef.current = 0;
       setActiveBuildId(null);
       if (id) localStorage.removeItem(`latestBuild_${id}`);
       setPreviewKey(k => k + 1);
     }
-  }, [project?.status, activeBuildId, buildStatus?.status, id, logs, lang]);
+  }, [activeBuildId, buildStatus, id, logs, lang, queryClient]);
 
   const buildIdSetTime = useRef<number>(0);
   useEffect(() => {
@@ -310,6 +334,12 @@ export default function Builder() {
       if (isStale || noStatusYet) {
         console.log("[PREVIEW] Clearing stale build ID:", activeBuildId, "project:", project.status, "build:", buildStatus?.status, "elapsed:", elapsed);
         if (logs.length > 0) setRetainedLogs([...logs]);
+        if (buildStatus) {
+          const c = Number((buildStatus as any)?.totalCostUsd) || 0;
+          const tk = Number((buildStatus as any)?.totalTokensUsed) || 0;
+          if (c) setLastBuildCost(c);
+          if (tk) setLastBuildTokens(tk);
+        }
         setLastCompletedBuildId(activeBuildId);
         setActiveBuildId(null);
         if (id) localStorage.removeItem(`latestBuild_${id}`);
@@ -326,47 +356,6 @@ export default function Builder() {
     return () => clearTimeout(timeout);
   }, [activeBuildId, buildStatus?.status, project?.status, id, queryClient]);
 
-  useEffect(() => {
-    if (buildStatus?.status === "completed" && activeBuildId) {
-      const alreadyReplied = messages.some(m => m.buildId === activeBuildId && m.content?.includes(t.preview_ready));
-      if (!alreadyReplied) {
-        prevLogCountRef.current = 0;
-        setMessages(prev => [...prev, {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: `✅ ${t.preview_ready}`,
-          buildId: activeBuildId,
-          timestamp: new Date(),
-        }]);
-        queryClient.invalidateQueries({ queryKey: ["listProjectFiles", id] });
-        queryClient.invalidateQueries({ queryKey: ["getProject", id] });
-        setTimeout(() => {
-          setPreviewKey(k => k + 1);
-          setActiveBuildId(null);
-          if (id) localStorage.removeItem(`latestBuild_${id}`);
-        }, 2000);
-      }
-    } else if (buildStatus?.status === "failed" && activeBuildId) {
-      const alreadyReplied = messages.some(m => m.buildId === activeBuildId && m.content?.includes(t.status_failed));
-      if (!alreadyReplied) {
-        prevLogCountRef.current = 0;
-        setMessages(prev => [...prev, {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: `⚠️ ${t.status_failed}`,
-          buildId: activeBuildId,
-          timestamp: new Date(),
-        }]);
-        queryClient.invalidateQueries({ queryKey: ["listProjectFiles", id] });
-        queryClient.invalidateQueries({ queryKey: ["getProject", id] });
-        setTimeout(() => {
-          setPreviewKey(k => k + 1);
-          setActiveBuildId(null);
-          if (id) localStorage.removeItem(`latestBuild_${id}`);
-        }, 2000);
-      }
-    }
-  }, [buildStatus?.status, activeBuildId]);
 
 
   const sendChatMessage = useCallback(async (text: string, chatHistory: ChatMessage[]) => {
@@ -441,6 +430,8 @@ export default function Builder() {
           console.log("[BUILD] Build started by server:", chatRes.buildId);
           setRetainedLogs([]);
           setLastCompletedBuildId(null);
+          setLastBuildCost(undefined);
+          setLastBuildTokens(undefined);
           setActiveBuildId(chatRes.buildId);
           localStorage.setItem(`latestBuild_${id}`, chatRes.buildId);
           setPlanApproved(false);
@@ -1606,7 +1597,7 @@ export default function Builder() {
             );
           })()}
 
-          {logs.length > 0 && <ExecutionLogTimeline logs={logs} isBuilding={isBuilding} />}
+          {logs.length > 0 && <ExecutionLogTimeline logs={logs} isBuilding={isBuilding} buildCost={isBuilding ? (buildStatus as any)?.totalCostUsd : lastBuildCost} buildTokens={isBuilding ? (buildStatus as any)?.totalTokensUsed : lastBuildTokens} />}
 
           <div ref={chatEndRef} />
         </div>
@@ -1695,7 +1686,7 @@ export default function Builder() {
       )}
 
       <div className="flex-1 flex flex-col border-e border-[#1c2333] min-w-0">
-        <BuildProgress currentPhase={currentPhase} failed={phaseFailed} allComplete={buildStatus?.status === "completed"} />
+        <BuildProgress currentPhase={currentPhase} failed={phaseFailed} allComplete={buildStatus?.status === "completed"} totalCostUsd={isBuilding ? (buildStatus as any)?.totalCostUsd : lastBuildCost} totalTokensUsed={isBuilding ? (buildStatus as any)?.totalTokensUsed : lastBuildTokens} />
 
         {(hasPreview || previewUrl) && (
           <div className="h-8 flex items-center gap-1 px-2 border-b border-[#1c2333] bg-[#161b22] flex-shrink-0">
@@ -2418,7 +2409,7 @@ function InlineFileTree({ files, selectedIndex, onFileSelect }: { files: Project
   );
 }
 
-function ExecutionLogTimeline({ logs, isBuilding }: { logs: ExecutionLog[]; isBuilding: boolean }) {
+function ExecutionLogTimeline({ logs, isBuilding, buildCost, buildTokens }: { logs: ExecutionLog[]; isBuilding: boolean; buildCost?: number; buildTokens?: number }) {
   const { t, lang } = useI18n();
   const logEndRef = React.useRef<HTMLDivElement>(null);
   const agentLabels: Record<string, { en: string; ar: string }> = {
@@ -2503,7 +2494,7 @@ function ExecutionLogTimeline({ logs, isBuilding }: { logs: ExecutionLog[]; isBu
           );
         })}
 
-        {isBuilding && (
+        {isBuilding ? (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -2516,6 +2507,39 @@ function ExecutionLogTimeline({ logs, isBuilding }: { logs: ExecutionLog[]; isBu
             <span className="text-[#58a6ff] animate-pulse">
               {lang === "ar" ? "جاري التنفيذ..." : "executing..."}
             </span>
+          </motion.div>
+        ) : logs.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex items-center gap-2 py-2 border-t border-[#1c2333] mt-1"
+          >
+            {(() => {
+              const hasFailed = logs.some(l => l.status === "failed" || l.status === "error");
+              const completedCount = logs.filter(l => l.status === "completed" || l.status === "success").length;
+              return (
+                <>
+                  <span className="text-[10px] text-[#484f58] flex-shrink-0 tabular-nums">
+                    {logs[logs.length - 1]?.createdAt ? new Date(logs[logs.length - 1].createdAt!).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" }) : ""}
+                  </span>
+                  {hasFailed ? (
+                    <svg className="w-3.5 h-3.5 text-red-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                  ) : (
+                    <svg className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                  )}
+                  <span className={cn("text-[11px] font-medium", hasFailed ? "text-red-400" : "text-emerald-400")}>
+                    {hasFailed
+                      ? (lang === "ar" ? "انتهى مع أخطاء" : "Finished with errors")
+                      : (lang === "ar" ? `اكتمل (${completedCount} خطوة)` : `Completed (${completedCount} steps)`)}
+                  </span>
+                  {buildCost != null && buildCost > 0 && (
+                    <span className="text-[10px] text-[#484f58] ms-auto font-mono">
+                      ${buildCost.toFixed(4)}{buildTokens ? ` · ${buildTokens.toLocaleString()} ${lang === "ar" ? "توكن" : "tok"}` : ""}
+                    </span>
+                  )}
+                </>
+              );
+            })()}
           </motion.div>
         )}
         <div ref={logEndRef} />

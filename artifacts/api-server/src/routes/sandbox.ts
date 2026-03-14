@@ -9,6 +9,8 @@ import {
   getSandboxStatus,
   getSandboxProjectId,
   getProjectSandbox,
+  getProjectSandboxAny,
+  getSandboxLastCommand,
   listUserSandboxes,
   subscribeSandboxOutput,
 } from "../lib/sandbox/sandbox-manager";
@@ -271,7 +273,25 @@ router.use("/sandbox/proxy", async (req: Request, res: Response) => {
       return;
     }
 
-    const sandboxId = getProjectSandbox(projectId);
+    let sandboxId = getProjectSandbox(projectId);
+
+    if (!sandboxId) {
+      const stoppedId = getProjectSandboxAny(projectId);
+      if (stoppedId) {
+        const lastCmd = getSandboxLastCommand(stoppedId);
+        if (lastCmd) {
+          try {
+            console.log(`[Sandbox Proxy] Auto-restarting stopped sandbox ${stoppedId} for project ${projectId} with command: ${lastCmd}`);
+            await restartSandbox(stoppedId, lastCmd);
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            sandboxId = getProjectSandbox(projectId);
+          } catch (err) {
+            console.error(`[Sandbox Proxy] Auto-restart failed for ${stoppedId}:`, err);
+          }
+        }
+      }
+    }
+
     if (!sandboxId) {
       res.status(404).json({ error: { code: "NOT_FOUND", message: "No active sandbox" } });
       return;
