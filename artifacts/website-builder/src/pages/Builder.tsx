@@ -2531,7 +2531,7 @@ function FileLibrary({ files, projectId, onFileSelect }: { files: ProjectFile[];
       return (
         <div key={node.path}>
           <div
-            className="w-full flex items-center gap-1.5 px-2 py-1 text-[12px] text-[#8b949e] hover:text-[#e1e4e8] hover:bg-[#1c2333] rounded transition-colors group/row cursor-pointer"
+            className="file-row w-full flex items-center gap-1.5 px-2 py-1 text-[12px] text-[#8b949e] hover:text-[#e1e4e8] hover:bg-[#1c2333] rounded transition-colors cursor-pointer"
             style={{ paddingInlineStart: `${depth * 12 + 8}px` }}
             onClick={() => toggleFolder(node.path)}
             onContextMenu={e => handleContextMenu(e, node)}
@@ -2541,7 +2541,7 @@ function FileLibrary({ files, projectId, onFileSelect }: { files: ProjectFile[];
             <span className="truncate flex-1">{node.name}</span>
             <button
               onClick={e => handleDotsClick(e, node)}
-              className="opacity-0 group-hover/row:opacity-100 p-0.5 rounded hover:bg-[#30363d] transition-all flex-shrink-0"
+              className="file-dots p-0.5 rounded hover:bg-[#30363d] transition-all flex-shrink-0"
             >
               <MoreVertical className="w-3.5 h-3.5 text-[#8b949e]" />
             </button>
@@ -2554,7 +2554,7 @@ function FileLibrary({ files, projectId, onFileSelect }: { files: ProjectFile[];
     return (
       <div
         key={node.path}
-        className="w-full flex items-center gap-1.5 px-2 py-1 text-[12px] text-[#c9d1d9] hover:text-[#e1e4e8] hover:bg-[#1c2333] rounded transition-colors group/row cursor-pointer"
+        className="file-row w-full flex items-center gap-1.5 px-2 py-1 text-[12px] text-[#c9d1d9] hover:text-[#e1e4e8] hover:bg-[#1c2333] rounded transition-colors cursor-pointer"
         style={{ paddingInlineStart: `${depth * 12 + 20}px` }}
         onClick={() => node.fileIndex !== undefined && onFileSelect(node.fileIndex)}
         onContextMenu={e => handleContextMenu(e, node)}
@@ -2563,7 +2563,7 @@ function FileLibrary({ files, projectId, onFileSelect }: { files: ProjectFile[];
         <span className="truncate flex-1">{node.name}</span>
         <button
           onClick={e => handleDotsClick(e, node)}
-          className="opacity-0 group-hover/row:opacity-100 p-0.5 rounded hover:bg-[#30363d] transition-all flex-shrink-0"
+          className="file-dots p-0.5 rounded hover:bg-[#30363d] transition-all flex-shrink-0"
         >
           <MoreVertical className="w-3.5 h-3.5 text-[#8b949e]" />
         </button>
@@ -2667,7 +2667,7 @@ function InlineFileTree({ files, projectId, selectedIndex, onFileSelect }: { fil
       return (
         <div key={node.path}>
           <div
-            className="w-full flex items-center gap-1.5 px-2 py-1 text-[12px] text-[#8b949e] hover:text-[#e1e4e8] hover:bg-[#1c2333] rounded transition-colors group/row cursor-pointer"
+            className="file-row w-full flex items-center gap-1.5 px-2 py-1 text-[12px] text-[#8b949e] hover:text-[#e1e4e8] hover:bg-[#1c2333] rounded transition-colors cursor-pointer"
             style={{ paddingInlineStart: `${depth * 12 + 8}px` }}
             onClick={() => toggleFolder(node.path)}
             onContextMenu={e => handleContextMenu(e, node)}
@@ -2677,7 +2677,7 @@ function InlineFileTree({ files, projectId, selectedIndex, onFileSelect }: { fil
             <span className="truncate flex-1">{node.name}</span>
             <button
               onClick={e => handleDotsClick(e, node)}
-              className="opacity-0 group-hover/row:opacity-100 p-0.5 rounded hover:bg-[#30363d] transition-all flex-shrink-0"
+              className="file-dots p-0.5 rounded hover:bg-[#30363d] transition-all flex-shrink-0"
             >
               <MoreVertical className="w-3.5 h-3.5 text-[#8b949e]" />
             </button>
@@ -2692,7 +2692,7 @@ function InlineFileTree({ files, projectId, selectedIndex, onFileSelect }: { fil
       <div
         key={node.path}
         className={cn(
-          "w-full flex items-center gap-1.5 px-2 py-1 text-[12px] rounded transition-colors group/row cursor-pointer",
+          "file-row w-full flex items-center gap-1.5 px-2 py-1 text-[12px] rounded transition-colors cursor-pointer",
           isSelected
             ? "bg-[#1f6feb]/15 text-[#e1e4e8]"
             : "text-[#c9d1d9] hover:text-[#e1e4e8] hover:bg-[#1c2333]"
@@ -2705,7 +2705,7 @@ function InlineFileTree({ files, projectId, selectedIndex, onFileSelect }: { fil
         <span className="truncate flex-1">{node.name}</span>
         <button
           onClick={e => handleDotsClick(e, node)}
-          className="opacity-0 group-hover/row:opacity-100 p-0.5 rounded hover:bg-[#30363d] transition-all flex-shrink-0"
+          className="file-dots p-0.5 rounded hover:bg-[#30363d] transition-all flex-shrink-0"
         >
           <MoreVertical className="w-3.5 h-3.5 text-[#8b949e]" />
         </button>
