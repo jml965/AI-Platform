@@ -13,7 +13,6 @@ import {
   Download, FolderMinus, ChevronsDownUp
 } from "lucide-react";
 import { format } from "date-fns";
-import JSZip from "jszip";
 import { useI18n } from "@/lib/i18n";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { cn } from "@/lib/utils";
@@ -1238,44 +1237,35 @@ export default function Builder() {
 
   const [downloading, setDownloading] = useState(false);
   const handleDownloadAll = useCallback(async () => {
-    if (!files.length || downloading) return;
+    if (!id || !files.length || downloading) return;
     setDownloading(true);
     try {
-      const zip = new JSZip();
-      for (const f of files) {
-        const fPath = (f as any).filePath || (f as any).file_path || "";
-        const content = (f as any).content || "";
-        if (!fPath) continue;
-        const dataUriMatch = content.match(/^data:[^;]+;base64,(.+)$/s);
-        if (dataUriMatch) {
-          try {
-            const binaryStr = atob(dataUriMatch[1]);
-            const bytes = new Uint8Array(binaryStr.length);
-            for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
-            zip.file(fPath, bytes);
-          } catch {
-            zip.file(fPath, content);
-          }
-        } else {
-          zip.file(fPath, content);
-        }
-      }
-      const blob = await zip.generateAsync({ type: "blob" });
+      const baseUrl = import.meta.env.VITE_API_URL || "";
+      const res = await fetch(`${baseUrl}/api/projects/${id}/download`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Download failed");
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition") || "";
+      const filenameMatch = disposition.match(/filename="?([^"]+)"?/);
+      const filename = filenameMatch ? filenameMatch[1] : "project.zip";
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      const projectName = project?.name || "project";
-      a.download = `${projectName.replace(/[^a-zA-Z0-9_-]/g, "_")}.zip`;
+      a.download = filename;
+      a.style.display = "none";
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 100);
     } catch (err) {
       console.error("Download failed:", err);
     } finally {
       setDownloading(false);
     }
-  }, [files, downloading, project]);
+  }, [id, files, downloading]);
 
   const handleNavBack = () => {
     try { iframeRef.current?.contentWindow?.history.back(); } catch {}

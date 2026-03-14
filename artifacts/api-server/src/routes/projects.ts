@@ -9,6 +9,7 @@ import {
 import { requireProjectAccess, getUserId, getUserTeamRole, hasPermission } from "../middlewares/permissions";
 import multer from "multer";
 import path from "path";
+import JSZip from "jszip";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -463,6 +464,49 @@ router.post("/projects/:projectId/upload", requireProjectAccess("project.edit"),
     res.json({ success: true, files: savedFiles });
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Upload failed";
+    res.status(500).json({ error: { code: "INTERNAL", message: msg } });
+  }
+});
+
+router.get("/projects/:projectId/download", requireProjectAccess("project.read"), async (req, res) => {
+  try {
+    const projectId = req.params.projectId;
+    const [proj] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId)).limit(1);
+    const files = await db
+      .select()
+      .from(projectFilesTable)
+      .where(eq(projectFilesTable.projectId, projectId))
+      .orderBy(projectFilesTable.filePath);
+
+    if (files.length === 0) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "No files found" } });
+      return;
+    }
+
+    const zip = new JSZip();
+    for (const f of files) {
+      const content = f.content || "";
+      const dataUriMatch = content.match(/^data:[^;]+;base64,(.+)$/s);
+      if (dataUriMatch) {
+        try {
+          const buf = Buffer.from(dataUriMatch[1], "base64");
+          zip.file(f.filePath, buf);
+        } catch {
+          zip.file(f.filePath, content);
+        }
+      } else {
+        zip.file(f.filePath, content);
+      }
+    }
+
+    const zipBuffer = await zip.generateAsync({ type: "nodebuffer" });
+    const projectName = (proj?.name || "project").replace(/[^a-zA-Z0-9_-]/g, "_");
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="${projectName}.zip"`);
+    res.setHeader("Content-Length", zipBuffer.length.toString());
+    res.send(zipBuffer);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "Download failed";
     res.status(500).json({ error: { code: "INTERNAL", message: msg } });
   }
 });
