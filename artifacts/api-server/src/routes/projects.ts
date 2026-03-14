@@ -247,6 +247,118 @@ router.patch("/projects/:projectId/files/:fileId", requireProjectAccess("project
   }
 });
 
+router.post("/projects/:projectId/files", requireProjectAccess("project.edit"), async (req, res) => {
+  try {
+    const { filePath, content, fileType } = req.body;
+    if (!filePath || typeof filePath !== "string") {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "filePath is required" } });
+      return;
+    }
+    const existing = await db
+      .select()
+      .from(projectFilesTable)
+      .where(
+        and(
+          eq(projectFilesTable.projectId, req.params.projectId),
+          eq(projectFilesTable.filePath, filePath)
+        )
+      )
+      .limit(1);
+    if (existing.length > 0) {
+      res.status(409).json({ error: { code: "CONFLICT", message: "File already exists" } });
+      return;
+    }
+    const ext = filePath.split(".").pop()?.toLowerCase() || "";
+    const typeMap: Record<string, string> = {
+      ts: "typescript", tsx: "typescriptreact", js: "javascript", jsx: "javascriptreact",
+      css: "css", html: "html", json: "json", md: "markdown", svg: "svg", txt: "text",
+    };
+    const [created] = await db
+      .insert(projectFilesTable)
+      .values({
+        projectId: req.params.projectId,
+        filePath,
+        content: content ?? "",
+        fileType: fileType ?? typeMap[ext] ?? "text",
+      })
+      .returning();
+    res.status(201).json(mapFile(created));
+  } catch (error) {
+    res.status(500).json({ error: { code: "INTERNAL", message: "Failed to create file" } });
+  }
+});
+
+router.delete("/projects/:projectId/files/:fileId", requireProjectAccess("project.edit"), async (req, res) => {
+  try {
+    const [deleted] = await db
+      .delete(projectFilesTable)
+      .where(
+        and(
+          eq(projectFilesTable.id, req.params.fileId),
+          eq(projectFilesTable.projectId, req.params.projectId)
+        )
+      )
+      .returning();
+    if (!deleted) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "File not found" } });
+      return;
+    }
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: { code: "INTERNAL", message: "Failed to delete file" } });
+  }
+});
+
+router.patch("/projects/:projectId/files/:fileId/rename", requireProjectAccess("project.edit"), async (req, res) => {
+  try {
+    const { newPath } = req.body;
+    if (!newPath || typeof newPath !== "string") {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "newPath is required" } });
+      return;
+    }
+    const existing = await db
+      .select()
+      .from(projectFilesTable)
+      .where(
+        and(
+          eq(projectFilesTable.projectId, req.params.projectId),
+          eq(projectFilesTable.filePath, newPath)
+        )
+      )
+      .limit(1);
+    if (existing.length > 0) {
+      res.status(409).json({ error: { code: "CONFLICT", message: "A file with that path already exists" } });
+      return;
+    }
+    const ext = newPath.split(".").pop()?.toLowerCase() || "";
+    const typeMap: Record<string, string> = {
+      ts: "typescript", tsx: "typescriptreact", js: "javascript", jsx: "javascriptreact",
+      css: "css", html: "html", json: "json", md: "markdown", svg: "svg", txt: "text",
+    };
+    const [updated] = await db
+      .update(projectFilesTable)
+      .set({
+        filePath: newPath,
+        fileType: typeMap[ext] ?? "text",
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(projectFilesTable.id, req.params.fileId),
+          eq(projectFilesTable.projectId, req.params.projectId)
+        )
+      )
+      .returning();
+    if (!updated) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "File not found" } });
+      return;
+    }
+    res.json(mapFile(updated));
+  } catch (error) {
+    res.status(500).json({ error: { code: "INTERNAL", message: "Failed to rename file" } });
+  }
+});
+
 function mapProject(p: typeof projectsTable.$inferSelect) {
   return {
     id: p.id,

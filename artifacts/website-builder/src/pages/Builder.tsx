@@ -9,7 +9,8 @@ import {
   RotateCw, Monitor, Smartphone, Tablet, Laptop, ChevronLeft,
   Rocket, ExternalLink, Square, RefreshCw, Globe, Archive, BarChart3,
   Smartphone as SmartphoneIcon, Users, Lock, Unlock, Paintbrush, Puzzle, Languages,
-  Upload
+  Upload, MoreVertical, Pencil, Trash2, FolderPlus, FilePlus, Copy,
+  Download, FolderMinus, ChevronsDownUp
 } from "lucide-react";
 import { format } from "date-fns";
 import { useI18n } from "@/lib/i18n";
@@ -2002,6 +2003,7 @@ export default function Builder() {
                 <div className="max-h-[200px] overflow-y-auto border-b border-[#1c2333]">
                   <InlineFileTree
                     files={files}
+                    projectId={id || ""}
                     selectedIndex={selectedFileIndex}
                     onFileSelect={setSelectedFileIndex}
                   />
@@ -2089,7 +2091,7 @@ export default function Builder() {
               </div>
             </div>
           ) : rightTab === "library" ? (
-            <FileLibrary files={files} onFileSelect={(idx) => { setSelectedFileIndex(idx); setRightTab("code"); }} />
+            <FileLibrary files={files} projectId={id || ""} onFileSelect={(idx) => { setSelectedFileIndex(idx); setRightTab("code"); }} />
           ) : rightTab === "plugins" ? (
             id ? <PluginStore projectId={id} /> : null
           ) : rightTab === "snapshots" ? (
@@ -2177,6 +2179,7 @@ interface TreeNode {
   isFolder: boolean;
   children: TreeNode[];
   fileIndex?: number;
+  fileId?: string;
 }
 
 function buildFileTree(files: ProjectFile[]): TreeNode[] {
@@ -2199,6 +2202,7 @@ function buildFileTree(files: ProjectFile[]): TreeNode[] {
           isFolder: !isLast,
           children: [],
           fileIndex: isLast ? index : undefined,
+          fileId: isLast ? file.id : undefined,
         };
         current.push(node);
         current = node.children;
@@ -2218,11 +2222,249 @@ function buildFileTree(files: ProjectFile[]): TreeNode[] {
   return root;
 }
 
-function FileLibrary({ files, onFileSelect }: { files: ProjectFile[]; onFileSelect: (idx: number) => void }) {
+function FileContextMenu({ node, projectId, files, position, onClose, onRefresh, expandedFolders, setExpandedFolders }: {
+  node: TreeNode;
+  projectId: string;
+  files: ProjectFile[];
+  position: { x: number; y: number };
+  onClose: () => void;
+  onRefresh: () => void;
+  expandedFolders: Set<string>;
+  setExpandedFolders: React.Dispatch<React.SetStateAction<Set<string>>>;
+}) {
+  const { t } = useI18n();
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [newName, setNewName] = useState(node.name);
+  const [adding, setAdding] = useState<"file" | "folder" | null>(null);
+  const [addName, setAddName] = useState("");
+  const baseUrl = import.meta.env.VITE_API_URL || "";
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!menuRef.current) return;
+    const rect = menuRef.current.getBoundingClientRect();
+    if (rect.bottom > window.innerHeight) {
+      menuRef.current.style.top = `${position.y - rect.height}px`;
+    }
+    if (rect.right > window.innerWidth) {
+      menuRef.current.style.left = `${position.x - rect.width}px`;
+    }
+  }, [position]);
+
+  const handleRename = async () => {
+    if (!newName.trim() || newName === node.name) { setRenaming(false); return; }
+    const parentPath = node.path.includes("/") ? node.path.substring(0, node.path.lastIndexOf("/") + 1) : "";
+    if (node.isFolder) {
+      const oldPrefix = node.path + "/";
+      const newPrefix = parentPath + newName.trim() + "/";
+      const folderFiles = files.filter(f => f.filePath.startsWith(oldPrefix) || f.filePath === node.path);
+      for (const f of folderFiles) {
+        const np = f.filePath.replace(oldPrefix, newPrefix);
+        await fetch(`${baseUrl}/api/projects/${projectId}/files/${f.id}/rename`, {
+          method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include",
+          body: JSON.stringify({ newPath: np }),
+        });
+      }
+    } else if (node.fileId) {
+      const np = parentPath + newName.trim();
+      await fetch(`${baseUrl}/api/projects/${projectId}/files/${node.fileId}/rename`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include",
+        body: JSON.stringify({ newPath: np }),
+      });
+    }
+    onRefresh();
+    onClose();
+  };
+
+  const handleDelete = async () => {
+    if (!confirm(t.file_confirm_delete)) return;
+    if (node.isFolder) {
+      const prefix = node.path + "/";
+      const folderFiles = files.filter(f => f.filePath.startsWith(prefix));
+      for (const f of folderFiles) {
+        await fetch(`${baseUrl}/api/projects/${projectId}/files/${f.id}`, {
+          method: "DELETE", credentials: "include",
+        });
+      }
+    } else if (node.fileId) {
+      await fetch(`${baseUrl}/api/projects/${projectId}/files/${node.fileId}`, {
+        method: "DELETE", credentials: "include",
+      });
+    }
+    onRefresh();
+    onClose();
+  };
+
+  const handleAddFile = async () => {
+    if (!addName.trim()) { setAdding(null); return; }
+    const basePath = node.isFolder ? node.path : (node.path.includes("/") ? node.path.substring(0, node.path.lastIndexOf("/")) : "");
+    const filePath = basePath ? `${basePath}/${addName.trim()}` : addName.trim();
+    await fetch(`${baseUrl}/api/projects/${projectId}/files`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+      body: JSON.stringify({ filePath, content: "" }),
+    });
+    onRefresh();
+    onClose();
+  };
+
+  const handleAddFolder = async () => {
+    if (!addName.trim()) { setAdding(null); return; }
+    const basePath = node.isFolder ? node.path : (node.path.includes("/") ? node.path.substring(0, node.path.lastIndexOf("/")) : "");
+    const filePath = basePath ? `${basePath}/${addName.trim()}/.gitkeep` : `${addName.trim()}/.gitkeep`;
+    await fetch(`${baseUrl}/api/projects/${projectId}/files`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+      body: JSON.stringify({ filePath, content: "" }),
+    });
+    onRefresh();
+    onClose();
+  };
+
+  const handleCopyPath = () => {
+    navigator.clipboard.writeText(node.path);
+    onClose();
+  };
+
+  const handleDownload = () => {
+    if (node.isFolder) {
+      const prefix = node.path + "/";
+      const folderFiles = files.filter(f => f.filePath.startsWith(prefix));
+      folderFiles.forEach(f => {
+        const blob = new Blob([f.content || ""], { type: "text/plain" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = f.filePath.split("/").pop() || "file";
+        a.click();
+        URL.revokeObjectURL(a.href);
+      });
+    } else {
+      const file = node.fileIndex !== undefined ? files[node.fileIndex] : null;
+      if (file) {
+        const blob = new Blob([file.content || ""], { type: "text/plain" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = node.name;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      }
+    }
+    onClose();
+  };
+
+  const handleCollapseChildren = () => {
+    if (!node.isFolder) return;
+    setExpandedFolders(prev => {
+      const next = new Set(prev);
+      const collapseRecursive = (nodes: TreeNode[]) => {
+        nodes.forEach(n => {
+          if (n.isFolder && n.path.startsWith(node.path + "/")) {
+            next.delete(n.path);
+            collapseRecursive(n.children);
+          }
+        });
+      };
+      const findNode = (nodes: TreeNode[]): TreeNode | null => {
+        for (const n of nodes) {
+          if (n.path === node.path) return n;
+          const found = findNode(n.children);
+          if (found) return found;
+        }
+        return null;
+      };
+      const target = findNode(buildFileTree(files));
+      if (target) collapseRecursive(target.children);
+      return next;
+    });
+    onClose();
+  };
+
+  if (renaming) {
+    return (
+      <div ref={menuRef} className="fixed z-[9999] bg-[#1c2333] border border-[#30363d] rounded-lg shadow-2xl p-2 min-w-[200px]" style={{ top: position.y, left: position.x }}>
+        <input
+          autoFocus
+          value={newName}
+          onChange={e => setNewName(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") handleRename(); if (e.key === "Escape") onClose(); }}
+          placeholder={t.file_enter_new_name}
+          className="w-full bg-[#0d1117] border border-[#58a6ff] rounded px-2 py-1.5 text-[12px] text-[#e1e4e8] focus:outline-none"
+        />
+        <div className="flex gap-1 mt-1.5">
+          <button onClick={handleRename} className="flex-1 bg-[#238636] text-white text-[11px] rounded px-2 py-1 hover:bg-[#2ea043]">OK</button>
+          <button onClick={onClose} className="flex-1 bg-[#30363d] text-[#8b949e] text-[11px] rounded px-2 py-1 hover:bg-[#3d444d]">✕</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (adding) {
+    return (
+      <div ref={menuRef} className="fixed z-[9999] bg-[#1c2333] border border-[#30363d] rounded-lg shadow-2xl p-2 min-w-[200px]" style={{ top: position.y, left: position.x }}>
+        <input
+          autoFocus
+          value={addName}
+          onChange={e => setAddName(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") { adding === "file" ? handleAddFile() : handleAddFolder(); } if (e.key === "Escape") onClose(); }}
+          placeholder={adding === "file" ? t.file_enter_name : t.file_enter_folder}
+          className="w-full bg-[#0d1117] border border-[#58a6ff] rounded px-2 py-1.5 text-[12px] text-[#e1e4e8] focus:outline-none"
+        />
+        <div className="flex gap-1 mt-1.5">
+          <button onClick={adding === "file" ? handleAddFile : handleAddFolder} className="flex-1 bg-[#238636] text-white text-[11px] rounded px-2 py-1 hover:bg-[#2ea043]">OK</button>
+          <button onClick={onClose} className="flex-1 bg-[#30363d] text-[#8b949e] text-[11px] rounded px-2 py-1 hover:bg-[#3d444d]">✕</button>
+        </div>
+      </div>
+    );
+  }
+
+  const MenuItem = ({ icon, label, onClick, danger }: { icon: React.ReactNode; label: string; onClick: () => void; danger?: boolean }) => (
+    <button
+      onClick={onClick}
+      className={cn(
+        "w-full flex items-center gap-2.5 px-3 py-2 text-[13px] rounded transition-colors text-start",
+        danger ? "text-[#f85149] hover:bg-[#f8514920]" : "text-[#e1e4e8] hover:bg-[#30363d]"
+      )}
+    >
+      {icon}
+      <span>{label}</span>
+    </button>
+  );
+
+  return (
+    <div ref={menuRef} className="fixed z-[9999] bg-[#1c2333] border border-[#30363d] rounded-lg shadow-2xl py-1.5 min-w-[220px]" style={{ top: position.y, left: position.x }}>
+      <MenuItem icon={<Pencil className="w-4 h-4" />} label={t.file_rename} onClick={() => setRenaming(true)} />
+      <div className="h-px bg-[#30363d] my-1" />
+      <MenuItem icon={<FilePlus className="w-4 h-4" />} label={t.file_add_file} onClick={() => setAdding("file")} />
+      <MenuItem icon={<FolderPlus className="w-4 h-4" />} label={t.file_add_folder} onClick={() => setAdding("folder")} />
+      {node.isFolder && (
+        <MenuItem icon={<ChevronsDownUp className="w-4 h-4" />} label={t.file_collapse_children} onClick={handleCollapseChildren} />
+      )}
+      <div className="h-px bg-[#30363d] my-1" />
+      <MenuItem icon={<Copy className="w-4 h-4" />} label={t.file_copy_path} onClick={handleCopyPath} />
+      <MenuItem
+        icon={<Download className="w-4 h-4" />}
+        label={node.isFolder ? t.file_download_folder : t.file_download}
+        onClick={handleDownload}
+      />
+      <div className="h-px bg-[#30363d] my-1" />
+      <MenuItem icon={<Trash2 className="w-4 h-4" />} label={t.file_delete} onClick={handleDelete} danger />
+    </div>
+  );
+}
+
+function FileLibrary({ files, projectId, onFileSelect }: { files: ProjectFile[]; projectId: string; onFileSelect: (idx: number) => void }) {
   const { t } = useI18n();
   const tRecord = t as unknown as Record<string, string>;
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const [contextMenu, setContextMenu] = useState<{ node: TreeNode; x: number; y: number } | null>(null);
 
   const tree = useMemo(() => buildFileTree(files), [files]);
 
@@ -2266,36 +2508,66 @@ function FileLibrary({ files, onFileSelect }: { files: ProjectFile[]; onFileSele
 
   const filteredTree = filterTree(tree, searchQuery);
 
+  const handleContextMenu = (e: React.MouseEvent, node: TreeNode) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ node, x: e.clientX, y: e.clientY });
+  };
+
+  const handleDotsClick = (e: React.MouseEvent, node: TreeNode) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setContextMenu({ node, x: rect.left, y: rect.bottom + 4 });
+  };
+
+  const handleRefresh = () => {
+    queryClient.invalidateQueries({ queryKey: ["listProjectFiles", projectId] });
+  };
+
   const renderNode = (node: TreeNode, depth: number = 0) => {
     if (node.isFolder) {
       const isExpanded = expandedFolders.has(node.path);
       return (
         <div key={node.path}>
-          <button
-            onClick={() => toggleFolder(node.path)}
-            className="w-full flex items-center gap-1.5 px-2 py-1 text-[12px] text-[#8b949e] hover:text-[#e1e4e8] hover:bg-[#1c2333] rounded transition-colors"
+          <div
+            className="w-full flex items-center gap-1.5 px-2 py-1 text-[12px] text-[#8b949e] hover:text-[#e1e4e8] hover:bg-[#1c2333] rounded transition-colors group/row cursor-pointer"
             style={{ paddingInlineStart: `${depth * 12 + 8}px` }}
+            onClick={() => toggleFolder(node.path)}
+            onContextMenu={e => handleContextMenu(e, node)}
           >
             {isExpanded ? <ChevronDown className="w-3 h-3 flex-shrink-0" /> : <ChevronRight className="w-3 h-3 flex-shrink-0" />}
             <Folder className={cn("w-3.5 h-3.5 flex-shrink-0", isExpanded ? "text-[#58a6ff]" : "text-[#8b949e]")} />
-            <span className="truncate">{node.name}</span>
-          </button>
+            <span className="truncate flex-1">{node.name}</span>
+            <button
+              onClick={e => handleDotsClick(e, node)}
+              className="opacity-0 group-hover/row:opacity-100 p-0.5 rounded hover:bg-[#30363d] transition-all flex-shrink-0"
+            >
+              <MoreVertical className="w-3.5 h-3.5 text-[#8b949e]" />
+            </button>
+          </div>
           {isExpanded && node.children.map(child => renderNode(child, depth + 1))}
         </div>
       );
     }
 
     return (
-      <button
+      <div
         key={node.path}
-        onClick={() => node.fileIndex !== undefined && onFileSelect(node.fileIndex)}
-        className="w-full flex items-center gap-1.5 px-2 py-1 text-[12px] text-[#c9d1d9] hover:text-[#e1e4e8] hover:bg-[#1c2333] rounded transition-colors group"
+        className="w-full flex items-center gap-1.5 px-2 py-1 text-[12px] text-[#c9d1d9] hover:text-[#e1e4e8] hover:bg-[#1c2333] rounded transition-colors group/row cursor-pointer"
         style={{ paddingInlineStart: `${depth * 12 + 20}px` }}
+        onClick={() => node.fileIndex !== undefined && onFileSelect(node.fileIndex)}
+        onContextMenu={e => handleContextMenu(e, node)}
       >
         {getFileIcon(node.name)}
-        <span className="truncate">{node.name}</span>
-        <span className="text-[9px] text-[#484f58] truncate ms-auto opacity-0 group-hover:opacity-100 transition-opacity">{getFileDescription(node.name, tRecord)}</span>
-      </button>
+        <span className="truncate flex-1">{node.name}</span>
+        <button
+          onClick={e => handleDotsClick(e, node)}
+          className="opacity-0 group-hover/row:opacity-100 p-0.5 rounded hover:bg-[#30363d] transition-all flex-shrink-0"
+        >
+          <MoreVertical className="w-3.5 h-3.5 text-[#8b949e]" />
+        </button>
+      </div>
     );
   };
 
@@ -2323,14 +2595,29 @@ function FileLibrary({ files, onFileSelect }: { files: ProjectFile[]; onFileSele
           </div>
         )}
       </div>
+
+      {contextMenu && (
+        <FileContextMenu
+          node={contextMenu.node}
+          projectId={projectId}
+          files={files}
+          position={{ x: contextMenu.x, y: contextMenu.y }}
+          onClose={() => setContextMenu(null)}
+          onRefresh={handleRefresh}
+          expandedFolders={expandedFolders}
+          setExpandedFolders={setExpandedFolders}
+        />
+      )}
     </>
   );
 }
 
-function InlineFileTree({ files, selectedIndex, onFileSelect }: { files: ProjectFile[]; selectedIndex: number; onFileSelect: (idx: number) => void }) {
+function InlineFileTree({ files, projectId, selectedIndex, onFileSelect }: { files: ProjectFile[]; projectId: string; selectedIndex: number; onFileSelect: (idx: number) => void }) {
   const { t } = useI18n();
   const tRecord = t as unknown as Record<string, string>;
+  const queryClient = useQueryClient();
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const [contextMenu, setContextMenu] = useState<{ node: TreeNode; x: number; y: number } | null>(null);
 
   const tree = useMemo(() => buildFileTree(files), [files]);
 
@@ -2357,20 +2644,44 @@ function InlineFileTree({ files, selectedIndex, onFileSelect }: { files: Project
     });
   };
 
+  const handleContextMenu = (e: React.MouseEvent, node: TreeNode) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ node, x: e.clientX, y: e.clientY });
+  };
+
+  const handleDotsClick = (e: React.MouseEvent, node: TreeNode) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setContextMenu({ node, x: rect.left, y: rect.bottom + 4 });
+  };
+
+  const handleRefresh = () => {
+    queryClient.invalidateQueries({ queryKey: ["listProjectFiles", projectId] });
+  };
+
   const renderNode = (node: TreeNode, depth: number = 0) => {
     if (node.isFolder) {
       const isExpanded = expandedFolders.has(node.path);
       return (
         <div key={node.path}>
-          <button
-            onClick={() => toggleFolder(node.path)}
-            className="w-full flex items-center gap-1.5 px-2 py-1 text-[12px] text-[#8b949e] hover:text-[#e1e4e8] hover:bg-[#1c2333] rounded transition-colors"
+          <div
+            className="w-full flex items-center gap-1.5 px-2 py-1 text-[12px] text-[#8b949e] hover:text-[#e1e4e8] hover:bg-[#1c2333] rounded transition-colors group/row cursor-pointer"
             style={{ paddingInlineStart: `${depth * 12 + 8}px` }}
+            onClick={() => toggleFolder(node.path)}
+            onContextMenu={e => handleContextMenu(e, node)}
           >
             {isExpanded ? <ChevronDown className="w-3 h-3 flex-shrink-0" /> : <ChevronRight className="w-3 h-3 flex-shrink-0" />}
             <Folder className={cn("w-3.5 h-3.5 flex-shrink-0", isExpanded ? "text-[#58a6ff]" : "text-[#8b949e]")} />
-            <span className="truncate">{node.name}</span>
-          </button>
+            <span className="truncate flex-1">{node.name}</span>
+            <button
+              onClick={e => handleDotsClick(e, node)}
+              className="opacity-0 group-hover/row:opacity-100 p-0.5 rounded hover:bg-[#30363d] transition-all flex-shrink-0"
+            >
+              <MoreVertical className="w-3.5 h-3.5 text-[#8b949e]" />
+            </button>
+          </div>
           {isExpanded && node.children.map(child => renderNode(child, depth + 1))}
         </div>
       );
@@ -2378,34 +2689,54 @@ function InlineFileTree({ files, selectedIndex, onFileSelect }: { files: Project
 
     const isSelected = node.fileIndex === selectedIndex;
     return (
-      <button
+      <div
         key={node.path}
-        onClick={() => node.fileIndex !== undefined && onFileSelect(node.fileIndex)}
         className={cn(
-          "w-full flex items-center gap-1.5 px-2 py-1 text-[12px] rounded transition-colors group",
+          "w-full flex items-center gap-1.5 px-2 py-1 text-[12px] rounded transition-colors group/row cursor-pointer",
           isSelected
             ? "bg-[#1f6feb]/15 text-[#e1e4e8]"
             : "text-[#c9d1d9] hover:text-[#e1e4e8] hover:bg-[#1c2333]"
         )}
         style={{ paddingInlineStart: `${depth * 12 + 20}px` }}
+        onClick={() => node.fileIndex !== undefined && onFileSelect(node.fileIndex)}
+        onContextMenu={e => handleContextMenu(e, node)}
       >
         {getFileIcon(node.name)}
-        <span className="truncate">{node.name}</span>
-        <span className="text-[9px] text-[#484f58] truncate ms-auto opacity-0 group-hover:opacity-100 transition-opacity">{getFileDescription(node.name, tRecord)}</span>
-      </button>
+        <span className="truncate flex-1">{node.name}</span>
+        <button
+          onClick={e => handleDotsClick(e, node)}
+          className="opacity-0 group-hover/row:opacity-100 p-0.5 rounded hover:bg-[#30363d] transition-all flex-shrink-0"
+        >
+          <MoreVertical className="w-3.5 h-3.5 text-[#8b949e]" />
+        </button>
+      </div>
     );
   };
 
   return (
-    <div className="flex-1 overflow-y-auto py-1">
-      {tree.length > 0 ? (
-        tree.map(node => renderNode(node))
-      ) : (
-        <div className="text-center text-[#484f58] text-xs mt-8">
-          {t.no_files}
-        </div>
+    <>
+      <div className="flex-1 overflow-y-auto py-1">
+        {tree.length > 0 ? (
+          tree.map(node => renderNode(node))
+        ) : (
+          <div className="text-center text-[#484f58] text-xs mt-8">
+            {t.no_files}
+          </div>
+        )}
+      </div>
+      {contextMenu && (
+        <FileContextMenu
+          node={contextMenu.node}
+          projectId={projectId}
+          files={files}
+          position={{ x: contextMenu.x, y: contextMenu.y }}
+          onClose={() => setContextMenu(null)}
+          onRefresh={handleRefresh}
+          expandedFolders={expandedFolders}
+          setExpandedFolders={setExpandedFolders}
+        />
       )}
-    </div>
+    </>
   );
 }
 
