@@ -571,11 +571,16 @@ export default function Builder() {
       fetch(`${baseUrl}/api/sandbox/project/${id}`, { credentials: "include" })
         .then(r => r.ok ? r.json() : null)
         .then(d => {
+          if (stopped) return;
           if (d && d.status === "running") {
             setSandboxRunning(true);
+          } else {
+            setSandboxRunning(false);
           }
         })
-        .catch(() => {});
+        .catch(() => {
+          if (!stopped) setSandboxRunning(false);
+        });
     };
     const triggerRecovery = () => {
       if (stopped) return;
@@ -610,6 +615,9 @@ export default function Builder() {
     return () => es.close();
   }, [buildId, isBuilding]);
 
+  const [proxyVerified, setProxyVerified] = useState(false);
+  const [proxyFailed, setProxyFailed] = useState(false);
+
   const sandboxProxyUrl = useMemo(() => {
     if (!id) return null;
     const runnerLog = logs.find(l =>
@@ -627,7 +635,34 @@ export default function Builder() {
     return null;
   }, [id, logs, sandboxRunning]);
 
-  const previewUrl = sandboxProxyUrl;
+  useEffect(() => {
+    if (!sandboxProxyUrl) {
+      setProxyVerified(false);
+      setProxyFailed(false);
+      return;
+    }
+    let cancelled = false;
+    fetch(sandboxProxyUrl, { method: "HEAD" })
+      .then(r => {
+        if (cancelled) return;
+        if (r.ok || (r.status >= 200 && r.status < 400)) {
+          setProxyVerified(true);
+          setProxyFailed(false);
+        } else {
+          setProxyVerified(false);
+          setProxyFailed(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setProxyVerified(false);
+          setProxyFailed(true);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [sandboxProxyUrl]);
+
+  const previewUrl = (sandboxProxyUrl && proxyVerified && !proxyFailed) ? sandboxProxyUrl : null;
 
   const buildPreviewHtml = (): string => {
     if (!htmlFile?.content) return "";
@@ -1864,6 +1899,29 @@ export default function Builder() {
                     className="border-0 bg-white"
                     style={{ width: "100%", height: "100%", display: "block" }}
                     title={t.live_preview}
+                    onError={() => {
+                      setProxyFailed(true);
+                      setProxyVerified(false);
+                    }}
+                    onLoad={(e) => {
+                      try {
+                        const iframe = e.currentTarget as HTMLIFrameElement;
+                        const doc = iframe.contentDocument;
+                        if (doc) {
+                          const bodyText = doc.body?.innerText || "";
+                          const title = doc.title || "";
+                          if (
+                            title.includes("Dashboard") ||
+                            bodyText.includes("UNAUTHORIZED") ||
+                            bodyText.includes("Authentication required")
+                          ) {
+                            setProxyFailed(true);
+                            setProxyVerified(false);
+                          }
+                        }
+                      } catch (_) {
+                      }
+                    }}
                   />
                 ) : (
                   <iframe

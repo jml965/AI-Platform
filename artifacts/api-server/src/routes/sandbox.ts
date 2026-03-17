@@ -261,6 +261,11 @@ const SAFE_PROXY_HEADERS = new Set([
 
 router.use("/sandbox/proxy", async (req: Request, res: Response) => {
   try {
+    if (!req.user) {
+      res.setHeader("X-Sandbox-Error", "auth-required");
+      res.status(401).json({ error: { code: "UNAUTHORIZED", message: "Authentication required" } });
+      return;
+    }
     const userId = getUserId(req);
 
     const pathAfterProxy = req.url.startsWith("/") ? req.url.slice(1) : req.url;
