@@ -85,7 +85,16 @@ export abstract class BaseAgent {
           messages: chatMessages,
         });
 
-        const response = await stream.finalMessage();
+        const timeoutMs = 4 * 60 * 1000;
+        const response = await Promise.race([
+          stream.finalMessage(),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => {
+              stream.abort();
+              reject(new Error("Anthropic API call timed out after 4 minutes"));
+            }, timeoutMs)
+          ),
+        ]);
 
         const content = response.content
           .filter((block: { type: string }) => block.type === "text")
