@@ -642,20 +642,30 @@ export default function Builder() {
       return;
     }
     let cancelled = false;
+    let attempt = 0;
+    const maxAttempts = 6;
+    const baseDelay = 1000;
     const verify = () => {
+      if (cancelled) return;
+      attempt++;
       fetch(sandboxProxyUrl, { method: "HEAD", credentials: "include" })
         .then(r => {
           if (cancelled) return;
           if (r.ok || (r.status >= 200 && r.status < 400)) {
             setProxyVerified(true);
             setProxyFailed(false);
+          } else if (attempt < maxAttempts) {
+            setTimeout(verify, baseDelay * Math.min(attempt, 4));
           } else {
             setProxyVerified(false);
             setProxyFailed(true);
           }
         })
         .catch(() => {
-          if (!cancelled) {
+          if (cancelled) return;
+          if (attempt < maxAttempts) {
+            setTimeout(verify, baseDelay * Math.min(attempt, 4));
+          } else {
             setProxyVerified(false);
             setProxyFailed(true);
           }
@@ -1944,7 +1954,7 @@ export default function Builder() {
                         key={`doc-${previewKey}`}
                         ref={iframeRef}
                         srcDoc={html}
-                        sandbox="allow-scripts"
+                        sandbox="allow-scripts allow-same-origin"
                         className="border-0 bg-white"
                         style={{ width: "100%", height: "100%", display: "block" }}
                         title={t.live_preview}
