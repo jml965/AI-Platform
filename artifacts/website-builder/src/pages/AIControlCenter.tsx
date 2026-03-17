@@ -4,7 +4,7 @@ import {
   ArrowLeft, Key, ExternalLink, Shield, ShieldCheck, ShieldAlert, ShieldX,
   Zap, Bot, DollarSign, Clock, Activity, AlertTriangle, Plus, Trash2, Save,
   Eye, EyeOff, RefreshCw, ArrowUpDown, ChevronDown, ChevronUp, BarChart2,
-  Globe, Settings, Search, Filter, TrendingUp, Cpu
+  Globe, Settings, Search, Filter, TrendingUp, Cpu, Info
 } from "lucide-react";
 
 const API = "/api";
@@ -52,26 +52,35 @@ interface UsageData {
   recentLogs: any[];
 }
 
-function StatusBadge({ status, isRTL }: { status: string; isRTL: boolean }) {
-  const config: Record<string, { icon: any; color: string; label: string; labelAr: string }> = {
-    active: { icon: ShieldCheck, color: "text-green-400 bg-green-500/15 border-green-500/30", label: "Active", labelAr: "نشط" },
-    error: { icon: ShieldX, color: "text-red-400 bg-red-500/15 border-red-500/30", label: "Error", labelAr: "خطأ" },
-    inactive: { icon: ShieldAlert, color: "text-yellow-400 bg-yellow-500/15 border-yellow-500/30", label: "No Key", labelAr: "بدون مفتاح" },
-    expired: { icon: ShieldX, color: "text-orange-400 bg-orange-500/15 border-orange-500/30", label: "Expired", labelAr: "منتهي" },
+function BLabel({ ar, en }: { ar: string; en: string }) {
+  return <>{ar} <span className="text-[#58a6ff]">({en})</span></>;
+}
+
+function FieldHint({ text }: { text: string }) {
+  return (
+    <p className="text-[9px] text-[#8b949e]/70 mt-0.5 leading-relaxed">{text}</p>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const config: Record<string, { icon: any; color: string; label: string }> = {
+    active: { icon: ShieldCheck, color: "text-green-400 bg-green-500/15 border-green-500/30", label: "نشط Active" },
+    error: { icon: ShieldX, color: "text-red-400 bg-red-500/15 border-red-500/30", label: "خطأ Error" },
+    inactive: { icon: ShieldAlert, color: "text-yellow-400 bg-yellow-500/15 border-yellow-500/30", label: "بدون مفتاح No Key" },
+    expired: { icon: ShieldX, color: "text-orange-400 bg-orange-500/15 border-orange-500/30", label: "منتهي Expired" },
   };
   const c = config[status] || config.inactive;
   const Icon = c.icon;
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${c.color}`}>
       <Icon className="w-3 h-3" />
-      {isRTL ? c.labelAr : c.label}
+      {c.label}
     </span>
   );
 }
 
 function ProviderCard({
   provider,
-  isRTL,
   allProviders,
   onUpdate,
   onDelete,
@@ -79,7 +88,6 @@ function ProviderCard({
   onSwapModel,
 }: {
   provider: AiProvider;
-  isRTL: boolean;
   allProviders: AiProvider[];
   onUpdate: (key: string, data: Partial<AiProvider>) => void;
   onDelete: (key: string) => void;
@@ -125,11 +133,11 @@ function ProviderCard({
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="font-medium text-[13px] truncate">{isRTL ? provider.displayNameAr : provider.displayName}</span>
-            <StatusBadge status={provider.keyStatus} isRTL={isRTL} />
+            <span className="font-medium text-[13px] truncate">{provider.displayNameAr} <span className="text-[#58a6ff]">({provider.displayName})</span></span>
+            <StatusBadge status={provider.keyStatus} />
           </div>
           <div className="text-[10px] text-[#8b949e] mt-0.5">
-            {provider.models.length} {isRTL ? "نموذج" : "models"} · {isRTL ? "الأولوية" : "Priority"}: #{provider.priority}
+            {provider.models.length} نموذج (models) · الأولوية (Priority): #{provider.priority}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -149,14 +157,15 @@ function ProviderCard({
         <div className="border-t border-white/7 p-4 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <label className="text-[10px] text-[#8b949e] mb-1 block">{isRTL ? "مفتاح API" : "API Key"}</label>
-              <div className="flex gap-1.5">
+              <label className="text-[10px] text-[#8b949e] mb-1 block"><BLabel ar="مفتاح API" en="API Key" /></label>
+              <FieldHint text="المفتاح السري للاتصال بخدمة المزود — تحصل عليه من لوحة تحكم المزود. Secret key to connect to the provider's API service." />
+              <div className="flex gap-1.5 mt-1">
                 <div className="relative flex-1">
                   <input
                     type={showKey ? "text" : "password"}
                     value={localKey}
                     onChange={e => setLocalKey(e.target.value)}
-                    placeholder={isRTL ? "أدخل مفتاح API..." : "Enter API key..."}
+                    placeholder="أدخل مفتاح API... (Enter API key...)"
                     className="w-full bg-[#0d1117] border border-white/10 rounded-lg px-3 py-2 text-[11px] text-[#e2e8f0] font-mono pr-8"
                   />
                   <button onClick={() => setShowKey(!showKey)} className="absolute right-2 top-1/2 -translate-y-1/2 text-[#8b949e] hover:text-white">
@@ -165,12 +174,14 @@ function ProviderCard({
                 </div>
                 <button
                   onClick={() => { onUpdate(provider.providerKey, { apiKey: localKey } as any); }}
+                  title="حفظ المفتاح (Save Key)"
                   className="px-2.5 py-2 bg-[#7c3aed]/20 text-[#7c3aed] rounded-lg text-[10px] hover:bg-[#7c3aed]/30 transition-colors"
                 >
                   <Save className="w-3.5 h-3.5" />
                 </button>
                 <button
                   onClick={() => onValidate(provider.providerKey)}
+                  title="فحص صحة المفتاح (Validate Key)"
                   className="px-2.5 py-2 bg-blue-500/20 text-blue-400 rounded-lg text-[10px] hover:bg-blue-500/30 transition-colors"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
@@ -179,12 +190,13 @@ function ProviderCard({
             </div>
 
             <div>
-              <label className="text-[10px] text-[#8b949e] mb-1 block">{isRTL ? "رابط الحصول على المفتاح" : "Get API Key"}</label>
+              <label className="text-[10px] text-[#8b949e] mb-1 block"><BLabel ar="رابط الحصول على المفتاح" en="Get API Key Link" /></label>
+              <FieldHint text="رابط مباشر لصفحة إنشاء مفتاح API في موقع المزود. Direct link to the provider's API key creation page." />
               <a
                 href={provider.apiKeyUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-1.5 bg-[#0d1117] border border-white/10 rounded-lg px-3 py-2 text-[11px] text-blue-400 hover:text-blue-300 transition-colors"
+                className="flex items-center gap-1.5 bg-[#0d1117] border border-white/10 rounded-lg px-3 py-2 text-[11px] text-blue-400 hover:text-blue-300 transition-colors mt-1"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
                 {provider.apiKeyUrl ? new URL(provider.apiKeyUrl).hostname : provider.website}
@@ -194,69 +206,74 @@ function ProviderCard({
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <div>
-              <label className="text-[10px] text-[#8b949e] mb-1 block">{isRTL ? "الأولوية" : "Priority"}</label>
+              <label className="text-[10px] text-[#8b949e] mb-1 block"><BLabel ar="الأولوية" en="Priority" /></label>
+              <FieldHint text="ترتيب الأفضلية — رقم أقل = أولوية أعلى. Lower number = higher priority when choosing providers." />
               <input
                 type="number"
                 min="1"
                 max="50"
                 value={provider.priority}
                 onChange={e => onUpdate(provider.providerKey, { priority: parseInt(e.target.value) || 10 })}
-                className="w-full bg-[#0d1117] border border-white/10 rounded-lg px-3 py-1.5 text-[11px] text-[#e2e8f0]"
+                className="w-full bg-[#0d1117] border border-white/10 rounded-lg px-3 py-1.5 text-[11px] text-[#e2e8f0] mt-0.5"
               />
             </div>
             <div>
-              <label className="text-[10px] text-[#8b949e] mb-1 block">{isRTL ? "الميزانية الشهرية ($)" : "Monthly Budget ($)"}</label>
+              <label className="text-[10px] text-[#8b949e] mb-1 block"><BLabel ar="الميزانية الشهرية" en="Monthly Budget $" /></label>
+              <FieldHint text="الحد الأقصى للإنفاق شهرياً بالدولار. Max spending limit per month in USD for this provider." />
               <input
                 type="number"
                 min="0"
                 step="1"
                 value={parseFloat(provider.budgetMonthlyUsd) || 0}
                 onChange={e => onUpdate(provider.providerKey, { budgetMonthlyUsd: e.target.value } as any)}
-                className="w-full bg-[#0d1117] border border-white/10 rounded-lg px-3 py-1.5 text-[11px] text-[#e2e8f0]"
+                className="w-full bg-[#0d1117] border border-white/10 rounded-lg px-3 py-1.5 text-[11px] text-[#e2e8f0] mt-0.5"
               />
             </div>
             <div>
-              <label className="text-[10px] text-[#8b949e] mb-1 block">{isRTL ? "تنبيه عند (%)" : "Alert at (%)"}</label>
+              <label className="text-[10px] text-[#8b949e] mb-1 block"><BLabel ar="تنبيه عند %" en="Alert Threshold %" /></label>
+              <FieldHint text="نسبة استهلاك الميزانية التي يُرسل عندها تنبيه. Percentage of budget usage that triggers a warning alert." />
               <input
                 type="number"
                 min="50"
                 max="100"
                 value={provider.alertThreshold}
                 onChange={e => onUpdate(provider.providerKey, { alertThreshold: parseInt(e.target.value) || 80 })}
-                className="w-full bg-[#0d1117] border border-white/10 rounded-lg px-3 py-1.5 text-[11px] text-[#e2e8f0]"
+                className="w-full bg-[#0d1117] border border-white/10 rounded-lg px-3 py-1.5 text-[11px] text-[#e2e8f0] mt-0.5"
               />
             </div>
             <div>
-              <label className="text-[10px] text-[#8b949e] mb-1 block">{isRTL ? "نموذج احتياطي" : "Fallback Provider"}</label>
+              <label className="text-[10px] text-[#8b949e] mb-1 block"><BLabel ar="مزود احتياطي" en="Fallback Provider" /></label>
+              <FieldHint text="المزود البديل إذا فشل هذا المزود أو تجاوز الميزانية. Backup provider if this one fails or exceeds budget." />
               <select
                 value={provider.fallbackProviderKey || ""}
                 onChange={e => onUpdate(provider.providerKey, { fallbackProviderKey: e.target.value || null } as any)}
-                className="w-full bg-[#0d1117] border border-white/10 rounded-lg px-3 py-1.5 text-[11px] text-[#e2e8f0]"
+                className="w-full bg-[#0d1117] border border-white/10 rounded-lg px-3 py-1.5 text-[11px] text-[#e2e8f0] mt-0.5"
               >
-                <option value="">{isRTL ? "بدون" : "None"}</option>
+                <option value="">بدون (None)</option>
                 {allProviders.filter(p => p.providerKey !== provider.providerKey).map(p => (
-                  <option key={p.providerKey} value={p.providerKey}>{isRTL ? p.displayNameAr : p.displayName}</option>
+                  <option key={p.providerKey} value={p.providerKey}>{p.displayNameAr} ({p.displayName})</option>
                 ))}
               </select>
             </div>
           </div>
 
           <div>
-            <div className="flex items-center gap-2 mb-2">
+            <div className="flex items-center gap-2 mb-1">
               <Cpu className="w-3.5 h-3.5 text-[#7c3aed]" />
-              <span className="text-[11px] font-medium">{isRTL ? "النماذج المتوفرة" : "Available Models"}</span>
+              <span className="text-[11px] font-medium"><BLabel ar="النماذج المتوفرة" en="Available Models" /></span>
             </div>
-            <div className="grid gap-1.5">
-              {provider.models.map((m, i) => (
+            <FieldHint text="قائمة نماذج الذكاء الاصطناعي التي يوفرها هذا المزود مع أسعار كل نموذج. List of AI models offered by this provider with pricing per 1K tokens." />
+            <div className="grid gap-1.5 mt-1.5">
+              {provider.models.map((m) => (
                 <div key={m.id} className="flex items-center justify-between bg-[#0d1117] border border-white/5 rounded-lg px-3 py-2">
                   <div>
                     <span className="text-[11px] font-medium">{m.name}</span>
                     <span className="text-[9px] text-[#8b949e] ml-2">{m.id}</span>
                   </div>
                   <div className="flex items-center gap-3 text-[9px] text-[#8b949e]">
-                    <span>{(m.maxTokens / 1000).toFixed(0)}K tokens</span>
-                    <span className="text-green-400">${m.inputCostPer1k}/1K in</span>
-                    <span className="text-orange-400">${m.outputCostPer1k}/1K out</span>
+                    <span title="الحد الأقصى للتوكن (Max context window)">{(m.maxTokens / 1000).toFixed(0)}K tokens</span>
+                    <span className="text-green-400" title="تكلفة الإدخال لكل 1000 توكن (Input cost per 1K tokens)">${m.inputCostPer1k}/1K in</span>
+                    <span className="text-orange-400" title="تكلفة الإخراج لكل 1000 توكن (Output cost per 1K tokens)">${m.outputCostPer1k}/1K out</span>
                   </div>
                 </div>
               ))}
@@ -265,21 +282,22 @@ function ProviderCard({
 
           {usage && (
             <div>
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-2 mb-1">
                 <BarChart2 className="w-3.5 h-3.5 text-blue-400" />
-                <span className="text-[11px] font-medium">{isRTL ? "الاستهلاك" : "Usage Statistics"}</span>
+                <span className="text-[11px] font-medium"><BLabel ar="الاستهلاك" en="Usage Statistics" /></span>
               </div>
-              <div className="grid grid-cols-3 gap-2">
+              <FieldHint text="إحصائيات استخدام هذا المزود: التكلفة والتوكنات والطلبات. Consumption stats for this provider: cost, tokens, and requests." />
+              <div className="grid grid-cols-3 gap-2 mt-1.5">
                 {[
-                  { label: isRTL ? "اليوم" : "Today", data: usage.daily },
-                  { label: isRTL ? "الأسبوع" : "Week", data: usage.weekly },
-                  { label: isRTL ? "الشهر" : "Month", data: usage.monthly },
+                  { label: "اليوم (Today)", data: usage.daily },
+                  { label: "الأسبوع (Week)", data: usage.weekly },
+                  { label: "الشهر (Month)", data: usage.monthly },
                 ].map(period => (
                   <div key={period.label} className="bg-[#0d1117] border border-white/5 rounded-lg p-2.5">
                     <span className="text-[9px] text-[#8b949e] block mb-1">{period.label}</span>
                     <div className="text-[13px] font-bold text-green-400">${period.data.cost.toFixed(4)}</div>
                     <div className="text-[9px] text-[#8b949e] mt-0.5">
-                      {(period.data.tokens / 1000).toFixed(1)}K {isRTL ? "توكن" : "tokens"} · {period.data.requests} {isRTL ? "طلب" : "req"}
+                      {(period.data.tokens / 1000).toFixed(1)}K توكن (tokens) · {period.data.requests} طلب (req)
                     </div>
                   </div>
                 ))}
@@ -291,8 +309,8 @@ function ProviderCard({
                 }`}>
                   <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                   {budgetPercent >= 100
-                    ? (isRTL ? "تجاوزت الميزانية الشهرية!" : "Monthly budget exceeded!")
-                    : (isRTL ? `وصلت ${budgetPercent.toFixed(0)}% من الميزانية الشهرية` : `Reached ${budgetPercent.toFixed(0)}% of monthly budget`)
+                    ? "تجاوزت الميزانية الشهرية! (Monthly budget exceeded!)"
+                    : `وصلت ${budgetPercent.toFixed(0)}% من الميزانية الشهرية (Reached ${budgetPercent.toFixed(0)}% of monthly budget)`
                   }
                 </div>
               )}
@@ -301,15 +319,16 @@ function ProviderCard({
 
           {linkedAgents.length > 0 && (
             <div>
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-2 mb-1">
                 <Bot className="w-3.5 h-3.5 text-yellow-400" />
-                <span className="text-[11px] font-medium">{isRTL ? "الوكلاء المرتبطون" : "Linked Agents"}</span>
+                <span className="text-[11px] font-medium"><BLabel ar="الوكلاء المرتبطون" en="Linked Agents" /></span>
               </div>
-              <div className="grid gap-1.5">
+              <FieldHint text="الوكلاء (AI Agents) الذين يستخدمون نماذج من هذا المزود حالياً. Agents currently using models from this provider." />
+              <div className="grid gap-1.5 mt-1.5">
                 {linkedAgents.map(a => (
                   <div key={a.agentKey} className="flex items-center justify-between bg-[#0d1117] border border-white/5 rounded-lg px-3 py-2">
                     <div>
-                      <span className="text-[11px] font-medium">{isRTL ? a.displayNameAr : a.displayNameEn}</span>
+                      <span className="text-[11px] font-medium">{a.displayNameAr} <span className="text-[#58a6ff]">({a.displayNameEn})</span></span>
                       <div className="flex gap-1 mt-0.5">
                         {a.slots.map((s: any) => (
                           <span key={s.slot} className="text-[9px] px-1.5 py-0.5 rounded bg-[#7c3aed]/10 text-[#7c3aed]">
@@ -326,11 +345,12 @@ function ProviderCard({
 
           {usage && usage.recentLogs.length > 0 && (
             <div>
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-2 mb-1">
                 <Activity className="w-3.5 h-3.5 text-cyan-400" />
-                <span className="text-[11px] font-medium">{isRTL ? "آخر الطلبات" : "Recent Requests"}</span>
+                <span className="text-[11px] font-medium"><BLabel ar="آخر الطلبات" en="Recent Requests" /></span>
               </div>
-              <div className="max-h-40 overflow-y-auto space-y-1">
+              <FieldHint text="سجل آخر الطلبات المرسلة لهذا المزود مع حالة النجاح والتكلفة. Log of recent API calls to this provider with success status and cost." />
+              <div className="max-h-40 overflow-y-auto space-y-1 mt-1.5">
                 {usage.recentLogs.slice(0, 20).map((log: any, i: number) => (
                   <div key={i} className="flex items-center justify-between bg-[#0d1117] border border-white/5 rounded px-2.5 py-1.5 text-[10px]">
                     <div className="flex items-center gap-2">
@@ -356,14 +376,14 @@ function ProviderCard({
               rel="noopener noreferrer"
               className="flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300"
             >
-              <Globe className="w-3 h-3" /> {isRTL ? "الموقع" : "Website"}
+              <Globe className="w-3 h-3" /> الموقع (Website)
             </a>
             {provider.isCustom && (
               <button
                 onClick={() => onDelete(provider.providerKey)}
                 className="flex items-center gap-1 text-[10px] text-red-400 hover:text-red-300 mr-auto"
               >
-                <Trash2 className="w-3 h-3" /> {isRTL ? "حذف" : "Delete"}
+                <Trash2 className="w-3 h-3" /> حذف (Delete)
               </button>
             )}
           </div>
@@ -381,7 +401,6 @@ export default function AIControlCenter() {
   const [newProvider, setNewProvider] = useState({ providerKey: "", displayName: "", displayNameAr: "", website: "", apiKeyUrl: "", models: [] as ProviderModel[] });
   const [newModelName, setNewModelName] = useState("");
   const [newModelId, setNewModelId] = useState("");
-  const isRTL = document.documentElement.dir === "rtl" || document.documentElement.lang === "ar";
 
   useEffect(() => {
     fetch(`${API}/providers`, { credentials: "include" })
@@ -403,7 +422,7 @@ export default function AIControlCenter() {
   };
 
   const deleteProvider = (key: string) => {
-    if (!confirm(isRTL ? "هل أنت متأكد من الحذف؟" : "Are you sure?")) return;
+    if (!confirm("هل أنت متأكد من الحذف؟ (Are you sure?)")) return;
     fetch(`${API}/providers/${key}`, { method: "DELETE", credentials: "include" })
       .then(() => setProviders(prev => prev.filter(p => p.providerKey !== key)));
   };
@@ -467,7 +486,7 @@ export default function AIControlCenter() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0d1117] text-[#e2e8f0]" dir={isRTL ? "rtl" : "ltr"}>
+    <div className="min-h-screen bg-[#0d1117] text-[#e2e8f0]" dir="rtl">
       <div className="max-w-5xl mx-auto px-4 py-6">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
@@ -479,10 +498,10 @@ export default function AIControlCenter() {
             <div>
               <h1 className="text-xl font-bold flex items-center gap-2">
                 <Settings className="w-5 h-5 text-[#7c3aed]" />
-                {isRTL ? "مركز التحكم بالوكلاء" : "AI Control Center"}
+                مركز التحكم بالذكاء الاصطناعي <span className="text-[#58a6ff] text-base font-normal">(AI Control Center)</span>
               </h1>
               <p className="text-[11px] text-[#8b949e] mt-0.5">
-                {isRTL ? "إدارة مزودي الذكاء الاصطناعي ومفاتيح API والميزانيات" : "Manage AI providers, API keys, and budgets"}
+                إدارة مزودي الذكاء الاصطناعي ومفاتيح API والميزانيات (Manage AI providers, API keys, and budgets)
               </p>
             </div>
           </div>
@@ -491,38 +510,42 @@ export default function AIControlCenter() {
             className="flex items-center gap-1.5 px-3 py-2 bg-[#7c3aed] hover:bg-[#6d28d9] rounded-lg text-[12px] font-medium transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
-            {isRTL ? "إضافة مزود" : "Add Provider"}
+            إضافة مزود (Add Provider)
           </button>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
           <div className="bg-[#161b22] border border-white/7 rounded-xl p-3">
-            <div className="text-[10px] text-[#8b949e] mb-1">{isRTL ? "المزودون" : "Providers"}</div>
+            <div className="text-[10px] text-[#8b949e] mb-1">المزودون (Providers)</div>
             <div className="text-xl font-bold">{providers.length}</div>
+            <FieldHint text="عدد مزودي الخدمة المسجلين. Total registered AI service providers." />
           </div>
           <div className="bg-[#161b22] border border-white/7 rounded-xl p-3">
-            <div className="text-[10px] text-[#8b949e] mb-1">{isRTL ? "مفاتيح نشطة" : "Active Keys"}</div>
+            <div className="text-[10px] text-[#8b949e] mb-1">مفاتيح نشطة (Active Keys)</div>
             <div className="text-xl font-bold text-green-400">{activeCount}</div>
+            <FieldHint text="عدد المزودين الذين مفاتيحهم تعمل. Providers with valid, working API keys." />
           </div>
           <div className="bg-[#161b22] border border-white/7 rounded-xl p-3">
-            <div className="text-[10px] text-[#8b949e] mb-1">{isRTL ? "إجمالي النماذج" : "Total Models"}</div>
+            <div className="text-[10px] text-[#8b949e] mb-1">إجمالي النماذج (Total Models)</div>
             <div className="text-xl font-bold text-[#7c3aed]">{totalModels}</div>
+            <FieldHint text="مجموع نماذج AI المتاحة عبر كل المزودين. Total AI models available across all providers." />
           </div>
           <div className="bg-[#161b22] border border-white/7 rounded-xl p-3">
-            <div className="text-[10px] text-[#8b949e] mb-1">{isRTL ? "التكلفة الإجمالية" : "Total Cost"}</div>
+            <div className="text-[10px] text-[#8b949e] mb-1">التكلفة الإجمالية (Total Cost)</div>
             <div className="text-xl font-bold text-orange-400">${providers.reduce((s, p) => s + parseFloat(p.totalCostUsd), 0).toFixed(4)}</div>
+            <FieldHint text="إجمالي المبلغ المصروف على جميع المزودين. Total amount spent across all providers." />
           </div>
         </div>
 
         <div className="mb-4">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8b949e]" />
+            <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8b949e]" />
             <input
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder={isRTL ? "ابحث عن مزود..." : "Search providers..."}
-              className="w-full bg-[#161b22] border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-[12px] text-[#e2e8f0]"
+              placeholder="ابحث عن مزود... (Search providers...)"
+              className="w-full bg-[#161b22] border border-white/10 rounded-xl pr-10 pl-4 py-2.5 text-[12px] text-[#e2e8f0]"
             />
           </div>
         </div>
@@ -532,62 +555,71 @@ export default function AIControlCenter() {
             <div className="flex items-center justify-between mb-3">
               <span className="text-[13px] font-medium flex items-center gap-2">
                 <Plus className="w-4 h-4 text-[#7c3aed]" />
-                {isRTL ? "إضافة مزود جديد" : "Add New Provider"}
+                إضافة مزود جديد (Add New Provider)
               </span>
               <button onClick={() => setShowNewForm(false)} className="text-[#8b949e] hover:text-white">✕</button>
             </div>
             <div className="grid grid-cols-2 gap-3 mb-3">
               <div>
-                <label className="text-[10px] text-[#8b949e] mb-1 block">{isRTL ? "المعرّف" : "Provider Key"}</label>
+                <label className="text-[10px] text-[#8b949e] mb-1 block"><BLabel ar="المعرّف" en="Provider Key" /></label>
+                <FieldHint text="معرّف فريد بالإنجليزية للمزود (بدون مسافات). Unique English identifier for the provider." />
                 <input
                   value={newProvider.providerKey}
                   onChange={e => setNewProvider(p => ({ ...p, providerKey: e.target.value.toLowerCase().replace(/\s/g, "_") }))}
                   placeholder="my_provider"
-                  className="w-full bg-[#0d1117] border border-white/10 rounded-lg px-3 py-2 text-[11px] text-[#e2e8f0]"
+                  className="w-full bg-[#0d1117] border border-white/10 rounded-lg px-3 py-2 text-[11px] text-[#e2e8f0] mt-0.5"
+                  dir="ltr"
                 />
               </div>
               <div>
-                <label className="text-[10px] text-[#8b949e] mb-1 block">{isRTL ? "الاسم" : "Display Name"}</label>
+                <label className="text-[10px] text-[#8b949e] mb-1 block"><BLabel ar="الاسم بالإنجليزية" en="Display Name" /></label>
+                <FieldHint text="اسم المزود كما يظهر في الواجهة. Provider name shown in the interface." />
                 <input
                   value={newProvider.displayName}
                   onChange={e => setNewProvider(p => ({ ...p, displayName: e.target.value }))}
                   placeholder="My AI Provider"
-                  className="w-full bg-[#0d1117] border border-white/10 rounded-lg px-3 py-2 text-[11px] text-[#e2e8f0]"
+                  className="w-full bg-[#0d1117] border border-white/10 rounded-lg px-3 py-2 text-[11px] text-[#e2e8f0] mt-0.5"
+                  dir="ltr"
                 />
               </div>
               <div>
-                <label className="text-[10px] text-[#8b949e] mb-1 block">{isRTL ? "الاسم بالعربي" : "Arabic Name"}</label>
+                <label className="text-[10px] text-[#8b949e] mb-1 block"><BLabel ar="الاسم بالعربي" en="Arabic Name" /></label>
+                <FieldHint text="اسم المزود بالعربية. Provider name in Arabic." />
                 <input
                   value={newProvider.displayNameAr}
                   onChange={e => setNewProvider(p => ({ ...p, displayNameAr: e.target.value }))}
                   placeholder="مزود الذكاء"
-                  className="w-full bg-[#0d1117] border border-white/10 rounded-lg px-3 py-2 text-[11px] text-[#e2e8f0]"
+                  className="w-full bg-[#0d1117] border border-white/10 rounded-lg px-3 py-2 text-[11px] text-[#e2e8f0] mt-0.5"
                 />
               </div>
               <div>
-                <label className="text-[10px] text-[#8b949e] mb-1 block">{isRTL ? "رابط المفتاح" : "API Key URL"}</label>
+                <label className="text-[10px] text-[#8b949e] mb-1 block"><BLabel ar="رابط المفتاح" en="API Key URL" /></label>
+                <FieldHint text="رابط صفحة الحصول على مفتاح API من موقع المزود. URL to the provider's API key page." />
                 <input
                   value={newProvider.apiKeyUrl}
                   onChange={e => setNewProvider(p => ({ ...p, apiKeyUrl: e.target.value }))}
                   placeholder="https://..."
-                  className="w-full bg-[#0d1117] border border-white/10 rounded-lg px-3 py-2 text-[11px] text-[#e2e8f0]"
+                  className="w-full bg-[#0d1117] border border-white/10 rounded-lg px-3 py-2 text-[11px] text-[#e2e8f0] mt-0.5"
+                  dir="ltr"
                 />
               </div>
             </div>
 
             <div className="mb-3">
-              <label className="text-[10px] text-[#8b949e] mb-1 block">{isRTL ? "النماذج" : "Models"}</label>
-              <div className="flex gap-2 mb-2">
+              <label className="text-[10px] text-[#8b949e] mb-1 block"><BLabel ar="النماذج" en="Models" /></label>
+              <FieldHint text="أضف نماذج AI المتوفرة لهذا المزود بمعرّفها واسمها. Add AI models available from this provider with their ID and name." />
+              <div className="flex gap-2 mb-2 mt-1">
                 <input
                   value={newModelId}
                   onChange={e => setNewModelId(e.target.value)}
-                  placeholder={isRTL ? "معرف النموذج" : "model-id"}
+                  placeholder="معرف النموذج (model-id)"
                   className="flex-1 bg-[#0d1117] border border-white/10 rounded-lg px-3 py-1.5 text-[11px] text-[#e2e8f0]"
+                  dir="ltr"
                 />
                 <input
                   value={newModelName}
                   onChange={e => setNewModelName(e.target.value)}
-                  placeholder={isRTL ? "اسم النموذج" : "Model Name"}
+                  placeholder="اسم النموذج (Model Name)"
                   className="flex-1 bg-[#0d1117] border border-white/10 rounded-lg px-3 py-1.5 text-[11px] text-[#e2e8f0]"
                 />
                 <button onClick={addModelToNew} className="px-3 py-1.5 bg-[#7c3aed]/20 text-[#7c3aed] rounded-lg text-[10px]">
@@ -608,7 +640,7 @@ export default function AIControlCenter() {
               disabled={!newProvider.providerKey || !newProvider.displayName}
               className="w-full py-2 bg-[#7c3aed] hover:bg-[#6d28d9] rounded-lg text-[12px] font-medium transition-colors disabled:opacity-40"
             >
-              {isRTL ? "إنشاء المزود" : "Create Provider"}
+              إنشاء المزود (Create Provider)
             </button>
           </div>
         )}
@@ -618,7 +650,6 @@ export default function AIControlCenter() {
             <ProviderCard
               key={provider.providerKey}
               provider={provider}
-              isRTL={isRTL}
               allProviders={providers}
               onUpdate={updateProvider}
               onDelete={deleteProvider}
@@ -631,7 +662,7 @@ export default function AIControlCenter() {
         {filtered.length === 0 && !loading && (
           <div className="text-center py-12 text-[#8b949e]">
             <Cpu className="w-8 h-8 mx-auto mb-2 opacity-50" />
-            <p className="text-[13px]">{isRTL ? "لا توجد نتائج" : "No providers found"}</p>
+            <p className="text-[13px]">لا توجد نتائج (No providers found)</p>
           </div>
         )}
       </div>
