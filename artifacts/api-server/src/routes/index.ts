@@ -33,7 +33,14 @@ router.use(healthRouter);
 router.use(authRouter);
 router.use(analyticsRouter);
 
-router.use(requireAuth);
+// AUTH TEMPORARILY DISABLED FOR DEVELOPMENT - RE-ENABLE BEFORE PRODUCTION
+// router.use(requireAuth);
+router.use((req, _res, next) => {
+  if (!req.user) {
+    (req as any).user = { id: "dev-admin", role: "admin", email: "admin@dev.local", username: "admin" };
+  }
+  next();
+});
 router.use(projectsRouter);
 router.use(buildRouter);
 router.use(agentsRouter);
