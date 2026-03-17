@@ -158,7 +158,7 @@ function ProviderCard({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label className="text-[10px] text-[#8b949e] mb-1 block"><BLabel ar="مفتاح API" en="API Key" /></label>
-              <FieldHint text="المفتاح السري للاتصال بخدمة المزود — تحصل عليه من لوحة تحكم المزود. Secret key to connect to the provider's API service." />
+              <FieldHint text="المفتاح السري للاتصال بخدمة المزود — تحصل عليه من لوحة تحكم المزود" />
               <div className="flex gap-1.5 mt-1">
                 <div className="relative flex-1">
                   <input
@@ -191,7 +191,7 @@ function ProviderCard({
 
             <div>
               <label className="text-[10px] text-[#8b949e] mb-1 block"><BLabel ar="رابط الحصول على المفتاح" en="Get API Key Link" /></label>
-              <FieldHint text="رابط مباشر لصفحة إنشاء مفتاح API في موقع المزود. Direct link to the provider's API key creation page." />
+              <FieldHint text="رابط مباشر لصفحة إنشاء مفتاح API في موقع المزود" />
               <a
                 href={provider.apiKeyUrl}
                 target="_blank"
@@ -207,7 +207,7 @@ function ProviderCard({
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <div>
               <label className="text-[10px] text-[#8b949e] mb-1 block"><BLabel ar="الأولوية" en="Priority" /></label>
-              <FieldHint text="ترتيب الأفضلية — رقم أقل = أولوية أعلى. Lower number = higher priority when choosing providers." />
+              <FieldHint text="ترتيب الأفضلية — رقم أقل = أولوية أعلى" />
               <input
                 type="number"
                 min="1"
@@ -219,7 +219,7 @@ function ProviderCard({
             </div>
             <div>
               <label className="text-[10px] text-[#8b949e] mb-1 block"><BLabel ar="الميزانية الشهرية" en="Monthly Budget $" /></label>
-              <FieldHint text="الحد الأقصى للإنفاق شهرياً بالدولار. Max spending limit per month in USD for this provider." />
+              <FieldHint text="الحد الأقصى للإنفاق شهرياً بالدولار على هذا المزود" />
               <input
                 type="number"
                 min="0"
@@ -231,7 +231,7 @@ function ProviderCard({
             </div>
             <div>
               <label className="text-[10px] text-[#8b949e] mb-1 block"><BLabel ar="تنبيه عند %" en="Alert Threshold %" /></label>
-              <FieldHint text="نسبة استهلاك الميزانية التي يُرسل عندها تنبيه. Percentage of budget usage that triggers a warning alert." />
+              <FieldHint text="نسبة استهلاك الميزانية التي يُرسل عندها تنبيه تحذيري" />
               <input
                 type="number"
                 min="50"
@@ -243,7 +243,7 @@ function ProviderCard({
             </div>
             <div>
               <label className="text-[10px] text-[#8b949e] mb-1 block"><BLabel ar="مزود احتياطي" en="Fallback Provider" /></label>
-              <FieldHint text="المزود البديل إذا فشل هذا المزود أو تجاوز الميزانية. Backup provider if this one fails or exceeds budget." />
+              <FieldHint text="المزود البديل الذي يُستخدم إذا فشل هذا المزود أو تجاوز الميزانية" />
               <select
                 value={provider.fallbackProviderKey || ""}
                 onChange={e => onUpdate(provider.providerKey, { fallbackProviderKey: e.target.value || null } as any)}
@@ -262,7 +262,7 @@ function ProviderCard({
               <Cpu className="w-3.5 h-3.5 text-[#7c3aed]" />
               <span className="text-[11px] font-medium"><BLabel ar="النماذج المتوفرة" en="Available Models" /></span>
             </div>
-            <FieldHint text="قائمة نماذج الذكاء الاصطناعي التي يوفرها هذا المزود مع أسعار كل نموذج. List of AI models offered by this provider with pricing per 1K tokens." />
+            <FieldHint text="قائمة نماذج الذكاء الاصطناعي التي يوفرها هذا المزود مع تكلفة كل نموذج" />
             <div className="grid gap-1.5 mt-1.5">
               {provider.models.map((m) => (
                 <div key={m.id} className="flex items-center justify-between bg-[#0d1117] border border-white/5 rounded-lg px-3 py-2">
@@ -271,9 +271,9 @@ function ProviderCard({
                     <span className="text-[9px] text-[#8b949e] ml-2">{m.id}</span>
                   </div>
                   <div className="flex items-center gap-3 text-[9px] text-[#8b949e]">
-                    <span title="الحد الأقصى للتوكن (Max context window)">{(m.maxTokens / 1000).toFixed(0)}K tokens</span>
-                    <span className="text-green-400" title="تكلفة الإدخال لكل 1000 توكن (Input cost per 1K tokens)">${m.inputCostPer1k}/1K in</span>
-                    <span className="text-orange-400" title="تكلفة الإخراج لكل 1000 توكن (Output cost per 1K tokens)">${m.outputCostPer1k}/1K out</span>
+                    <span title="الحد الأقصى للتوكنات">{(m.maxTokens / 1000).toFixed(0)}K tokens</span>
+                    <span className="text-green-400" title="تكلفة الإدخال لكل 1000 توكن">${m.inputCostPer1k}/1K in</span>
+                    <span className="text-orange-400" title="تكلفة الإخراج لكل 1000 توكن">${m.outputCostPer1k}/1K out</span>
                   </div>
                 </div>
               ))}
@@ -286,7 +286,7 @@ function ProviderCard({
                 <BarChart2 className="w-3.5 h-3.5 text-blue-400" />
                 <span className="text-[11px] font-medium"><BLabel ar="الاستهلاك" en="Usage Statistics" /></span>
               </div>
-              <FieldHint text="إحصائيات استخدام هذا المزود: التكلفة والتوكنات والطلبات. Consumption stats for this provider: cost, tokens, and requests." />
+              <FieldHint text="إحصائيات استخدام هذا المزود: التكلفة والتوكنات وعدد الطلبات" />
               <div className="grid grid-cols-3 gap-2 mt-1.5">
                 {[
                   { label: "اليوم (Today)", data: usage.daily },
@@ -323,7 +323,7 @@ function ProviderCard({
                 <Bot className="w-3.5 h-3.5 text-yellow-400" />
                 <span className="text-[11px] font-medium"><BLabel ar="الوكلاء المرتبطون" en="Linked Agents" /></span>
               </div>
-              <FieldHint text="الوكلاء (AI Agents) الذين يستخدمون نماذج من هذا المزود حالياً. Agents currently using models from this provider." />
+              <FieldHint text="الوكلاء الذين يستخدمون نماذج من هذا المزود حالياً" />
               <div className="grid gap-1.5 mt-1.5">
                 {linkedAgents.map(a => (
                   <div key={a.agentKey} className="flex items-center justify-between bg-[#0d1117] border border-white/5 rounded-lg px-3 py-2">
@@ -349,7 +349,7 @@ function ProviderCard({
                 <Activity className="w-3.5 h-3.5 text-cyan-400" />
                 <span className="text-[11px] font-medium"><BLabel ar="آخر الطلبات" en="Recent Requests" /></span>
               </div>
-              <FieldHint text="سجل آخر الطلبات المرسلة لهذا المزود مع حالة النجاح والتكلفة. Log of recent API calls to this provider with success status and cost." />
+              <FieldHint text="سجل آخر الطلبات المرسلة لهذا المزود مع حالة النجاح والتكلفة" />
               <div className="max-h-40 overflow-y-auto space-y-1 mt-1.5">
                 {usage.recentLogs.slice(0, 20).map((log: any, i: number) => (
                   <div key={i} className="flex items-center justify-between bg-[#0d1117] border border-white/5 rounded px-2.5 py-1.5 text-[10px]">
@@ -518,22 +518,22 @@ export default function AIControlCenter() {
           <div className="bg-[#161b22] border border-white/7 rounded-xl p-3">
             <div className="text-[10px] text-[#8b949e] mb-1">المزودون (Providers)</div>
             <div className="text-xl font-bold">{providers.length}</div>
-            <FieldHint text="عدد مزودي الخدمة المسجلين. Total registered AI service providers." />
+            <FieldHint text="عدد مزودي الخدمة المسجلين" />
           </div>
           <div className="bg-[#161b22] border border-white/7 rounded-xl p-3">
             <div className="text-[10px] text-[#8b949e] mb-1">مفاتيح نشطة (Active Keys)</div>
             <div className="text-xl font-bold text-green-400">{activeCount}</div>
-            <FieldHint text="عدد المزودين الذين مفاتيحهم تعمل. Providers with valid, working API keys." />
+            <FieldHint text="عدد المزودين الذين مفاتيحهم تعمل" />
           </div>
           <div className="bg-[#161b22] border border-white/7 rounded-xl p-3">
             <div className="text-[10px] text-[#8b949e] mb-1">إجمالي النماذج (Total Models)</div>
             <div className="text-xl font-bold text-[#7c3aed]">{totalModels}</div>
-            <FieldHint text="مجموع نماذج AI المتاحة عبر كل المزودين. Total AI models available across all providers." />
+            <FieldHint text="مجموع نماذج الذكاء الاصطناعي المتاحة عبر كل المزودين" />
           </div>
           <div className="bg-[#161b22] border border-white/7 rounded-xl p-3">
             <div className="text-[10px] text-[#8b949e] mb-1">التكلفة الإجمالية (Total Cost)</div>
             <div className="text-xl font-bold text-orange-400">${providers.reduce((s, p) => s + parseFloat(p.totalCostUsd), 0).toFixed(4)}</div>
-            <FieldHint text="إجمالي المبلغ المصروف على جميع المزودين. Total amount spent across all providers." />
+            <FieldHint text="إجمالي المبلغ المصروف على جميع المزودين" />
           </div>
         </div>
 
@@ -562,7 +562,7 @@ export default function AIControlCenter() {
             <div className="grid grid-cols-2 gap-3 mb-3">
               <div>
                 <label className="text-[10px] text-[#8b949e] mb-1 block"><BLabel ar="المعرّف" en="Provider Key" /></label>
-                <FieldHint text="معرّف فريد بالإنجليزية للمزود (بدون مسافات). Unique English identifier for the provider." />
+                <FieldHint text="معرّف فريد بالإنجليزية للمزود بدون مسافات" />
                 <input
                   value={newProvider.providerKey}
                   onChange={e => setNewProvider(p => ({ ...p, providerKey: e.target.value.toLowerCase().replace(/\s/g, "_") }))}
@@ -573,7 +573,7 @@ export default function AIControlCenter() {
               </div>
               <div>
                 <label className="text-[10px] text-[#8b949e] mb-1 block"><BLabel ar="الاسم بالإنجليزية" en="Display Name" /></label>
-                <FieldHint text="اسم المزود كما يظهر في الواجهة. Provider name shown in the interface." />
+                <FieldHint text="اسم المزود كما يظهر في الواجهة" />
                 <input
                   value={newProvider.displayName}
                   onChange={e => setNewProvider(p => ({ ...p, displayName: e.target.value }))}
@@ -584,7 +584,7 @@ export default function AIControlCenter() {
               </div>
               <div>
                 <label className="text-[10px] text-[#8b949e] mb-1 block"><BLabel ar="الاسم بالعربي" en="Arabic Name" /></label>
-                <FieldHint text="اسم المزود بالعربية. Provider name in Arabic." />
+                <FieldHint text="اسم المزود بالعربية" />
                 <input
                   value={newProvider.displayNameAr}
                   onChange={e => setNewProvider(p => ({ ...p, displayNameAr: e.target.value }))}
@@ -594,7 +594,7 @@ export default function AIControlCenter() {
               </div>
               <div>
                 <label className="text-[10px] text-[#8b949e] mb-1 block"><BLabel ar="رابط المفتاح" en="API Key URL" /></label>
-                <FieldHint text="رابط صفحة الحصول على مفتاح API من موقع المزود. URL to the provider's API key page." />
+                <FieldHint text="رابط صفحة الحصول على مفتاح API من موقع المزود" />
                 <input
                   value={newProvider.apiKeyUrl}
                   onChange={e => setNewProvider(p => ({ ...p, apiKeyUrl: e.target.value }))}
@@ -607,7 +607,7 @@ export default function AIControlCenter() {
 
             <div className="mb-3">
               <label className="text-[10px] text-[#8b949e] mb-1 block"><BLabel ar="النماذج" en="Models" /></label>
-              <FieldHint text="أضف نماذج AI المتوفرة لهذا المزود بمعرّفها واسمها. Add AI models available from this provider with their ID and name." />
+              <FieldHint text="أضف نماذج الذكاء الاصطناعي المتوفرة لهذا المزود بمعرّفها واسمها" />
               <div className="flex gap-2 mb-2 mt-1">
                 <input
                   value={newModelId}
