@@ -420,12 +420,26 @@ function AgentListItem({ agent, selected, onClick, isRTL }: { agent: AgentConfig
   );
 }
 
+function getCreativityLabel(value: number, isRTL: boolean): { label: string; color: string } {
+  if (value <= 0.3) return { label: isRTL ? "متزن" : "Balanced", color: "text-blue-400" };
+  if (value <= 0.6) return { label: isRTL ? "متوسط" : "Moderate", color: "text-cyan-400" };
+  if (value <= 1.0) return { label: isRTL ? "ذكي" : "Smart", color: "text-green-400" };
+  if (value <= 1.4) return { label: isRTL ? "مبدع" : "Creative", color: "text-yellow-400" };
+  return { label: isRTL ? "مبدع جداً" : "Very Creative", color: "text-orange-400" };
+}
+
+function formatTokens(val: number): string {
+  if (val >= 1000) return `${(val / 1000).toFixed(0)}K`;
+  return String(val);
+}
+
 function ModelSlotEditor({ slot, index, onChange, isRTL }: { slot: ModelSlot | null; index: number; onChange: (s: ModelSlot) => void; isRTL: boolean }) {
   const labels = [isRTL ? "النموذج الأساسي" : "Primary Model", isRTL ? "النموذج الثانوي" : "Secondary Model", isRTL ? "النموذج الثالث" : "Tertiary Model"];
   const current = slot || { provider: "anthropic", model: "claude-sonnet-4-20250514", enabled: false, creativity: 0.7, timeoutSeconds: 240, maxTokens: 16000 };
   const creativity = current.creativity ?? 0.7;
   const timeoutSeconds = current.timeoutSeconds ?? 240;
   const maxTokens = current.maxTokens ?? 16000;
+  const creativityInfo = getCreativityLabel(creativity, isRTL);
 
   return (
     <div className="bg-[#0d1117] border border-white/10 rounded-lg p-3">
@@ -444,31 +458,65 @@ function ModelSlotEditor({ slot, index, onChange, isRTL }: { slot: ModelSlot | n
           const [provider, model] = e.target.value.split("::");
           onChange({ ...current, provider, model });
         }}
-        className="w-full bg-[#161b22] border border-white/10 rounded-lg px-3 py-2 text-[12px] text-[#e2e8f0] mb-2"
+        className="w-full bg-[#161b22] border border-white/10 rounded-lg px-3 py-2 text-[12px] text-[#e2e8f0] mb-3"
       >
         {MODEL_OPTIONS.map(m => (
           <option key={`${m.provider}::${m.model}`} value={`${m.provider}::${m.model}`}>{m.label}</option>
         ))}
       </select>
 
-      <div className="grid grid-cols-3 gap-2 mt-1">
+      <div className="space-y-2.5">
         <div>
-          <label className="text-[10px] text-[#8b949e] mb-1 block">{isRTL ? "الإبداع" : "Creativity"}</label>
-          <div className="flex items-center gap-1.5">
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={creativity}
-              onChange={e => onChange({ ...current, creativity: parseFloat(e.target.value) })}
-              className="flex-1 accent-[#7c3aed] h-1.5"
-            />
-            <span className="text-[10px] font-mono bg-[#161b22] px-1.5 py-0.5 rounded border border-white/10 w-10 text-center">{creativity.toFixed(2)}</span>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-[10px] text-[#8b949e]">{isRTL ? "الإبداع" : "Creativity"}</label>
+            <span className={`text-[10px] font-medium ${creativityInfo.color}`}>{creativityInfo.label} ({creativity.toFixed(2)})</span>
+          </div>
+          <input
+            type="range"
+            min="0"
+            max="2"
+            step="0.05"
+            value={creativity}
+            onChange={e => onChange({ ...current, creativity: parseFloat(e.target.value) })}
+            className="w-full accent-[#7c3aed] h-1.5"
+          />
+          <div className="flex justify-between text-[9px] text-[#8b949e]/50 mt-0.5">
+            <span>{isRTL ? "متزن" : "Balanced"}</span>
+            <span>{isRTL ? "متوسط" : "Moderate"}</span>
+            <span>{isRTL ? "ذكي" : "Smart"}</span>
+            <span>{isRTL ? "مبدع" : "Creative"}</span>
+            <span>{isRTL ? "مبدع جداً" : "Very Creative"}</span>
           </div>
         </div>
+
         <div>
-          <label className="text-[10px] text-[#8b949e] mb-1 block">{isRTL ? "المهلة (ثانية)" : "Timeout (s)"}</label>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-[10px] text-[#8b949e]">{isRTL ? "التوكن" : "Tokens"}</label>
+            <span className="text-[10px] font-mono text-[#e2e8f0]">{formatTokens(maxTokens)}</span>
+          </div>
+          <input
+            type="range"
+            min="1000"
+            max="120000"
+            step="1000"
+            value={maxTokens}
+            onChange={e => onChange({ ...current, maxTokens: parseInt(e.target.value) })}
+            className="w-full accent-[#3b82f6] h-1.5"
+          />
+          <div className="flex justify-between text-[9px] text-[#8b949e]/50 mt-0.5">
+            <span>1K</span>
+            <span>30K</span>
+            <span>60K</span>
+            <span>90K</span>
+            <span>120K</span>
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-[10px] text-[#8b949e]">{isRTL ? "المهلة (ثانية)" : "Timeout (s)"}</label>
+            <span className="text-[10px] font-mono text-[#e2e8f0]">{timeoutSeconds}s</span>
+          </div>
           <input
             type="number"
             min="10"
@@ -476,18 +524,6 @@ function ModelSlotEditor({ slot, index, onChange, isRTL }: { slot: ModelSlot | n
             step="10"
             value={timeoutSeconds}
             onChange={e => onChange({ ...current, timeoutSeconds: parseInt(e.target.value) || 240 })}
-            className="w-full bg-[#161b22] border border-white/10 rounded px-2 py-1 text-[11px] text-[#e2e8f0]"
-          />
-        </div>
-        <div>
-          <label className="text-[10px] text-[#8b949e] mb-1 block">{isRTL ? "التوكن" : "Max Tokens"}</label>
-          <input
-            type="number"
-            min="1000"
-            max="200000"
-            step="1000"
-            value={maxTokens}
-            onChange={e => onChange({ ...current, maxTokens: parseInt(e.target.value) || 16000 })}
             className="w-full bg-[#161b22] border border-white/10 rounded px-2 py-1 text-[11px] text-[#e2e8f0]"
           />
         </div>
@@ -554,25 +590,61 @@ function ModelsTab({ agent, onUpdate, isRTL }: { agent: AgentConfig; onUpdate: (
               ))}
             </select>
 
-            {gov.provider && gov.model && (
-              <div className="grid grid-cols-3 gap-2 mt-2">
+            {gov.provider && gov.model && (() => {
+              const govCreativityInfo = getCreativityLabel(gov.creativity ?? 0.5, isRTL);
+              return (
+              <div className="space-y-2.5 mt-3">
                 <div>
-                  <label className="text-[10px] text-yellow-400/70 mb-1 block">{isRTL ? "إبداع الحاكم" : "Governor Creativity"}</label>
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.05"
-                      value={gov.creativity ?? 0.5}
-                      onChange={e => onUpdate({ governorModel: { ...gov, creativity: parseFloat(e.target.value) } } as any)}
-                      className="flex-1 accent-yellow-400 h-1.5"
-                    />
-                    <span className="text-[10px] font-mono bg-[#161b22] px-1.5 py-0.5 rounded border border-yellow-500/20 w-10 text-center text-yellow-400">{(gov.creativity ?? 0.5).toFixed(2)}</span>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[10px] text-yellow-400/70">{isRTL ? "إبداع الحاكم" : "Governor Creativity"}</label>
+                    <span className={`text-[10px] font-medium ${govCreativityInfo.color}`}>{govCreativityInfo.label} ({(gov.creativity ?? 0.5).toFixed(2)})</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="2"
+                    step="0.05"
+                    value={gov.creativity ?? 0.5}
+                    onChange={e => onUpdate({ governorModel: { ...gov, creativity: parseFloat(e.target.value) } } as any)}
+                    className="w-full accent-yellow-400 h-1.5"
+                  />
+                  <div className="flex justify-between text-[9px] text-yellow-400/30 mt-0.5">
+                    <span>{isRTL ? "متزن" : "Balanced"}</span>
+                    <span>{isRTL ? "متوسط" : "Moderate"}</span>
+                    <span>{isRTL ? "ذكي" : "Smart"}</span>
+                    <span>{isRTL ? "مبدع" : "Creative"}</span>
+                    <span>{isRTL ? "مبدع جداً" : "Very Creative"}</span>
                   </div>
                 </div>
+
                 <div>
-                  <label className="text-[10px] text-yellow-400/70 mb-1 block">{isRTL ? "مهلة الحاكم (ثانية)" : "Timeout (s)"}</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[10px] text-yellow-400/70">{isRTL ? "توكن الحاكم" : "Governor Tokens"}</label>
+                    <span className="text-[10px] font-mono text-yellow-400">{formatTokens(gov.maxTokens ?? 16000)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="1000"
+                    max="120000"
+                    step="1000"
+                    value={gov.maxTokens ?? 16000}
+                    onChange={e => onUpdate({ governorModel: { ...gov, maxTokens: parseInt(e.target.value) } } as any)}
+                    className="w-full accent-yellow-500 h-1.5"
+                  />
+                  <div className="flex justify-between text-[9px] text-yellow-400/30 mt-0.5">
+                    <span>1K</span>
+                    <span>30K</span>
+                    <span>60K</span>
+                    <span>90K</span>
+                    <span>120K</span>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[10px] text-yellow-400/70">{isRTL ? "مهلة الحاكم (ثانية)" : "Governor Timeout (s)"}</label>
+                    <span className="text-[10px] font-mono text-yellow-400">{gov.timeoutSeconds ?? 300}s</span>
+                  </div>
                   <input
                     type="number"
                     min="30"
@@ -583,20 +655,9 @@ function ModelsTab({ agent, onUpdate, isRTL }: { agent: AgentConfig; onUpdate: (
                     className="w-full bg-[#161b22] border border-yellow-500/20 rounded px-2 py-1 text-[11px] text-yellow-400"
                   />
                 </div>
-                <div>
-                  <label className="text-[10px] text-yellow-400/70 mb-1 block">{isRTL ? "توكن الحاكم" : "Governor Tokens"}</label>
-                  <input
-                    type="number"
-                    min="1000"
-                    max="200000"
-                    step="1000"
-                    value={gov.maxTokens ?? 16000}
-                    onChange={e => onUpdate({ governorModel: { ...gov, maxTokens: parseInt(e.target.value) || 16000 } } as any)}
-                    className="w-full bg-[#161b22] border border-yellow-500/20 rounded px-2 py-1 text-[11px] text-yellow-400"
-                  />
-                </div>
               </div>
-            )}
+              );
+            })()}
           </div>
           );
         })()}
@@ -610,12 +671,12 @@ function ModelsTab({ agent, onUpdate, isRTL }: { agent: AgentConfig; onUpdate: (
 
       <div className="bg-[#161b22] border border-white/7 rounded-xl p-4">
         <div className="flex items-center gap-2 mb-1">
-          <span className="text-[12px] text-[#8b949e]">{isRTL ? "درجة الإبداع والمهلة لكل نموذج أعلاه" : "Creativity & timeout set per-model above"}</span>
+          <span className="text-[12px] text-[#8b949e]">{isRTL ? "الإعدادات لكل نموذج أعلاه" : "Settings configured per-model above"}</span>
         </div>
         <p className="text-[10px] text-[#8b949e]/60">
           {isRTL
-            ? "كل نموذج يمكن ضبط إبداعه ومهلته بشكل مستقل — غيّر القيم مباشرة في كل خانة نموذج."
-            : "Each model can have its own creativity and timeout — adjust values directly in each model slot."
+            ? "كل نموذج يمكن ضبط إبداعه وتوكنه ومهلته بشكل مستقل — غيّر القيم مباشرة في كل خانة نموذج."
+            : "Each model has its own creativity, tokens, and timeout — adjust values directly in each model slot."
           }
         </p>
       </div>
