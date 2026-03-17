@@ -1033,8 +1033,8 @@ async function executeBatchedBuildPipeline(
           );
 
           if (!earlySandboxInitiated) {
-            await savePromise;
             earlySandboxInitiated = true;
+            await savePromise;
             try {
               const template = getProjectTemplate(framework) || { dependencies: {}, devDependencies: {}, scripts: {}, baseFiles: [], directories: [] };
               const initFiles: GeneratedFile[] = [...allGeneratedFiles];

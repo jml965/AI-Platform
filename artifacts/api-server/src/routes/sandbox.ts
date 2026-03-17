@@ -370,6 +370,24 @@ router.use("/sandbox/proxy", async (req: Request, res: Response) => {
     var real = window.location.pathname.slice(prefix.length) || "/";
     origReplaceState.call(history, null, "", real);
   }
+  var OrigWS = window.WebSocket;
+  window.WebSocket = function(url, protocols) {
+    if (typeof url === "string") {
+      try {
+        var u = new URL(url, window.location.origin);
+        if (u.origin === window.location.origin && !u.pathname.startsWith(prefix)) {
+          u.pathname = prefix + u.pathname;
+          url = u.toString();
+        }
+      } catch(e) {}
+    }
+    return protocols !== undefined ? new OrigWS(url, protocols) : new OrigWS(url);
+  };
+  window.WebSocket.prototype = OrigWS.prototype;
+  window.WebSocket.CONNECTING = OrigWS.CONNECTING;
+  window.WebSocket.OPEN = OrigWS.OPEN;
+  window.WebSocket.CLOSING = OrigWS.CLOSING;
+  window.WebSocket.CLOSED = OrigWS.CLOSED;
 })();
 </script>`;
             html = html.replace("<!DOCTYPE html>", "<!DOCTYPE html>" + routerFixScript);
