@@ -1028,13 +1028,10 @@ async function executeBatchedBuildPipeline(
           if (result.data?.devDependencies) Object.assign(allDevDeps, result.data.devDependencies as Record<string, string>);
           if (result.data?.scripts) Object.assign(allScripts, result.data.scripts as Record<string, string>);
 
-          const savePromise = fileManager.saveFiles(projectId, [...allGeneratedFiles]).catch(e =>
-            console.error(`Build ${buildId}: module ${mod.name} save failed:`, e)
-          );
+          await fileManager.saveFiles(projectId, [...allGeneratedFiles]);
 
           if (!earlySandboxInitiated) {
             earlySandboxInitiated = true;
-            await savePromise;
             try {
               const template = getProjectTemplate(framework) || { dependencies: {}, devDependencies: {}, scripts: {}, baseFiles: [], directories: [] };
               const initFiles: GeneratedFile[] = [...allGeneratedFiles];

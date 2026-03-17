@@ -592,6 +592,22 @@ export default function Builder() {
     return () => { stopped = true; clearInterval(iv); };
   }, [id, isBuilding]);
 
+  useEffect(() => {
+    if (!buildId || !isBuilding) return;
+    const baseUrl = import.meta.env.VITE_API_URL || "";
+    const es = new EventSource(`${baseUrl}/api/build/${buildId}/runner/stream`, { withCredentials: true });
+    es.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === "info" && typeof data.message === "string" && data.message.includes("Early server running")) {
+          setSandboxRunning(true);
+        }
+      } catch {}
+    };
+    es.onerror = () => {};
+    return () => es.close();
+  }, [buildId, isBuilding]);
+
   const sandboxProxyUrl = useMemo(() => {
     if (!id) return null;
     const runnerLog = logs.find(l =>

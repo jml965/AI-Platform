@@ -424,6 +424,18 @@ router.use("/sandbox/proxy", async (req: Request, res: Response) => {
               res.writeHead(proxyRes.statusCode || 200, headers);
               res.end(js);
             });
+          } else if (contentType.includes("css") || cleanPath.endsWith(".css")) {
+            const chunks: Buffer[] = [];
+            proxyRes.on("data", (chunk: Buffer) => chunks.push(chunk));
+            proxyRes.on("end", () => {
+              let css = Buffer.concat(chunks).toString("utf8");
+              css = css.replace(/url\(\s*(['"]?)\/(?!\/)/g, `url($1${proxyPrefix}/`);
+              const headers = { ...proxyRes.headers };
+              delete headers["content-length"];
+              delete headers["content-encoding"];
+              res.writeHead(proxyRes.statusCode || 200, headers);
+              res.end(css);
+            });
           } else {
             res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
             proxyRes.pipe(res, { end: true });
