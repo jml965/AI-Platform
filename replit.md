@@ -29,12 +29,28 @@ The platform utilizes a pnpm workspace monorepo structure, separating deployable
 - **Monorepo Tool:** pnpm workspaces for managing packages.
 - **Backend:** Express 5 API server (`api-server`) handles routes, authentication, project data, and AI interactions.
 - **Database:** PostgreSQL with Drizzle ORM for managing schema, including user data, projects, build tasks, and billing.
-- **AI Agents:** A multi-agent system comprises:
-    - `CodeGenerator`: Generates website files from natural language (Anthropic Claude Opus 4).
+- **AI Agents:** A multi-agent system (11 agents) managed via the Agent Management page (`/agents`):
+    - `CodeGenerator`: Generates website files from natural language (Anthropic Claude Sonnet 4).
     - `CodeReviewer`: Reviews code for quality and security (OpenAI o3).
-    - `FixAgent`: Automatically fixes identified issues (Anthropic Claude Opus 4).
+    - `FixAgent`: Automatically fixes identified issues (Anthropic Claude Sonnet 4).
     - `FileManager`: Manages file persistence in the database.
     - `PackageRunner`: Detects project type (nodejs/python/static) and runs install/start in sandbox.
+    - `PlannerAgent`: Plans file structure for large projects (OpenAI o3).
+    - `SurgicalEditAgent`: Precise code edits on existing files (Anthropic Claude Sonnet 4).
+    - `TranslationAgent`: Translates website content between languages (Anthropic Claude Sonnet 4).
+    - `SeoAgent`: SEO analysis and suggestions (GPT-4o).
+    - `ExecutionEngine`: Main orchestrator for build pipelines.
+    - `QA Pipeline`: Quality assurance with review/fix retry loop.
+- **Agent Management System:** Full admin panel at `/agents` with per-agent configuration:
+    - 3 model slots per agent (primary/secondary/tertiary) with enable/disable toggles
+    - **Governor System**: When enabled, 3 models think independently, then a merger extracts the best solution
+    - System prompt editing, instructions, memory (short-term + long-term)
+    - Pipeline ordering with receives-from/sends-to configuration
+    - Token limits, batch sizes, creativity (temperature) per agent
+    - Full statistics: tokens used, tasks completed, errors, success rate, avg duration
+    - Unlimited custom agent creation
+    - Changes are saved to DB and take effect on next build
+    - DB table: `agent_configs` stores all agent configurations
 - **Agent Orchestration:** An `execution-engine` orchestrates the build pipeline (codegen → review → fix → save → package_runner → QA). Package runner failures are non-fatal — the build succeeds as long as files are saved. Uses streaming API for Anthropic calls to handle long-running operations (4-minute timeout per call). Fixer agent returns only changed files, which are merged (not replaced) with the original codegen output to prevent file loss. **Batched Build Mode:** For large projects, the system auto-detects complexity and switches to batched generation — first plans all files via PlannerAgent, then generates in batches of ~10 files, saving and previewing after each batch. Each batch receives context from previously generated files for consistency.
 - **Sandbox System:** Provides isolated execution environments for project lifecycle management (create, execute, start-server, stop, restart, cleanup). The sandbox proxy auto-restarts stopped sandboxes using the last known start command when a preview request comes in. Each sandbox stores its `lastCommand` for restart recovery.
 - **Deployment System:** Real deployment via GitHub Pages — creates a GitHub repository for each project, pushes files, and enables GitHub Pages. Each deployed site gets a live URL at `username.github.io/repo-name`. Uses Replit's GitHub connector (OAuth) for authenticated API access.

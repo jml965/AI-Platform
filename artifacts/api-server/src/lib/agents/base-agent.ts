@@ -2,6 +2,7 @@ import { openai } from "@workspace/integrations-openai-ai-server";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { AgentConstitution, checkTokenBudget } from "./constitution";
 import type { AgentResult, AgentType, BuildContext } from "./types";
+import { getAgentConfig, updateAgentStats } from "./governor";
 
 export type AIProvider = "openai" | "anthropic";
 
@@ -17,8 +18,44 @@ export abstract class BaseAgent {
 
   protected constitution: AgentConstitution;
 
+  private _overrideModel: ModelConfig | null = null;
+  private _overridePrompt: string | null = null;
+  private _overrideCreativity: number | null = null;
+
   constructor(constitution: AgentConstitution) {
     this.constitution = constitution;
+  }
+
+  async loadConfigFromDB(): Promise<void> {
+    try {
+      const config = await getAgentConfig(this.agentType);
+      if (config && config.enabled) {
+        const pm = config.primaryModel as any;
+        if (pm && pm.provider && pm.model && pm.provider !== "local") {
+          this._overrideModel = { provider: pm.provider as AIProvider, model: pm.model };
+        }
+        if (config.systemPrompt && config.systemPrompt.trim().length > 20) {
+          this._overridePrompt = config.systemPrompt;
+        }
+        if (config.creativity) {
+          this._overrideCreativity = parseFloat(config.creativity as string);
+        }
+      }
+    } catch (err) {
+      // Silently fall back to defaults
+    }
+  }
+
+  protected getEffectiveModel(): ModelConfig {
+    return this._overrideModel || this.modelConfig;
+  }
+
+  protected getEffectivePrompt(): string {
+    return this._overridePrompt || this.systemPrompt;
+  }
+
+  protected async trackStats(tokensUsed: number, success: boolean, durationMs: number, costUsd: number) {
+    await updateAgentStats(this.agentType, tokensUsed, success, durationMs, costUsd);
   }
 
   protected async callLLM(
@@ -40,19 +77,23 @@ export abstract class BaseAgent {
       Math.max(1024, budget.remaining - estimatedPromptTokens)
     );
 
-    if (this.modelConfig.provider === "anthropic") {
-      return this.callAnthropic(messages, maxCompletion);
+    const effectiveModel = this.getEffectiveModel();
+
+    if (effectiveModel.provider === "anthropic") {
+      return this.callAnthropic(messages, maxCompletion, effectiveModel);
     }
 
-    return this.callOpenAI(messages, maxCompletion);
+    return this.callOpenAI(messages, maxCompletion, effectiveModel);
   }
 
   private async callOpenAI(
     messages: { role: "system" | "user" | "assistant"; content: string }[],
-    maxCompletion: number
+    maxCompletion: number,
+    modelCfg?: ModelConfig
   ): Promise<{ content: string; tokensUsed: number }> {
+    const cfg = modelCfg || this.getEffectiveModel();
     const response = await openai.chat.completions.create({
-      model: this.modelConfig.model,
+      model: cfg.model,
       max_completion_tokens: maxCompletion,
       messages,
     });
@@ -66,8 +107,10 @@ export abstract class BaseAgent {
 
   private async callAnthropic(
     messages: { role: "system" | "user" | "assistant"; content: string }[],
-    maxCompletion: number
+    maxCompletion: number,
+    modelCfg?: ModelConfig
   ): Promise<{ content: string; tokensUsed: number }> {
+    const cfg = modelCfg || this.getEffectiveModel();
     const systemMessage = messages.find(m => m.role === "system");
     const chatMessages = messages
       .filter(m => m.role !== "system")
@@ -79,7 +122,7 @@ export abstract class BaseAgent {
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
         const stream = anthropic.messages.stream({
-          model: this.modelConfig.model,
+          model: cfg.model,
           max_tokens: maxCompletion,
           system: systemMessage?.content,
           messages: chatMessages,

@@ -326,6 +326,13 @@ async function executeBuildPipeline(
   const fileManager = new FileManagerAgent(constitution);
   const surgicalEditAgent = new SurgicalEditAgent(constitution);
 
+  await Promise.allSettled([
+    codegenAgent.loadConfigFromDB(),
+    reviewerAgent.loadConfigFromDB(),
+    fixerAgent.loadConfigFromDB(),
+    surgicalEditAgent.loadConfigFromDB(),
+  ]);
+
   let totalTokens = 0;
   let totalCost = 0;
 

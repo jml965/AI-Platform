@@ -205,9 +205,9 @@ export default function Dashboard() {
 function AdminPanelSection({ t }: { t: any }) {
   const [expanded, setExpanded] = useState(true);
   const adminItems = [
-    { icon: Bot, label: t.home_nav_agents },
-    { icon: FolderGit2, label: t.home_nav_repository },
-    { icon: Plug, label: t.home_nav_integration },
+    { icon: Bot, label: t.home_nav_agents, href: "/agents" },
+    { icon: FolderGit2, label: t.home_nav_repository, href: "#" },
+    { icon: Plug, label: t.home_nav_integration, href: "#" },
   ];
 
   return (
@@ -224,13 +224,14 @@ function AdminPanelSection({ t }: { t: any }) {
       {expanded && (
         <div className="flex flex-col gap-0.5 mt-1">
           {adminItems.map((item, i) => (
-            <div
+            <Link
               key={i}
+              href={item.href}
               className="flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer text-[12.5px] text-[#8b949e] hover:bg-white/5 transition-colors"
             >
               <item.icon className="w-4 h-4" />
               <span>{item.label}</span>
-            </div>
+            </Link>
           ))}
         </div>
       )}
