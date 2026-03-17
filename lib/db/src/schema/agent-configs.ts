@@ -17,6 +17,9 @@ export const agentConfigsTable = pgTable("agent_configs", {
   secondaryModel: jsonb("secondary_model").$type<{ provider: string; model: string; enabled: boolean; creativity: number; timeoutSeconds: number; maxTokens: number }>(),
   tertiaryModel: jsonb("tertiary_model").$type<{ provider: string; model: string; enabled: boolean; creativity: number; timeoutSeconds: number; maxTokens: number }>(),
 
+  imageModel: jsonb("image_model").$type<{ provider: string; model: string; enabled: boolean }>(),
+  videoModel: jsonb("video_model").$type<{ provider: string; model: string; enabled: boolean }>(),
+
   systemPrompt: text("system_prompt").notNull().default(""),
   instructions: text("instructions").default(""),
   permissions: jsonb("permissions").$type<string[]>().default([]),

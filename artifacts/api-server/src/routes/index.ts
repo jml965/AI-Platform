@@ -23,6 +23,7 @@ import seoRouter from "./seo";
 import pluginsRouter from "./plugins";
 import translationsRouter from "./translations";
 import chatRouter from "./chat";
+import mediaProvidersRouter from "./media-providers";
 import adminRouter from "./admin";
 import { requireAuth } from "../middlewares/authSession";
 
@@ -54,6 +55,7 @@ router.use(seoRouter);
 router.use(pluginsRouter);
 router.use(translationsRouter);
 router.use(chatRouter);
+router.use(mediaProvidersRouter);
 router.use(adminRouter);
 
 export default router;
