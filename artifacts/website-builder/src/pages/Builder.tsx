@@ -115,6 +115,8 @@ export default function Builder() {
   const leftDragRef = useRef<{ startX: number; startW: number } | null>(null);
   const rightDragRef = useRef<{ startX: number; startW: number } | null>(null);
 
+  const MIN_CENTER_WIDTH = 300;
+
   const handleLeftDragStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     leftDragRef.current = { startX: e.clientX, startW: leftWidth };
@@ -124,7 +126,11 @@ export default function Builder() {
       const delta = isRtl
         ? leftDragRef.current.startX - ev.clientX
         : ev.clientX - leftDragRef.current.startX;
-      setLeftWidth(Math.max(220, Math.min(480, leftDragRef.current.startW + delta)));
+      const newLeft = Math.max(220, Math.min(480, leftDragRef.current.startW + delta));
+      const centerRemaining = window.innerWidth - newLeft - rightWidth - 10;
+      if (centerRemaining >= MIN_CENTER_WIDTH) {
+        setLeftWidth(newLeft);
+      }
     };
     const onUp = () => {
       leftDragRef.current = null;
@@ -133,7 +139,7 @@ export default function Builder() {
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
-  }, [leftWidth, lang]);
+  }, [leftWidth, rightWidth, lang]);
 
   const handleRightDragStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -144,7 +150,11 @@ export default function Builder() {
       const delta = isRtl
         ? ev.clientX - rightDragRef.current.startX
         : rightDragRef.current.startX - ev.clientX;
-      setRightWidth(Math.max(260, Math.min(600, rightDragRef.current.startW + delta)));
+      const newRight = Math.max(260, Math.min(600, rightDragRef.current.startW + delta));
+      const centerRemaining = window.innerWidth - leftWidth - newRight - 10;
+      if (centerRemaining >= MIN_CENTER_WIDTH) {
+        setRightWidth(newRight);
+      }
     };
     const onUp = () => {
       rightDragRef.current = null;
@@ -153,7 +163,7 @@ export default function Builder() {
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
-  }, [rightWidth, lang]);
+  }, [rightWidth, leftWidth, lang]);
 
   const { data: project } = useGetProject(id || "");
   const { data: me } = useGetMe({ query: { queryKey: ["getMe"], retry: false } });
