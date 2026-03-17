@@ -598,9 +598,9 @@ export default function Builder() {
   }, [id, isBuilding]);
 
   useEffect(() => {
-    if (!buildId || !isBuilding) return;
+    if (!activeBuildId || !isBuilding) return;
     const baseUrl = import.meta.env.VITE_API_URL || "";
-    const es = new EventSource(`${baseUrl}/api/build/${buildId}/runner/stream`, { withCredentials: true });
+    const es = new EventSource(`${baseUrl}/api/build/${activeBuildId}/runner/stream`, { withCredentials: true });
     es.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
@@ -613,7 +613,7 @@ export default function Builder() {
     };
     es.onerror = () => {};
     return () => es.close();
-  }, [buildId, isBuilding]);
+  }, [activeBuildId, isBuilding]);
 
   const [proxyVerified, setProxyVerified] = useState(false);
   const [proxyFailed, setProxyFailed] = useState(false);
