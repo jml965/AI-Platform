@@ -14,6 +14,7 @@ import NotificationSettings from "@/pages/NotificationSettings";
 import Templates from "@/pages/Templates";
 import AdminDashboard from "@/pages/AdminDashboard";
 import AgentManagement from "@/pages/AgentManagement";
+import AIControlCenter from "@/pages/AIControlCenter";
 import NotFound from "@/pages/not-found";
 import { useGetMe } from "@workspace/api-client-react";
 import { Loader2 } from "lucide-react";
@@ -112,7 +113,10 @@ function Router() {
         <AuthGuard><NotificationSettings /></AuthGuard>
       </Route>
       <Route path="/agents">
-        <AuthGuard><AgentManagement /></AuthGuard>
+        <AdminGuard><AgentManagement /></AdminGuard>
+      </Route>
+      <Route path="/control-center">
+        <AdminGuard><AIControlCenter /></AdminGuard>
       </Route>
       <Route component={NotFound} />
     </Switch>

@@ -206,6 +206,7 @@ function AdminPanelSection({ t }: { t: any }) {
   const [expanded, setExpanded] = useState(true);
   const adminItems = [
     { icon: Bot, label: t.home_nav_agents, href: "/agents" },
+    { icon: Cpu, label: t.home_nav_control_center, href: "/control-center" },
     { icon: FolderGit2, label: t.home_nav_repository, href: "#" },
     { icon: Plug, label: t.home_nav_integration, href: "#" },
   ];

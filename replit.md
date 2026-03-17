@@ -49,8 +49,19 @@ The platform utilizes a pnpm workspace monorepo structure, separating deployable
     - Token limits, batch sizes, creativity (temperature) per agent
     - Full statistics: tokens used, tasks completed, errors, success rate, avg duration
     - Unlimited custom agent creation
+    - Per-slot creativity (0-2, 5 labeled levels), token limits (1K-120K), and timeout settings
     - Changes are saved to DB and take effect on next build
     - DB table: `agent_configs` stores all agent configurations
+- **AI Control Center:** Admin panel at `/control-center` for managing AI providers:
+    - 20 pre-seeded providers (OpenAI, Anthropic, Google, Mistral, xAI, DeepSeek, Cohere, Meta, Perplexity, Groq, Together, Fireworks, AI21, Replicate, HuggingFace, Azure, NVIDIA, Alibaba, Stability, Amazon)
+    - API key management with validation and masking (keys never returned in full via API)
+    - Monthly budget tracking with alert thresholds (80%/100%)
+    - Per-provider usage statistics (daily/weekly/monthly tokens, cost, requests)
+    - Linked agents view showing which agents use each provider
+    - Fallback provider configuration, priority ordering
+    - Custom provider creation with model definitions
+    - Recent request logs per provider
+    - DB tables: `ai_providers`, `provider_usage_logs`
 - **Agent Orchestration:** An `execution-engine` orchestrates the build pipeline (codegen → review → fix → save → package_runner → QA). Package runner failures are non-fatal — the build succeeds as long as files are saved. Uses streaming API for Anthropic calls to handle long-running operations (4-minute timeout per call). Fixer agent returns only changed files, which are merged (not replaced) with the original codegen output to prevent file loss. **Batched Build Mode:** For large projects, the system auto-detects complexity and switches to batched generation — first plans all files via PlannerAgent, then generates in batches of ~10 files, saving and previewing after each batch. Each batch receives context from previously generated files for consistency.
 - **Sandbox System:** Provides isolated execution environments for project lifecycle management (create, execute, start-server, stop, restart, cleanup). The sandbox proxy auto-restarts stopped sandboxes using the last known start command when a preview request comes in. Each sandbox stores its `lastCommand` for restart recovery.
 - **Deployment System:** Real deployment via GitHub Pages — creates a GitHub repository for each project, pushes files, and enables GitHub Pages. Each deployed site gets a live URL at `username.github.io/repo-name`. Uses Replit's GitHub connector (OAuth) for authenticated API access.

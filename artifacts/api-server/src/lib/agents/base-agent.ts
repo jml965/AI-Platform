@@ -21,6 +21,8 @@ export abstract class BaseAgent {
   private _overrideModel: ModelConfig | null = null;
   private _overridePrompt: string | null = null;
   private _overrideCreativity: number | null = null;
+  private _overrideTimeoutSeconds: number | null = null;
+  private _overrideMaxTokens: number | null = null;
 
   constructor(constitution: AgentConstitution) {
     this.constitution = constitution;
@@ -33,12 +35,12 @@ export abstract class BaseAgent {
         const pm = config.primaryModel as any;
         if (pm && pm.provider && pm.model && pm.provider !== "local") {
           this._overrideModel = { provider: pm.provider as AIProvider, model: pm.model };
+          if (typeof pm.creativity === "number") this._overrideCreativity = pm.creativity;
+          if (typeof pm.timeoutSeconds === "number") this._overrideTimeoutSeconds = pm.timeoutSeconds;
+          if (typeof pm.maxTokens === "number") this._overrideMaxTokens = pm.maxTokens;
         }
         if (config.systemPrompt && config.systemPrompt.trim().length > 20) {
           this._overridePrompt = config.systemPrompt;
-        }
-        if (config.creativity) {
-          this._overrideCreativity = parseFloat(config.creativity as string);
         }
       }
     } catch (err) {
@@ -52,6 +54,18 @@ export abstract class BaseAgent {
 
   protected getEffectivePrompt(): string {
     return this._overridePrompt || this.systemPrompt;
+  }
+
+  protected getEffectiveCreativity(): number | undefined {
+    return this._overrideCreativity ?? undefined;
+  }
+
+  protected getEffectiveTimeoutMs(): number {
+    return (this._overrideTimeoutSeconds ?? 240) * 1000;
+  }
+
+  protected getEffectiveMaxTokens(): number | undefined {
+    return this._overrideMaxTokens ?? undefined;
   }
 
   protected async trackStats(tokensUsed: number, success: boolean, durationMs: number, costUsd: number) {
@@ -92,9 +106,11 @@ export abstract class BaseAgent {
     modelCfg?: ModelConfig
   ): Promise<{ content: string; tokensUsed: number }> {
     const cfg = modelCfg || this.getEffectiveModel();
+    const temperature = this.getEffectiveCreativity();
     const response = await openai.chat.completions.create({
       model: cfg.model,
       max_completion_tokens: maxCompletion,
+      ...(temperature !== undefined ? { temperature } : {}),
       messages,
     });
 
@@ -121,14 +137,16 @@ export abstract class BaseAgent {
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
+        const temperature = this.getEffectiveCreativity();
         const stream = anthropic.messages.stream({
           model: cfg.model,
           max_tokens: maxCompletion,
+          ...(temperature !== undefined ? { temperature } : {}),
           system: systemMessage?.content,
           messages: chatMessages,
         });
 
-        const timeoutMs = 4 * 60 * 1000;
+        const timeoutMs = this.getEffectiveTimeoutMs();
         const response = await Promise.race([
           stream.finalMessage(),
           new Promise<never>((_, reject) =>
