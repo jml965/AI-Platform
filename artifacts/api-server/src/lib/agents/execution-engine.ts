@@ -1078,7 +1078,9 @@ async function executeBatchedBuildPipeline(
                     : `🔄 Live sync: ${written} files from "${mod.name}"`,
                 });
               }
-            } catch {}
+            } catch (syncErr) {
+              console.warn(`Build ${buildId}: live sync for module ${mod.name} failed:`, syncErr);
+            }
           }
 
           logExecution(buildId, projectId, moduleTaskId, "codegen", "generate_module", "completed", {

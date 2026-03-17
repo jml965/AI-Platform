@@ -346,8 +346,8 @@ router.use("/sandbox/proxy", async (req: Request, res: Response) => {
           proxyRes.on("data", (chunk: Buffer) => chunks.push(chunk));
           proxyRes.on("end", () => {
             let html = Buffer.concat(chunks).toString("utf8");
-            html = html.replace(/(src|href)="\/(?!\/)/g, `$1="${proxyPrefix}/`);
-            html = html.replace(/from\s+"\/(?!\/)/g, `from "${proxyPrefix}/`);
+            html = html.replace(/(src|href)=(["'])\/(?!\/)/g, `$1=$2${proxyPrefix}/`);
+            html = html.replace(/from\s+(["'])\/(?!\/)/g, `from $1${proxyPrefix}/`);
             const routerFixScript = `<script>
 (function(){
   var prefix = "${proxyPrefix}";
@@ -415,9 +415,9 @@ router.use("/sandbox/proxy", async (req: Request, res: Response) => {
             proxyRes.on("data", (chunk: Buffer) => chunks.push(chunk));
             proxyRes.on("end", () => {
               let js = Buffer.concat(chunks).toString("utf8");
-              js = js.replace(/from\s+"\/(?!\/)/g, `from "${proxyPrefix}/`);
-              js = js.replace(/import\s*\(\s*"\/(?!\/)/g, `import("${proxyPrefix}/`);
-              js = js.replace(/import\s+"\/(?!\/)/g, `import "${proxyPrefix}/`);
+              js = js.replace(/from\s+(["'])\/(?!\/)/g, `from $1${proxyPrefix}/`);
+              js = js.replace(/import\s*\(\s*(["'])\/(?!\/)/g, `import($1${proxyPrefix}/`);
+              js = js.replace(/import\s+(["'])\/(?!\/)/g, `import $1${proxyPrefix}/`);
               const headers = { ...proxyRes.headers };
               delete headers["content-length"];
               delete headers["content-encoding"];
