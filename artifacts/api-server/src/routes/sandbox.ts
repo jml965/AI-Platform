@@ -13,6 +13,7 @@ import {
   getSandboxLastCommand,
   listUserSandboxes,
   subscribeSandboxOutput,
+  recoverSandboxForProject,
 } from "../lib/sandbox/sandbox-manager";
 import { getUserId } from "../middlewares/permissions";
 import { db } from "@workspace/db";
@@ -289,6 +290,14 @@ router.use("/sandbox/proxy", async (req: Request, res: Response) => {
             console.error(`[Sandbox Proxy] Auto-restart failed for ${stoppedId}:`, err);
           }
         }
+      }
+    }
+
+    if (!sandboxId) {
+      console.log(`[Sandbox Proxy] No in-memory sandbox for project ${projectId}, attempting recovery from DB files...`);
+      const recoveredId = await recoverSandboxForProject(projectId);
+      if (recoveredId) {
+        sandboxId = getProjectSandbox(projectId);
       }
     }
 

@@ -517,6 +517,36 @@ export function getProjectSandboxAny(projectId: string): string | null {
   return null;
 }
 
+export async function recoverSandboxForProject(projectId: string): Promise<string | null> {
+  const files = await db
+    .select({ filePath: projectFilesTable.filePath })
+    .from(projectFilesTable)
+    .where(eq(projectFilesTable.projectId, projectId));
+
+  if (files.length === 0) return null;
+
+  console.log(`[Sandbox Recovery] Recreating sandbox for project ${projectId} (${files.length} files)`);
+  try {
+    const { id } = await createSandbox(projectId, "node", 256, 300);
+
+    const hasPackageJson = files.some(f => f.filePath === "package.json");
+    if (hasPackageJson) {
+      const installCmd = "npm install --legacy-peer-deps 2>&1 | tail -5";
+      await executeCommand(id, installCmd);
+
+      const devCmd = "npx vite --host 0.0.0.0 --strictPort 2>&1 &";
+      await startServer(id, devCmd);
+
+      await new Promise(resolve => setTimeout(resolve, 4000));
+    }
+
+    return id;
+  } catch (err) {
+    console.error(`[Sandbox Recovery] Failed for project ${projectId}:`, err);
+    return null;
+  }
+}
+
 export function getSandboxLastCommand(sandboxId: string): string | null {
   const sandbox = activeSandboxes.get(sandboxId);
   return sandbox?.lastCommand ?? null;
