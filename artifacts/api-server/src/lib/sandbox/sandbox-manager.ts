@@ -517,7 +517,22 @@ export function getProjectSandboxAny(projectId: string): string | null {
   return null;
 }
 
+const recoveryInProgress = new Set<string>();
+
 export async function recoverSandboxForProject(projectId: string): Promise<string | null> {
+  if (recoveryInProgress.has(projectId)) {
+    console.log(`[Sandbox Recovery] Already recovering project ${projectId}, waiting...`);
+    for (let i = 0; i < 30; i++) {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      if (!recoveryInProgress.has(projectId)) {
+        const sid = getProjectSandbox(projectId);
+        if (sid) return sid;
+        break;
+      }
+    }
+    return getProjectSandbox(projectId);
+  }
+
   const files = await db
     .select({ filePath: projectFilesTable.filePath })
     .from(projectFilesTable)
@@ -525,25 +540,31 @@ export async function recoverSandboxForProject(projectId: string): Promise<strin
 
   if (files.length === 0) return null;
 
+  recoveryInProgress.add(projectId);
   console.log(`[Sandbox Recovery] Recreating sandbox for project ${projectId} (${files.length} files)`);
   try {
     const { id } = await createSandbox(projectId, "node", 256, 300);
 
     const hasPackageJson = files.some(f => f.filePath === "package.json");
     if (hasPackageJson) {
-      const installCmd = "npm install --legacy-peer-deps 2>&1 | tail -5";
+      console.log(`[Sandbox Recovery] Installing dependencies for ${projectId}...`);
+      const installCmd = "npm install --legacy-peer-deps 2>&1 | tail -10";
       await executeCommand(id, installCmd);
 
-      const devCmd = "npx vite --host 0.0.0.0 --strictPort 2>&1 &";
+      console.log(`[Sandbox Recovery] Starting dev server for ${projectId}...`);
+      const devCmd = "npx vite --port $PORT --host 0.0.0.0 --strictPort";
       await startServer(id, devCmd);
 
-      await new Promise(resolve => setTimeout(resolve, 4000));
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      console.log(`[Sandbox Recovery] Recovery complete for ${projectId}`);
     }
 
     return id;
   } catch (err) {
     console.error(`[Sandbox Recovery] Failed for project ${projectId}:`, err);
     return null;
+  } finally {
+    recoveryInProgress.delete(projectId);
   }
 }
 

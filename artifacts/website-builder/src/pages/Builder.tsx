@@ -96,7 +96,7 @@ export default function Builder() {
   const [showDeviceMenu, setShowDeviceMenu] = useState(false);
   
   const [planApproved, setPlanApproved] = useState(false);
-  const [rightTab, setRightTab] = useState<"code" | "library" | "snapshots" | "plugins" | "collab" | "domains" | "seo">("code");
+  const [rightTab, setRightTab] = useState<"code" | "library" | "snapshots" | "plugins" | "collab" | "domains" | "seo" | "build">("code");
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const [showDeployPanel, setShowDeployPanel] = useState(false);
@@ -436,13 +436,14 @@ export default function Builder() {
           setActiveBuildId(chatRes.buildId);
           localStorage.setItem(`latestBuild_${id}`, chatRes.buildId);
           setPlanApproved(false);
+          setRightTab("build");
 
           setMessages(prev => [...prev, {
             id: crypto.randomUUID(),
             role: "assistant",
             content: lang === "ar"
-              ? "🚀 بدأ البناء — تابع سجل التنفيذ أدناه لمشاهدة عمل الوكلاء مباشرة"
-              : "🚀 Build started — follow the execution log below to watch agents work live",
+              ? "🚀 بدأ البناء — تابع التقدم في لوحة البناء ←"
+              : "🚀 Build started — follow progress in the Build panel →",
             buildId: chatRes.buildId,
             timestamp: new Date(),
           }]);
@@ -1611,45 +1612,19 @@ export default function Builder() {
             })}
           </AnimatePresence>
 
-          {(isBuilding || isChatLoading) && (() => {
-            const activeLog = logs.find(l => l.status === "in_progress" || l.status === "running" || l.status === "pending");
-            const activeAgent = activeLog?.agentType;
-            const agentLabel = activeAgent
-              ? (agentNames[activeAgent] ? agentNames[activeAgent][lang] : activeAgent)
-              : null;
-            return (
-              <div className="flex gap-2">
-                <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 bg-emerald-500/20 text-emerald-400">
-                  <Bot className="w-3 h-3" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 pt-1">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-[#58a6ff]" />
-                    <span className="text-[12px] text-[#c9d1d9]">
-                      {isChatLoading
-                        ? (lang === "ar" ? "يفكر..." : "Thinking...")
-                        : agentLabel
-                          ? (lang === "ar" ? `${agentLabel} يعمل الآن...` : `${agentLabel} working...`)
-                          : (lang === "ar" ? "الوكلاء يعملون..." : "Agents working...")}
-                    </span>
-                  </div>
-                  {isBuilding && !isChatLoading && (
-                    <div className="mt-1 flex items-center gap-1.5">
-                      <span className="relative flex h-1.5 w-1.5">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#58a6ff] opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[#58a6ff]"></span>
-                      </span>
-                      <span className="text-[10px] text-[#58a6ff] font-medium">
-                        {lang === "ar" ? "بث مباشر — الوكلاء يعملون أمامك" : "LIVE — agents executing in real-time"}
-                      </span>
-                    </div>
-                  )}
-                </div>
+          {isChatLoading && (
+            <div className="flex gap-2">
+              <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 bg-emerald-500/20 text-emerald-400">
+                <Bot className="w-3 h-3" />
               </div>
-            );
-          })()}
-
-          {logs.length > 0 && <ExecutionLogTimeline logs={logs} isBuilding={isBuilding} buildCost={isBuilding ? (buildStatus as any)?.totalCostUsd : lastBuildCost} buildTokens={isBuilding ? (buildStatus as any)?.totalTokensUsed : lastBuildTokens} />}
+              <div className="flex items-center gap-2 pt-1">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-[#58a6ff]" />
+                <span className="text-[12px] text-[#c9d1d9]">
+                  {lang === "ar" ? "يفكر..." : "Thinking..."}
+                </span>
+              </div>
+            </div>
+          )}
 
           <div ref={chatEndRef} />
         </div>
@@ -1738,8 +1713,6 @@ export default function Builder() {
       )}
 
       <div className="flex-1 flex flex-col border-e border-[#1c2333] min-w-0">
-        <BuildProgress currentPhase={currentPhase} failed={phaseFailed} allComplete={buildStatus?.status === "completed"} totalCostUsd={isBuilding ? (buildStatus as any)?.totalCostUsd : lastBuildCost} totalTokensUsed={isBuilding ? (buildStatus as any)?.totalTokensUsed : lastBuildTokens} />
-
         {(hasPreview || previewUrl) && (
           <div className="h-8 flex items-center gap-1 px-2 border-b border-[#1c2333] bg-[#161b22] flex-shrink-0">
             <button
@@ -1884,15 +1857,6 @@ export default function Builder() {
               </div>
             )}
 
-            {isBuilding && (
-              <div className="absolute bottom-0 start-0 end-0 z-30">
-                <div className="bg-[#0d1117]/95 backdrop-blur-sm border-t border-[#1c2333] max-h-[280px] overflow-y-auto">
-                  <div className="p-3">
-                    <LiveBuildView logs={logs} buildStatus={buildStatus?.status} lang={lang} t={t} />
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -1937,6 +1901,21 @@ export default function Builder() {
       ) : rightPanelOpen ? (
         <div style={{ width: rightWidth }} className="flex flex-col bg-[#0d1117] flex-shrink-0 border-s border-[#1c2333]">
           <div className="h-9 flex items-center border-b border-[#1c2333] bg-[#161b22] flex-shrink-0 px-1 overflow-x-auto">
+            {(isBuilding || logs.length > 0) && (
+              <button
+                onClick={() => setRightTab("build")}
+                className={cn(
+                  "px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors flex items-center gap-1.5",
+                  rightTab === "build"
+                    ? "bg-[#0d1117] text-[#e1e4e8] shadow-sm"
+                    : "text-[#8b949e] hover:text-[#e1e4e8] hover:bg-[#1c2333]"
+                )}
+              >
+                <Rocket className="w-3 h-3" />
+                {lang === "ar" ? "البناء" : "Build"}
+                {isBuilding && <span className="w-1.5 h-1.5 rounded-full bg-[#58a6ff] animate-pulse" />}
+              </button>
+            )}
             <button
               onClick={() => setRightTab("code")}
               className={cn(
@@ -2027,7 +2006,9 @@ export default function Builder() {
             </button>
           </div>
 
-          {rightTab === "code" ? (
+          {rightTab === "build" ? (
+            <BuildPanelContent logs={logs} isBuilding={isBuilding} buildStatus={buildStatus?.status} buildCost={isBuilding ? (buildStatus as any)?.totalCostUsd : lastBuildCost} buildTokens={isBuilding ? (buildStatus as any)?.totalTokensUsed : lastBuildTokens} />
+          ) : rightTab === "code" ? (
             <div className="flex-1 flex flex-col min-h-0">
               <div className="h-8 flex items-center justify-between px-3 border-b border-[#1c2333] bg-[#161b22]">
                 <span className="text-[11px] font-semibold text-[#8b949e] uppercase tracking-wider">{t.explorer}</span>
@@ -3001,6 +2982,193 @@ function DevicePreviewFrame({ device, previewKey, children }: {
       {scale < 1 && (
         <div className="absolute bottom-2 start-2 text-[10px] text-[#484f58] font-mono bg-[#0d1117]/80 px-1.5 py-0.5 rounded">
           {Math.round(scale * 100)}%
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BuildPanelContent({ logs, isBuilding, buildStatus, buildCost, buildTokens }: { logs: ExecutionLog[]; isBuilding: boolean; buildStatus?: string; buildCost?: number; buildTokens?: number }) {
+  const { t, lang } = useI18n();
+  const logEndRef = useRef<HTMLDivElement>(null);
+  const isRtl = lang === "ar";
+
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [logs.length]);
+
+  const agentLabels: Record<string, { en: string; ar: string }> = {
+    system: { en: "System", ar: "النظام" },
+    planner: { en: "Planner", ar: "المخطط" },
+    codegen: { en: "Code Generator", ar: "مولّد الكود" },
+    reviewer: { en: "Code Reviewer", ar: "المراجع" },
+    fixer: { en: "Code Fixer", ar: "المصلح" },
+    surgical_edit: { en: "Editor", ar: "المحرر" },
+    package_runner: { en: "Runner", ar: "المشغّل" },
+    qa: { en: "QA", ar: "ضمان الجودة" },
+    qa_pipeline: { en: "QA", ar: "ضمان الجودة" },
+    filemanager: { en: "File Manager", ar: "مدير الملفات" },
+  };
+
+  const agentSteps = [
+    { key: "codegen", ar: "توليد الكود", en: "Code Generation", icon: "⚡" },
+    { key: "reviewer", ar: "مراجعة الكود", en: "Code Review", icon: "🔍" },
+    { key: "fixer", ar: "إصلاح الأخطاء", en: "Fix Issues", icon: "🔧" },
+    { key: "filemanager", ar: "حفظ الملفات", en: "Save Files", icon: "💾" },
+    { key: "package_runner", ar: "تثبيت الحزم", en: "Install & Run", icon: "📦" },
+    { key: "qa", ar: "فحص الجودة", en: "Quality Check", icon: "✅" },
+  ];
+
+  const getStepStatus = (key: string) => {
+    const agentKey = key === "qa" ? "qa_pipeline" : key;
+    const stepLogs = logs.filter(l => l.agentType === key || l.agentType === agentKey);
+    if (stepLogs.length === 0) return "waiting";
+    const hasFailed = stepLogs.some(l => l.status === "failed" || l.status === "error");
+    const hasCompleted = stepLogs.some(l => l.status === "completed" || l.status === "success");
+    if (hasFailed && !hasCompleted) return "failed";
+    if (hasCompleted) return "done";
+    return "active";
+  };
+
+  const completedCount = agentSteps.filter(s => getStepStatus(s.key) === "done").length;
+  const activeIdx = agentSteps.findIndex(s => getStepStatus(s.key) === "active");
+  const progress = Math.round(((completedCount + (activeIdx >= 0 ? 0.5 : 0)) / agentSteps.length) * 100);
+
+  const generatedFiles = logs
+    .filter(l => l.agentType === "codegen" && (l.status === "completed" || l.status === "success"))
+    .flatMap(l => {
+      const d = l.details as Record<string, unknown> | null;
+      const files = d?.files as string[] | undefined;
+      return files || [];
+    });
+
+  return (
+    <div className="flex-1 flex flex-col min-h-0 overflow-y-auto" dir={isRtl ? "rtl" : "ltr"}>
+      <div className="p-3 border-b border-[#1c2333] bg-[#161b22]">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-[11px] font-semibold text-[#e1e4e8] uppercase tracking-wider">
+            {isRtl ? "تقدم البناء" : "Build Progress"}
+          </span>
+          {isBuilding && (
+            <span className="flex items-center gap-1">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#58a6ff] opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-[#58a6ff]"></span>
+              </span>
+              <span className="text-[10px] font-bold text-[#58a6ff] uppercase">LIVE</span>
+            </span>
+          )}
+        </div>
+        <div className="w-full h-1.5 rounded-full bg-[#1c2333] overflow-hidden">
+          <div
+            className="h-full bg-gradient-to-r from-[#1f6feb] to-[#58a6ff] rounded-full transition-all duration-700"
+            style={{ width: `${buildStatus === "completed" ? 100 : Math.max(progress, 5)}%` }}
+          />
+        </div>
+        <div className="flex items-center justify-between mt-1.5">
+          <span className="text-[10px] text-[#484f58]">{buildStatus === "completed" ? 100 : progress}%</span>
+          {(buildCost || buildTokens) && (
+            <span className="text-[10px] text-[#484f58]">
+              {buildTokens ? `${buildTokens.toLocaleString()} tokens` : ""}
+              {buildCost ? ` · $${Number(buildCost).toFixed(4)}` : ""}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="p-2 space-y-0.5">
+        {agentSteps.map((step) => {
+          const status = getStepStatus(step.key);
+          return (
+            <div
+              key={step.key}
+              className={cn(
+                "flex items-center gap-2.5 px-3 py-2 rounded-md text-[12px] transition-all",
+                status === "active" && "bg-[#1f6feb]/8 border border-[#1f6feb]/20",
+                status === "done" && "opacity-60",
+                status === "failed" && "opacity-60",
+                status === "waiting" && "opacity-30",
+              )}
+            >
+              <div className="flex-shrink-0 w-5 h-5 flex items-center justify-center">
+                {status === "active" && <Loader2 className="w-3.5 h-3.5 animate-spin text-[#58a6ff]" />}
+                {status === "done" && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+                {status === "failed" && <XCircle className="w-3.5 h-3.5 text-red-400" />}
+                {status === "waiting" && <div className="w-1.5 h-1.5 rounded-full bg-[#30363d]" />}
+              </div>
+              <span className={cn(
+                "flex-1 font-medium",
+                status === "active" ? "text-[#e6edf3]" : status === "done" ? "text-[#8b949e]" : status === "failed" ? "text-red-400" : "text-[#484f58]"
+              )}>
+                {isRtl ? step.ar : step.en}
+              </span>
+              {status === "active" && (
+                <span className="text-[10px] text-[#58a6ff]">{isRtl ? "جاري..." : "..."}</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {generatedFiles.length > 0 && (
+        <div className="p-3 border-t border-[#1c2333]">
+          <span className="text-[10px] font-semibold text-[#8b949e] uppercase tracking-wider block mb-2">
+            {isRtl ? "الملفات المولّدة" : "Generated Files"} ({generatedFiles.length})
+          </span>
+          <div className="space-y-0.5 max-h-[200px] overflow-y-auto">
+            {generatedFiles.map((fp, i) => (
+              <div key={i} className="flex items-center gap-1.5 text-[11px] text-[#c9d1d9] py-0.5 px-2">
+                <FileCode2 className="w-3 h-3 text-[#58a6ff] flex-shrink-0" />
+                <span className="truncate font-mono">{fp}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {logs.length > 0 && (
+        <div className="p-3 border-t border-[#1c2333]">
+          <span className="text-[10px] font-semibold text-[#8b949e] uppercase tracking-wider block mb-2">
+            {isRtl ? "سجل التنفيذ" : "Execution Log"}
+          </span>
+          <div className="space-y-1 font-mono text-[11px] max-h-[300px] overflow-y-auto">
+            {logs.map((log, i) => {
+              const time = log.createdAt ? new Date(log.createdAt).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "";
+              const isCompleted = log.status === "completed" || log.status === "success";
+              const isFailed = log.status === "failed" || log.status === "error";
+              const isRunning = log.status === "in_progress" || log.status === "running";
+              const details = log.details as Record<string, unknown> | null;
+              const message = details?.message as string | undefined;
+              const agentName = agentLabels[log.agentType || "system"]?.[lang] || log.agentType || "SYSTEM";
+
+              return (
+                <div key={log.id || i} className="flex items-start gap-1.5">
+                  <span className="text-[9px] text-[#484f58] flex-shrink-0 pt-0.5 tabular-nums">{time}</span>
+                  <div className="flex-shrink-0 w-3 h-3 flex items-center justify-center mt-0.5">
+                    {isCompleted ? (
+                      <svg className="w-2.5 h-2.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                    ) : isFailed ? (
+                      <svg className="w-2.5 h-2.5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                    ) : isRunning ? (
+                      <Loader2 className="w-2.5 h-2.5 text-[#58a6ff] animate-spin" />
+                    ) : (
+                      <div className="w-1 h-1 rounded-full bg-[#484f58]" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <span className={cn(
+                      "text-[10px] font-bold me-1",
+                      isCompleted ? "text-emerald-400" : isFailed ? "text-red-400" : isRunning ? "text-[#58a6ff]" : "text-[#8b949e]"
+                    )}>
+                      [{agentName}]
+                    </span>
+                    <span className="text-[#8b949e]">{message || log.action}</span>
+                  </div>
+                </div>
+              );
+            })}
+            <div ref={logEndRef} />
+          </div>
         </div>
       )}
     </div>
