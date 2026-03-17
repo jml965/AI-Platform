@@ -313,6 +313,13 @@ async function executeBuildPipeline(
   build.status = "in_progress";
   const lang = detectLang(prompt);
 
+  if (!prompt.includes("[FORCE_SINGLE_SHOT]") && shouldUseBatchedBuild(prompt, 0)) {
+    console.log(`Build ${buildId}: detected large project, switching to batched build mode`);
+    await executeBatchedBuildPipeline(buildId, projectId, userId, prompt, constitution);
+    return;
+  }
+  const cleanPrompt = prompt.replace("[FORCE_SINGLE_SHOT]", "").trim();
+
   const codegenAgent = new CodeGenAgent(constitution);
   const reviewerAgent = new ReviewerAgent(constitution);
   const fixerAgent = new FixerAgent(constitution);
@@ -705,6 +712,391 @@ async function executeBuildPipeline(
     await finalizeBuild(buildId, projectId, finalStatus, totalTokens, totalCost);
   } catch (error) {
     console.error(`Build ${buildId} error:`, error);
+    await logExecution(buildId, projectId, null, "system", "build_error", "failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    await finalizeBuild(buildId, projectId, "failed", totalTokens, totalCost);
+  }
+}
+
+const BATCH_SIZE = 10;
+const BATCHED_BUILD_THRESHOLD = 15;
+
+function shouldUseBatchedBuild(prompt: string, existingFileCount: number): boolean {
+  if (existingFileCount > 0) return false;
+  const lower = prompt.toLowerCase();
+  const bigProjectKeywords = [
+    "مزاد", "منصة", "platform", "marketplace", "سوق",
+    "dashboard", "لوحة", "نظام", "system", "crm", "erp",
+    "e-commerce", "ecommerce", "متجر", "shop",
+    "social", "اجتماعي", "chat", "دردشة",
+    "booking", "حجز", "real-time",
+    "500", "كبير", "large", "complex", "معقد",
+    "عديد", "many pages", "multi",
+  ];
+  const score = bigProjectKeywords.filter(k => lower.includes(k)).length;
+  const wordCount = prompt.split(/\s+/).length;
+  return score >= 2 || wordCount > 100;
+}
+
+async function planFilesForBatch(
+  prompt: string,
+  constitution: ReturnType<typeof getConstitution>
+): Promise<{ framework: string; files: string[]; packages: string[]; directories: string[] }> {
+  const plannerAgent = new PlannerAgent(constitution);
+  const context: BuildContext = {
+    buildId: "plan-only",
+    projectId: "plan-only",
+    userId: "plan-only",
+    prompt,
+    existingFiles: [],
+    tokensUsedSoFar: 0,
+  };
+
+  const result = await plannerAgent.execute(context);
+  if (!result.success || !result.data?.plan) {
+    throw new Error(result.error || "Planning failed");
+  }
+
+  const plan = result.data.plan as ProjectPlan;
+  return {
+    framework: plan.framework,
+    files: plan.files,
+    packages: plan.packages,
+    directories: plan.directoryStructure,
+  };
+}
+
+function splitIntoBatches(files: string[], batchSize: number): string[][] {
+  const configFiles: string[] = [];
+  const coreFiles: string[] = [];
+  const componentFiles: string[] = [];
+  const pageFiles: string[] = [];
+  const otherFiles: string[] = [];
+
+  for (const f of files) {
+    const lower = f.toLowerCase();
+    if (lower.includes("package.json") || lower.includes("tsconfig") || lower.includes("vite.config") ||
+        lower.includes("tailwind") || lower.includes("postcss") || lower.includes("index.html") ||
+        lower.includes("requirements.txt") || lower.includes("main.py") || lower.includes(".env")) {
+      configFiles.push(f);
+    } else if (lower.includes("app.tsx") || lower.includes("app.jsx") || lower.includes("app.css") ||
+               lower.includes("index.tsx") || lower.includes("index.jsx") || lower.includes("index.css") ||
+               lower.includes("main.tsx") || lower.includes("layout") || lower.includes("router") ||
+               lower.includes("context") || lower.includes("provider") || lower.includes("types")) {
+      coreFiles.push(f);
+    } else if (lower.includes("/components/") || lower.includes("/component/")) {
+      componentFiles.push(f);
+    } else if (lower.includes("/pages/") || lower.includes("/page/") || lower.includes("/views/") ||
+               lower.includes("/routes/") || lower.includes("/screens/")) {
+      pageFiles.push(f);
+    } else {
+      otherFiles.push(f);
+    }
+  }
+
+  const batches: string[][] = [];
+
+  if (configFiles.length > 0 || coreFiles.length > 0) {
+    batches.push([...configFiles, ...coreFiles]);
+  }
+
+  const remaining = [...componentFiles, ...pageFiles, ...otherFiles];
+  for (let i = 0; i < remaining.length; i += batchSize) {
+    batches.push(remaining.slice(i, i + batchSize));
+  }
+
+  return batches;
+}
+
+async function executeBatchedBuildPipeline(
+  buildId: string,
+  projectId: string,
+  userId: string,
+  prompt: string,
+  constitution: ReturnType<typeof getConstitution>
+) {
+  const build = activeBuilds.get(buildId)!;
+  build.status = "in_progress";
+  const lang = detectLang(prompt);
+
+  const codegenAgent = new CodeGenAgent(constitution);
+  const fileManager = new FileManagerAgent(constitution);
+
+  let totalTokens = 0;
+  let totalCost = 0;
+
+  try {
+    await logExecution(buildId, projectId, null, "system", "build_started", "in_progress", {
+      prompt, mode: "batched",
+      message: lang === "ar"
+        ? `بدأ بناء المشروع بنظام الدفعات — "${prompt.slice(0, 80)}"`
+        : `Build started (batched mode) — "${prompt.slice(0, 80)}"`,
+    });
+
+    const limitCheck = await checkSpendingLimits(userId, projectId);
+    if (!limitCheck.allowed) {
+      await logExecution(buildId, projectId, null, "system", "limit_exceeded", "failed", { reason: limitCheck.reason });
+      await finalizeBuild(buildId, projectId, "failed", totalTokens, totalCost);
+      return;
+    }
+
+    await logExecution(buildId, projectId, null, "planner", "planning_batches", "in_progress", {
+      message: lang === "ar"
+        ? "أخطط بنية المشروع وأقسّم الملفات لدفعات..."
+        : "Planning project structure and splitting files into batches...",
+    });
+
+    let filePlan: { framework: string; files: string[]; packages: string[]; directories: string[] };
+    try {
+      filePlan = await planFilesForBatch(prompt, constitution);
+    } catch (planErr) {
+      console.error(`Build ${buildId} planning failed, falling back to single-shot:`, planErr);
+      await logExecution(buildId, projectId, null, "planner", "planning_batches", "failed", {
+        error: planErr instanceof Error ? planErr.message : String(planErr),
+        message: lang === "ar" ? "فشل التخطيط — أرجع للتوليد العادي" : "Planning failed — falling back to normal generation",
+      });
+      activeBuilds.delete(buildId);
+      const newBuild: ActiveBuild = { buildId, projectId, userId, status: "in_progress", cancelRequested: false };
+      activeBuilds.set(buildId, newBuild);
+      await executeBuildPipeline(buildId, projectId, userId, prompt + "\n[FORCE_SINGLE_SHOT]", constitution);
+      return;
+    }
+
+    const batches = splitIntoBatches(filePlan.files, BATCH_SIZE);
+    const totalBatches = batches.length;
+    const totalPlannedFiles = filePlan.files.length;
+
+    await logExecution(buildId, projectId, null, "planner", "planning_batches", "completed", {
+      framework: filePlan.framework,
+      totalFiles: totalPlannedFiles,
+      totalBatches,
+      batchSizes: batches.map(b => b.length),
+      message: lang === "ar"
+        ? `خطة المشروع: ${totalPlannedFiles} ملف في ${totalBatches} دفعات (${filePlan.framework})`
+        : `Project plan: ${totalPlannedFiles} files in ${totalBatches} batches (${filePlan.framework})`,
+    });
+
+    const allGeneratedFiles: GeneratedFile[] = [];
+    let allDeps: Record<string, string> = {};
+    let allDevDeps: Record<string, string> = {};
+    let allScripts: Record<string, string> = {};
+
+    for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {
+      if (build.cancelRequested) {
+        await finalizeBuild(buildId, projectId, "cancelled", totalTokens, totalCost);
+        return;
+      }
+
+      const batchSpendCheck = await checkSpendingLimits(userId, projectId);
+      if (!batchSpendCheck.allowed) {
+        await logExecution(buildId, projectId, null, "system", "limit_exceeded_mid_build", "failed", {
+          reason: batchSpendCheck.reason, batch: batchIdx + 1,
+        });
+        if (allGeneratedFiles.length > 0) {
+          await finalizeBuild(buildId, projectId, "completed", totalTokens, totalCost);
+        } else {
+          await finalizeBuild(buildId, projectId, "failed", totalTokens, totalCost);
+        }
+        return;
+      }
+
+      const batch = batches[batchIdx];
+      const batchTaskId = await createTask(buildId, projectId, "codegen", `Batch ${batchIdx + 1}/${totalBatches}`);
+
+      await logExecution(buildId, projectId, batchTaskId, "codegen", "generate_batch", "in_progress", {
+        batchIndex: batchIdx + 1,
+        totalBatches,
+        files: batch,
+        message: lang === "ar"
+          ? `الدفعة ${batchIdx + 1}/${totalBatches}: أولّد ${batch.length} ملف...\n${batch.map(f => `  📝 ${f}`).join("\n")}`
+          : `Batch ${batchIdx + 1}/${totalBatches}: generating ${batch.length} files...\n${batch.map(f => `  📝 ${f}`).join("\n")}`,
+      });
+
+      const context: BuildContext = {
+        buildId,
+        projectId,
+        userId,
+        prompt,
+        existingFiles: allGeneratedFiles.map(f => ({ filePath: f.filePath, content: f.content })),
+        tokensUsedSoFar: totalTokens,
+        framework: filePlan.framework as any,
+      };
+
+      const batchResult = await codegenAgent.executeBatch(context, batch, batchIdx, totalBatches, allGeneratedFiles);
+      totalTokens += batchResult.tokensUsed;
+      const batchCost = estimateCost(batchResult.tokensUsed, codegenAgent.modelConfig.model);
+      totalCost += batchCost;
+
+      await recordTokenUsage(userId, projectId, buildId, "codegen", codegenAgent.modelConfig.model, batchResult.tokensUsed, batchCost);
+
+      if (!batchResult.success) {
+        await failTask(batchTaskId, batchResult.error ?? "Batch generation failed", batchResult.durationMs);
+        await logExecution(buildId, projectId, batchTaskId, "codegen", "generate_batch", "failed", {
+          batchIndex: batchIdx + 1, error: batchResult.error,
+          message: lang === "ar"
+            ? `فشلت الدفعة ${batchIdx + 1}: ${batchResult.error}`
+            : `Batch ${batchIdx + 1} failed: ${batchResult.error}`,
+        }, batchResult.tokensUsed, batchResult.durationMs);
+
+        if (allGeneratedFiles.length > 0) {
+          console.log(`Build ${buildId}: batch ${batchIdx + 1} failed but ${allGeneratedFiles.length} files already generated, finalizing partial build`);
+          break;
+        }
+        await finalizeBuild(buildId, projectId, "failed", totalTokens, totalCost);
+        return;
+      }
+
+      const batchFiles = (batchResult.data?.files as GeneratedFile[]) || [];
+      await completeTask(batchTaskId, batchResult.tokensUsed, batchCost, batchResult.durationMs);
+
+      const batchFileNames = batchFiles.map(f => f.filePath);
+      await logExecution(buildId, projectId, batchTaskId, "codegen", "generate_batch", "completed", {
+        batchIndex: batchIdx + 1,
+        totalBatches,
+        fileCount: batchFiles.length,
+        files: batchFileNames,
+        message: lang === "ar"
+          ? `الدفعة ${batchIdx + 1}/${totalBatches}: تم توليد ${batchFiles.length} ملف ✓\n${batchFileNames.map(f => `  ✅ ${f}`).join("\n")}`
+          : `Batch ${batchIdx + 1}/${totalBatches}: generated ${batchFiles.length} files ✓\n${batchFileNames.map(f => `  ✅ ${f}`).join("\n")}`,
+      }, batchResult.tokensUsed, batchResult.durationMs);
+
+      for (const f of batchFiles) {
+        const existIdx = allGeneratedFiles.findIndex(g => g.filePath === f.filePath);
+        if (existIdx >= 0) {
+          allGeneratedFiles[existIdx] = f;
+        } else {
+          allGeneratedFiles.push(f);
+        }
+      }
+
+      if (batchResult.data?.dependencies) Object.assign(allDeps, batchResult.data.dependencies as Record<string, string>);
+      if (batchResult.data?.devDependencies) Object.assign(allDevDeps, batchResult.data.devDependencies as Record<string, string>);
+      if (batchResult.data?.scripts) Object.assign(allScripts, batchResult.data.scripts as Record<string, string>);
+
+      await logExecution(buildId, projectId, null, "filemanager", "save_batch", "in_progress", {
+        batchIndex: batchIdx + 1,
+        fileCount: batchFiles.length,
+        message: lang === "ar"
+          ? `أحفظ ملفات الدفعة ${batchIdx + 1}...`
+          : `Saving batch ${batchIdx + 1} files...`,
+      });
+
+      const batchSaveResult = await fileManager.saveFiles(projectId, allGeneratedFiles);
+      await logExecution(buildId, projectId, null, "filemanager", "save_batch",
+        batchSaveResult.success ? "completed" : "failed", {
+          batchIndex: batchIdx + 1,
+          totalFilesSoFar: allGeneratedFiles.length,
+          message: batchSaveResult.success
+            ? (lang === "ar"
+              ? `تم حفظ الدفعة ${batchIdx + 1} — ${allGeneratedFiles.length} ملف محفوظ حتى الآن`
+              : `Batch ${batchIdx + 1} saved — ${allGeneratedFiles.length} files saved so far`)
+            : (lang === "ar" ? "فشل حفظ الملفات" : "Failed to save files"),
+        }, 0, batchSaveResult.durationMs
+      );
+    }
+
+    if (allGeneratedFiles.length === 0) {
+      await finalizeBuild(buildId, projectId, "failed", totalTokens, totalCost);
+      return;
+    }
+
+    const { getProjectTemplate } = await import("./project-templates");
+    const framework = (filePlan.framework || "react-vite") as any;
+    const template = getProjectTemplate(framework);
+
+    const mergedDeps = { ...template.dependencies, ...allDeps };
+    const mergedDevDeps = { ...template.devDependencies, ...allDevDeps };
+    const mergedScripts = { ...template.scripts, ...allScripts };
+
+    if (framework !== "fastapi") {
+      const packageJson: GeneratedFile = {
+        filePath: "package.json",
+        content: JSON.stringify({
+          name: "generated-project",
+          version: "1.0.0",
+          private: true,
+          scripts: mergedScripts,
+          dependencies: mergedDeps,
+          devDependencies: mergedDevDeps,
+        }, null, 2),
+        fileType: "json",
+      };
+      const pkgIdx = allGeneratedFiles.findIndex(f => f.filePath === "package.json");
+      if (pkgIdx >= 0) allGeneratedFiles[pkgIdx] = packageJson;
+      else allGeneratedFiles.push(packageJson);
+    }
+
+    for (const tf of template.baseFiles) {
+      if (!allGeneratedFiles.some(f => f.filePath === tf.filePath)) {
+        allGeneratedFiles.push(tf);
+      }
+    }
+
+    await logExecution(buildId, projectId, null, "filemanager", "save_files", "in_progress", {
+      fileCount: allGeneratedFiles.length,
+      message: lang === "ar"
+        ? `أحفظ جميع الملفات النهائية (${allGeneratedFiles.length} ملف)...`
+        : `Saving all final files (${allGeneratedFiles.length} files)...`,
+    });
+
+    const finalSave = await fileManager.saveFiles(projectId, allGeneratedFiles);
+    await logExecution(buildId, projectId, null, "filemanager", "save_files",
+      finalSave.success ? "completed" : "failed", {
+        fileCount: allGeneratedFiles.length,
+        message: finalSave.success
+          ? (lang === "ar" ? `تم حفظ ${allGeneratedFiles.length} ملف بنجاح` : `Successfully saved ${allGeneratedFiles.length} files`)
+          : (lang === "ar" ? "فشل حفظ الملفات" : "Failed to save files"),
+      }, 0, finalSave.durationMs
+    );
+
+    if (finalSave.success && !build.cancelRequested) {
+      const runnerTaskId = await createTask(buildId, projectId, "package_runner");
+      await logExecution(buildId, projectId, runnerTaskId, "package_runner", "install_and_run", "in_progress", {
+        fileCount: allGeneratedFiles.length,
+        message: lang === "ar"
+          ? `أثبّت الحزم وأشغّل المشروع (${allGeneratedFiles.length} ملف)...`
+          : `Installing packages and running project (${allGeneratedFiles.length} files)...`,
+      });
+
+      const runnerStartTime = Date.now();
+      const packageRunner = new PackageRunnerAgent(constitution);
+      setRunner(buildId, packageRunner);
+
+      try {
+        const runnerResult = await packageRunner.executeWithFiles(projectId, allGeneratedFiles);
+        const runnerDuration = Date.now() - runnerStartTime;
+
+        if (runnerResult.success) {
+          await completeTask(runnerTaskId, 0, 0, runnerDuration);
+        } else {
+          await failTask(runnerTaskId, runnerResult.error ?? "Package runner failed", runnerDuration);
+        }
+
+        await logExecution(buildId, projectId, runnerTaskId, "package_runner", "install_and_run",
+          runnerResult.success ? "completed" : "failed", runnerResult.data, 0, runnerDuration);
+      } catch (runnerError) {
+        const runnerDuration = Date.now() - runnerStartTime;
+        const errMsg = runnerError instanceof Error ? runnerError.message : String(runnerError);
+        await failTask(runnerTaskId, errMsg, runnerDuration);
+        await logExecution(buildId, projectId, runnerTaskId, "package_runner", "install_and_run", "failed", { error: errMsg }, 0, runnerDuration);
+      }
+
+      try {
+        await logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "in_progress");
+        const qaReportId = await runQaWithRetry(buildId, projectId, userId);
+        await logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "completed", { qaReportId });
+      } catch (qaError) {
+        await logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "failed", {
+          error: qaError instanceof Error ? qaError.message : String(qaError),
+        });
+      }
+    }
+
+    const finalStatus = build.cancelRequested ? "cancelled" : (finalSave.success ? "completed" : "failed");
+    await finalizeBuild(buildId, projectId, finalStatus, totalTokens, totalCost);
+  } catch (error) {
+    console.error(`Build ${buildId} (batched) error:`, error);
     await logExecution(buildId, projectId, null, "system", "build_error", "failed", {
       error: error instanceof Error ? error.message : String(error),
     });

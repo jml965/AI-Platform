@@ -237,6 +237,67 @@ MULTI-PAGE PROJECTS:
     }
   }
 
+  async executeBatch(
+    context: BuildContext,
+    batchFiles: string[],
+    batchIndex: number,
+    totalBatches: number,
+    previousFiles: GeneratedFile[]
+  ): Promise<AgentResult> {
+    const startTime = Date.now();
+
+    try {
+      const qualityRules = getCodeQualityPrompt(this.constitution.codeQualityRules);
+
+      const previousFilesList = previousFiles.length > 0
+        ? `\n\nAlready generated files (use these as context — import from them, reference them, maintain consistency):\n${previousFiles.map(f => `--- ${f.filePath} ---\n${f.content.slice(0, 500)}${f.content.length > 500 ? "\n... (truncated)" : ""}`).join("\n\n")}`
+        : "";
+
+      const batchPrompt = `Generate ONLY the following files for batch ${batchIndex + 1}/${totalBatches}:
+${batchFiles.map(f => `- ${f}`).join("\n")}
+
+Original project request:
+${context.prompt}
+${previousFilesList}
+
+IMPORTANT:
+- Generate ONLY the files listed above — do not generate other files
+- Ensure imports reference files from previous batches correctly
+- Maintain consistent styling, naming, and patterns with already generated files
+- Include all necessary imports and exports`;
+
+      const { content, tokensUsed } = await this.callLLM(
+        [
+          { role: "system", content: `${this.systemPrompt}\n\n${qualityRules}` },
+          { role: "user", content: batchPrompt },
+        ],
+        context
+      );
+
+      const result = this.parseResponse(content);
+
+      return {
+        success: true,
+        tokensUsed,
+        durationMs: Date.now() - startTime,
+        data: {
+          files: result.files,
+          dependencies: result.dependencies || {},
+          devDependencies: result.devDependencies || {},
+          scripts: result.scripts || {},
+          directories: result.directories || [],
+        },
+      };
+    } catch (error) {
+      return {
+        success: false,
+        tokensUsed: 0,
+        durationMs: Date.now() - startTime,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
   private normalizePythonVersion(version: string): string {
     if (!version) return "";
     let v = version.trim();
