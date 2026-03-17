@@ -804,8 +804,12 @@ function splitIntoBatches(files: string[], batchSize: number): string[][] {
 
   const batches: string[][] = [];
 
-  if (configFiles.length > 0 || coreFiles.length > 0) {
-    batches.push([...configFiles, ...coreFiles]);
+  if (configFiles.length > 0) {
+    batches.push([...configFiles]);
+  }
+
+  for (let i = 0; i < coreFiles.length; i += batchSize) {
+    batches.push(coreFiles.slice(i, i + batchSize));
   }
 
   const remaining = [...componentFiles, ...pageFiles, ...otherFiles];

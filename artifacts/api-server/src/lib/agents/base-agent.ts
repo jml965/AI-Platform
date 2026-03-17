@@ -61,7 +61,7 @@ export abstract class BaseAgent {
   }
 
   protected getEffectiveTimeoutMs(): number {
-    return (this._overrideTimeoutSeconds ?? 240) * 1000;
+    return (this._overrideTimeoutSeconds ?? 600) * 1000;
   }
 
   protected getEffectiveMaxTokens(): number | undefined {
@@ -155,7 +155,7 @@ export abstract class BaseAgent {
           new Promise<never>((_, reject) =>
             setTimeout(() => {
               stream.abort();
-              reject(new Error("Anthropic API call timed out after 4 minutes"));
+              reject(new Error(`Anthropic API call timed out after ${Math.round(timeoutMs / 60000)} minutes`));
             }, timeoutMs)
           ),
         ]);

@@ -32,7 +32,7 @@ const DEFAULT_CODE_QUALITY_RULES: CodeQualityRules = {
 const DEFAULT_CONSTITUTION: AgentConstitution = {
   maxTokensPerCall: 64000,
   maxRetriesPerTask: 3,
-  maxTotalTokensPerBuild: 800000,
+  maxTotalTokensPerBuild: 5000000,
   allowedFileExtensions: [
     ".html", ".css", ".js", ".ts", ".tsx", ".jsx",
     ".json", ".svg", ".md", ".txt", ".xml",
@@ -46,7 +46,7 @@ const DEFAULT_CONSTITUTION: AgentConstitution = {
     ".png", ".jpg", ".jpeg", ".gif", ".ico", ".webp",
   ],
   maxFileSizeBytes: 512 * 1024,
-  maxFilesPerProject: 100,
+  maxFilesPerProject: 600,
   allowedDirectoryDepth: 8,
   codeQualityRules: DEFAULT_CODE_QUALITY_RULES,
 };

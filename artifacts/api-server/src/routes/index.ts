@@ -37,7 +37,7 @@ router.use(analyticsRouter);
 // router.use(requireAuth);
 router.use((req, _res, next) => {
   if (!req.user) {
-    (req as any).user = { id: "dev-admin", role: "admin", email: "admin@dev.local", username: "admin" };
+    (req as any).user = { id: "cfc4ba30-2c8a-4a78-8a95-78cc1fc2ec68", role: "admin", email: "jamal@oktamam.com" };
   }
   next();
 });
