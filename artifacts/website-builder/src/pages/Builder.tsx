@@ -559,10 +559,29 @@ export default function Builder() {
   const currentPhase = inferPhase(buildStatus?.status, logs);
   const phaseFailed = buildStatus?.status === "failed";
 
+  const [sandboxRunning, setSandboxRunning] = useState(false);
+
+  useEffect(() => {
+    if (!id) return;
+    const baseUrl = import.meta.env.VITE_API_URL || "";
+    const check = () => {
+      fetch(`${baseUrl}/api/sandbox/project/${id}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+          if (d && d.status === "running") {
+            setSandboxRunning(true);
+          }
+        })
+        .catch(() => {});
+    };
+    check();
+    const iv = setInterval(check, 5000);
+    return () => clearInterval(iv);
+  }, [id]);
+
   const sandboxProxyUrl = useMemo(() => {
     if (!id) return null;
-    const allLogs = logs;
-    const runnerLog = allLogs.find(l =>
+    const runnerLog = logs.find(l =>
       l.agentType === "package_runner" &&
       l.status === "completed" &&
       l.details &&
@@ -571,12 +590,12 @@ export default function Builder() {
       "serverStarted" in l.details &&
       (l.details as any).serverStarted === true
     );
-    if (runnerLog) {
+    if (runnerLog || sandboxRunning) {
       const baseUrl = import.meta.env.VITE_API_URL || "";
       return `${baseUrl}/api/sandbox/proxy/${id}/`;
     }
     return null;
-  }, [id, logs]);
+  }, [id, logs, sandboxRunning]);
 
   const previewUrl = sandboxProxyUrl;
 

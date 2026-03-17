@@ -85,37 +85,23 @@ export function classifyComplexity(prompt: string): "complex" | "simple" {
 
 export class PlannerAgent extends BaseAgent {
   readonly agentType = "planner" as const;
-  readonly modelConfig: ModelConfig = { provider: "openai", model: "o3" };
+  readonly modelConfig: ModelConfig = { provider: "anthropic", model: "claude-sonnet-4-20250514" };
 
-  readonly systemPrompt = `You are a senior software architect AI. Your job is to analyze a project request and produce a structured project plan BEFORE any code is generated.
+  protected get defaultTimeoutSeconds(): number {
+    return 120;
+  }
 
-You must output a JSON object with this exact structure:
-{
-  "framework": "The main framework/technology to use (e.g. 'HTML/CSS/JS', 'React', 'Next.js')",
-  "description": "Brief description of what will be built (English)",
-  "descriptionAr": "Brief description of what will be built (Arabic)",
-  "directoryStructure": ["list", "of", "directories", "to", "create"],
-  "files": ["list", "of", "file", "paths", "to", "generate"],
-  "packages": ["list", "of", "npm/cdn", "packages", "needed"],
-  "phases": [
-    {
-      "name": "Phase name (English)",
-      "nameAr": "Phase name (Arabic)",
-      "description": "What this phase accomplishes (English)",
-      "descriptionAr": "What this phase accomplishes (Arabic)",
-      "files": ["files", "created", "in", "this", "phase"]
-    }
-  ]
-}
-
+  readonly systemPrompt = `Software architect. Output ONLY valid JSON, no markdown.
+EXAMPLE: {"framework":"React","description":"short","descriptionAr":"قصير","directoryStructure":["src/"],"packages":["react"],"modules":[{"name":"core","nameAr":"الأساسي","description":"Core setup files","files":["src/App.tsx","src/main.tsx","src/index.css"]},{"name":"auth","nameAr":"المصادقة","description":"Login and register","files":["src/pages/Login.tsx","src/pages/Register.tsx","src/contexts/AuthContext.tsx"]}]}
 Rules:
-- Be specific about file paths, not vague
-- List ALL files that will be created
-- Organize phases logically (structure first, then core logic, then styling, then polish)
-- Keep packages minimal — only what's truly needed
-- Support RTL layouts when the user writes in Arabic
-- Phases should be 2-5 steps, not more
-- Always respond with valid JSON only, no markdown or extra text`;
+- NO "files" top-level array — files are ONLY inside modules
+- Split into 8-15 independent MODULES by domain (core, auth, products, cart, dashboard, admin, etc.)
+- Each module: 15-40 files, self-contained (pages + components + hooks + utils)
+- "core" module FIRST: App.tsx, main.tsx, layouts, router, shared types, contexts, index.css
+- Keep file paths SHORT (src/pages/X.tsx, src/components/X.tsx)
+- Modules are built by independent developers in parallel — no cross-module dependencies except core
+- For 500-file projects: create 12-15 modules with 30-40 files each
+- JSON only, no comments, no descriptions longer than 5 words`;
 
   async execute(context: BuildContext): Promise<AgentResult> {
     const startTime = Date.now();
@@ -126,7 +112,7 @@ Rules:
           { role: "system", content: this.systemPrompt },
           {
             role: "user",
-            content: `Analyze this project request and produce a detailed build plan:\n\n${context.prompt}`,
+            content: context.prompt,
           },
         ],
         context
@@ -169,24 +155,41 @@ Rules:
 
     const parsed = JSON.parse(jsonMatch[0]);
 
-    if (!parsed.framework || !Array.isArray(parsed.files) || !Array.isArray(parsed.phases)) {
-      throw new Error("Plan missing required fields: framework, files, or phases");
+    if (!parsed.framework) {
+      throw new Error("Plan missing required field: framework");
     }
+
+    const modules = Array.isArray(parsed.modules) ? parsed.modules : [];
+    const phases = Array.isArray(parsed.phases) ? parsed.phases : [];
+
+    const planModules = modules.length > 0
+      ? modules.map((m: Record<string, unknown>) => ({
+          name: (m.name as string) || "",
+          nameAr: (m.nameAr as string) || "",
+          description: (m.description as string) || "",
+          descriptionAr: (m.descriptionAr as string) || "",
+          files: Array.isArray(m.files) ? m.files as string[] : [],
+        }))
+      : phases.map((p: Record<string, unknown>) => ({
+          name: (p.name as string) || "",
+          nameAr: (p.nameAr as string) || "",
+          description: (p.description as string) || "",
+          descriptionAr: (p.descriptionAr as string) || "",
+          files: Array.isArray(p.files) ? p.files as string[] : [],
+        }));
+
+    const allFiles: string[] = Array.isArray(parsed.files)
+      ? parsed.files
+      : planModules.flatMap(m => m.files);
 
     return {
       framework: parsed.framework,
       description: parsed.description || "",
       descriptionAr: parsed.descriptionAr || "",
       directoryStructure: parsed.directoryStructure || [],
-      files: parsed.files,
+      files: allFiles,
       packages: parsed.packages || [],
-      phases: parsed.phases.map((p: Record<string, unknown>) => ({
-        name: p.name || "",
-        nameAr: p.nameAr || "",
-        description: p.description || "",
-        descriptionAr: p.descriptionAr || "",
-        files: Array.isArray(p.files) ? p.files : [],
-      })),
+      phases: planModules,
     };
   }
 }

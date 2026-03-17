@@ -82,7 +82,7 @@ export function cancelBuild(buildId: string): boolean {
   return true;
 }
 
-async function logExecution(
+function logExecution(
   buildId: string,
   projectId: string,
   taskId: string | null,
@@ -93,7 +93,7 @@ async function logExecution(
   tokensUsed?: number,
   durationMs?: number
 ) {
-  await db.insert(executionLogsTable).values({
+  db.insert(executionLogsTable).values({
     buildId,
     projectId,
     taskId,
@@ -103,10 +103,10 @@ async function logExecution(
     details: details ?? null,
     tokensUsed: tokensUsed ?? 0,
     durationMs: durationMs ?? null,
-  });
+  }).catch(e => console.error("[logExecution] write failed:", e));
 }
 
-async function recordTokenUsage(
+function recordTokenUsage(
   userId: string,
   projectId: string,
   buildId: string,
@@ -119,7 +119,7 @@ async function recordTokenUsage(
   const tokensInput = Math.floor(tokensUsed * INPUT_RATIO);
   const tokensOutput = tokensUsed - tokensInput;
 
-  await db.insert(tokenUsageTable).values({
+  db.insert(tokenUsageTable).values({
     userId,
     projectId,
     buildId,
@@ -129,9 +129,9 @@ async function recordTokenUsage(
     tokensOutput,
     costUsd: costUsd.toFixed(6),
     usageDate: new Date().toISOString().split("T")[0],
-  });
+  }).catch(e => console.error("[recordTokenUsage] write failed:", e));
 
-  await checkAndNotifyLimits(userId, projectId, costUsd).catch((err) =>
+  checkAndNotifyLimits(userId, projectId, costUsd).catch((err) =>
     console.error("Failed to check/notify limits:", err)
   );
 }
@@ -288,12 +288,12 @@ export async function generatePlan(
     throw new Error("Planner produced no plan");
   }
 
-  await logExecution(buildId, projectId, null, "planner", "generate_plan", "completed", {
+  logExecution(buildId, projectId, null, "planner", "generate_plan", "completed", {
     plan,
     tokensUsed: result.tokensUsed,
   }, result.tokensUsed, result.durationMs);
 
-  await recordTokenUsage(userId, projectId, buildId, "planner", plannerAgent.modelConfig.model, result.tokensUsed, estimateCost(result.tokensUsed, plannerAgent.modelConfig.model));
+  recordTokenUsage(userId, projectId, buildId, "planner", plannerAgent.modelConfig.model, result.tokensUsed, estimateCost(result.tokensUsed, plannerAgent.modelConfig.model));
 
   return { buildId, plan, tokensUsed: result.tokensUsed };
 }
@@ -337,18 +337,18 @@ async function executeBuildPipeline(
   let totalCost = 0;
 
   try {
-    await logExecution(buildId, projectId, null, "system", "build_started", "in_progress", {
+    logExecution(buildId, projectId, null, "system", "build_started", "in_progress", {
       prompt,
       message: lang === "ar" ? `بدأ بناء المشروع — "${prompt.slice(0, 80)}"` : `Build started — "${prompt.slice(0, 80)}"`,
     });
 
-    await logExecution(buildId, projectId, null, "system", "analyzing_request", "in_progress", {
+    logExecution(buildId, projectId, null, "system", "analyzing_request", "in_progress", {
       message: lang === "ar" ? "أحلل طلبك وأحدد نوع المشروع والتقنيات المطلوبة..." : "Analyzing your request and determining project type and required technologies...",
     });
 
     const limitCheck = await checkSpendingLimits(userId, projectId);
     if (!limitCheck.allowed) {
-      await logExecution(buildId, projectId, null, "system", "limit_exceeded", "failed", {
+      logExecution(buildId, projectId, null, "system", "limit_exceeded", "failed", {
         reason: limitCheck.reason,
         message: lang === "ar" ? "تجاوز حد الاستخدام — لا يمكن المتابعة" : "Usage limit exceeded — cannot proceed",
       });
@@ -357,7 +357,7 @@ async function executeBuildPipeline(
     }
 
     if (build.cancelRequested) {
-      await logExecution(buildId, projectId, null, "system", "build_cancelled", "failed", {
+      logExecution(buildId, projectId, null, "system", "build_cancelled", "failed", {
         message: lang === "ar" ? "تم إلغاء البناء بناءً على طلبك" : "Build cancelled by user request",
       });
       await finalizeBuild(buildId, projectId, "cancelled", totalTokens, totalCost);
@@ -378,7 +378,7 @@ async function executeBuildPipeline(
 
     if (isSurgicalEdit) {
       const surgicalTaskId = await createTask(buildId, projectId, "surgical_edit", prompt);
-      await logExecution(buildId, projectId, surgicalTaskId, "surgical_edit", "analyzing_changes", "in_progress", {
+      logExecution(buildId, projectId, surgicalTaskId, "surgical_edit", "analyzing_changes", "in_progress", {
         existingFileCount: existingFiles.length,
         message: lang === "ar" ? `أحلل ${existingFiles.length} ملف موجود وأحدد التعديلات المطلوبة...` : `Analyzing ${existingFiles.length} existing files to determine required changes...`,
       });
@@ -388,11 +388,11 @@ async function executeBuildPipeline(
       const surgicalCost = estimateCost(surgicalResult.tokensUsed, surgicalEditAgent.modelConfig.model);
       totalCost += surgicalCost;
 
-      await recordTokenUsage(userId, projectId, buildId, "surgical_edit", surgicalEditAgent.modelConfig.model, surgicalResult.tokensUsed, surgicalCost);
+      recordTokenUsage(userId, projectId, buildId, "surgical_edit", surgicalEditAgent.modelConfig.model, surgicalResult.tokensUsed, surgicalCost);
 
       if (surgicalResult.success) {
         await completeTask(surgicalTaskId, surgicalResult.tokensUsed, surgicalCost, surgicalResult.durationMs);
-        await logExecution(
+        logExecution(
           buildId, projectId, surgicalTaskId, "surgical_edit", "surgical_edit", "completed",
           { tokensUsed: surgicalResult.tokensUsed, summary: surgicalResult.data?.summary },
           surgicalResult.tokensUsed, surgicalResult.durationMs
@@ -409,7 +409,7 @@ async function executeBuildPipeline(
       }
 
       await failTask(surgicalTaskId, surgicalResult.error ?? "Unknown error", surgicalResult.durationMs);
-      await logExecution(
+      logExecution(
         buildId, projectId, surgicalTaskId, "surgical_edit", "surgical_edit", "failed",
         {
           tokensUsed: surgicalResult.tokensUsed,
@@ -420,7 +420,7 @@ async function executeBuildPipeline(
       );
 
       console.log(`Build ${buildId}: surgical edit failed, falling back to full codegen. Reason: ${surgicalResult.error}`);
-      await logExecution(buildId, projectId, null, "system", "surgical_fallback_to_codegen", "in_progress", {
+      logExecution(buildId, projectId, null, "system", "surgical_fallback_to_codegen", "in_progress", {
         reason: surgicalResult.error,
       });
 
@@ -428,7 +428,7 @@ async function executeBuildPipeline(
     }
 
     const codegenTaskId = await createTask(buildId, projectId, "codegen", prompt);
-    await logExecution(buildId, projectId, codegenTaskId, "codegen", "generate_code", "in_progress", {
+    logExecution(buildId, projectId, codegenTaskId, "codegen", "generate_code", "in_progress", {
       message: lang === "ar"
         ? "أبدأ الآن بكتابة الكود... أحلل البنية المطلوبة وأحدد الملفات والمكونات"
         : "Starting code generation... analyzing required structure, files, and components",
@@ -439,7 +439,7 @@ async function executeBuildPipeline(
     const codegenCost = estimateCost(codegenResult.tokensUsed, codegenAgent.modelConfig.model);
     totalCost += codegenCost;
 
-    await recordTokenUsage(userId, projectId, buildId, "codegen", codegenAgent.modelConfig.model, codegenResult.tokensUsed, codegenCost);
+    recordTokenUsage(userId, projectId, buildId, "codegen", codegenAgent.modelConfig.model, codegenResult.tokensUsed, codegenCost);
 
     if (codegenResult.success) {
       await completeTask(codegenTaskId, codegenResult.tokensUsed, codegenCost, codegenResult.durationMs);
@@ -451,7 +451,7 @@ async function executeBuildPipeline(
       const _genFiles = (codegenResult.data?.files as GeneratedFile[]) || [];
       const _genNames = _genFiles.map(f => f.filePath);
       const _genDur = Math.round((codegenResult.durationMs || 0) / 1000);
-      await logExecution(
+      logExecution(
         buildId, projectId, codegenTaskId, "codegen", "generate_code",
         codegenResult.success ? "completed" : "failed",
         {
@@ -473,7 +473,7 @@ async function executeBuildPipeline(
 
     const postCodegenLimit = await checkSpendingLimits(userId, projectId);
     if (!postCodegenLimit.allowed) {
-      await logExecution(buildId, projectId, null, "system", "limit_exceeded_mid_build", "failed", {
+      logExecution(buildId, projectId, null, "system", "limit_exceeded_mid_build", "failed", {
         reason: postCodegenLimit.reason,
         after_agent: "codegen",
       });
@@ -494,7 +494,7 @@ async function executeBuildPipeline(
     }
 
     const reviewTaskId = await createTask(buildId, projectId, "reviewer");
-    await logExecution(buildId, projectId, reviewTaskId, "reviewer", "review_code", "in_progress", {
+    logExecution(buildId, projectId, reviewTaskId, "reviewer", "review_code", "in_progress", {
       message: lang === "ar"
         ? "أراجع الكود المُولَّد... أبحث عن أخطاء، مشاكل أمنية، وأفضل الممارسات"
         : "Reviewing generated code... checking for errors, security issues, and best practices",
@@ -505,7 +505,7 @@ async function executeBuildPipeline(
     const reviewCost = estimateCost(reviewResult.tokensUsed, reviewerAgent.modelConfig.model);
     totalCost += reviewCost;
 
-    await recordTokenUsage(userId, projectId, buildId, "reviewer", reviewerAgent.modelConfig.model, reviewResult.tokensUsed, reviewCost);
+    recordTokenUsage(userId, projectId, buildId, "reviewer", reviewerAgent.modelConfig.model, reviewResult.tokensUsed, reviewCost);
 
     if (reviewResult.success) {
       await completeTask(reviewTaskId, reviewResult.tokensUsed, reviewCost, reviewResult.durationMs);
@@ -513,7 +513,7 @@ async function executeBuildPipeline(
       await failTask(reviewTaskId, reviewResult.error ?? "Unknown error", reviewResult.durationMs);
     }
 
-    await logExecution(
+    logExecution(
       buildId, projectId, reviewTaskId, "reviewer", "review_code",
       reviewResult.success ? "completed" : "failed",
       reviewResult.data,
@@ -529,7 +529,7 @@ async function executeBuildPipeline(
 
     const postReviewLimit = await checkSpendingLimits(userId, projectId);
     if (!postReviewLimit.allowed) {
-      await logExecution(buildId, projectId, null, "system", "limit_exceeded_mid_build", "failed", {
+      logExecution(buildId, projectId, null, "system", "limit_exceeded_mid_build", "failed", {
         reason: postReviewLimit.reason,
         after_agent: "reviewer",
       });
@@ -552,7 +552,7 @@ async function executeBuildPipeline(
         console.log(`Build ${buildId}: review had warnings/info only, proceeding without fix`);
       } else {
         const fixTaskId = await createTask(buildId, projectId, "fixer");
-        await logExecution(buildId, projectId, fixTaskId, "fixer", "fix_code", "in_progress", {
+        logExecution(buildId, projectId, fixTaskId, "fixer", "fix_code", "in_progress", {
           issueCount: errorIssues.length,
           message: lang === "ar"
             ? `وجدت ${errorIssues.length} خطأ — أصلحها الآن:\n${errorIssues.slice(0, 5).map(i => `  🔧 ${i.file || ''}: ${i.message}`).join("\n")}`
@@ -565,7 +565,7 @@ async function executeBuildPipeline(
         const fixCost = estimateCost(fixResult.tokensUsed, fixerAgent.modelConfig.model);
         totalCost += fixCost;
 
-        await recordTokenUsage(userId, projectId, buildId, "fixer", fixerAgent.modelConfig.model, fixResult.tokensUsed, fixCost);
+        recordTokenUsage(userId, projectId, buildId, "fixer", fixerAgent.modelConfig.model, fixResult.tokensUsed, fixCost);
 
         if (fixResult.success) {
           await completeTask(fixTaskId, fixResult.tokensUsed, fixCost, fixResult.durationMs);
@@ -573,7 +573,7 @@ async function executeBuildPipeline(
           await failTask(fixTaskId, fixResult.error ?? "Unknown error", fixResult.durationMs);
         }
 
-        await logExecution(
+        logExecution(
           buildId, projectId, fixTaskId, "fixer", "fix_code",
           fixResult.success ? "completed" : "failed",
           { tokensUsed: fixResult.tokensUsed },
@@ -589,7 +589,7 @@ async function executeBuildPipeline(
 
         const postFixerLimit = await checkSpendingLimits(userId, projectId);
         if (!postFixerLimit.allowed) {
-          await logExecution(buildId, projectId, null, "system", "limit_exceeded_mid_build", "failed", {
+          logExecution(buildId, projectId, null, "system", "limit_exceeded_mid_build", "failed", {
             reason: postFixerLimit.reason,
             after_agent: "fixer",
           });
@@ -619,7 +619,7 @@ async function executeBuildPipeline(
 
     const saveTaskId = await createTask(buildId, projectId, "filemanager");
     const _fileNames = generatedFiles.map(f => f.filePath);
-    await logExecution(buildId, projectId, saveTaskId, "filemanager", "save_files", "in_progress", {
+    logExecution(buildId, projectId, saveTaskId, "filemanager", "save_files", "in_progress", {
       fileCount: generatedFiles.length,
       directoryCount: generatedDirectories?.length ?? 0,
       message: lang === "ar"
@@ -635,7 +635,7 @@ async function executeBuildPipeline(
       await failTask(saveTaskId, "Failed to save some files", saveResult.durationMs);
     }
 
-    await logExecution(
+    logExecution(
       buildId, projectId, saveTaskId, "filemanager", "save_files",
       saveResult.success ? "completed" : "failed",
       {
@@ -655,7 +655,7 @@ async function executeBuildPipeline(
       }
 
       const runnerTaskId = await createTask(buildId, projectId, "package_runner");
-      await logExecution(buildId, projectId, runnerTaskId, "package_runner", "install_and_run", "in_progress", {
+      logExecution(buildId, projectId, runnerTaskId, "package_runner", "install_and_run", "in_progress", {
         fileCount: generatedFiles.length,
       });
 
@@ -678,7 +678,7 @@ async function executeBuildPipeline(
           await failTask(runnerTaskId, runnerResult.error ?? "Package runner failed", runnerDuration);
         }
 
-        await logExecution(
+        logExecution(
           buildId, projectId, runnerTaskId, "package_runner", "install_and_run",
           runnerResult.success ? "completed" : "failed",
           {
@@ -697,19 +697,19 @@ async function executeBuildPipeline(
         const runnerDuration = Date.now() - runnerStartTime;
         const errMsg = runnerError instanceof Error ? runnerError.message : String(runnerError);
         await failTask(runnerTaskId, errMsg, runnerDuration);
-        await logExecution(buildId, projectId, runnerTaskId, "package_runner", "install_and_run", "failed", {
+        logExecution(buildId, projectId, runnerTaskId, "package_runner", "install_and_run", "failed", {
           error: errMsg,
         }, 0, runnerDuration);
         console.error(`Build ${buildId} package runner error:`, runnerError);
       }
 
       try {
-        await logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "in_progress");
+        logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "in_progress");
         const qaReportId = await runQaWithRetry(buildId, projectId, userId);
-        await logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "completed", { qaReportId });
+        logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "completed", { qaReportId });
       } catch (qaError) {
         console.error(`Build ${buildId} QA pipeline error:`, qaError);
-        await logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "failed", {
+        logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "failed", {
           error: qaError instanceof Error ? qaError.message : String(qaError),
         });
       }
@@ -719,14 +719,14 @@ async function executeBuildPipeline(
     await finalizeBuild(buildId, projectId, finalStatus, totalTokens, totalCost);
   } catch (error) {
     console.error(`Build ${buildId} error:`, error);
-    await logExecution(buildId, projectId, null, "system", "build_error", "failed", {
+    logExecution(buildId, projectId, null, "system", "build_error", "failed", {
       error: error instanceof Error ? error.message : String(error),
     });
     await finalizeBuild(buildId, projectId, "failed", totalTokens, totalCost);
   }
 }
 
-const BATCH_SIZE = 10;
+const MODULE_CONCURRENCY = 10;
 const BATCHED_BUILD_THRESHOLD = 15;
 
 function shouldUseBatchedBuild(prompt: string, existingFileCount: number): boolean {
@@ -746,10 +746,17 @@ function shouldUseBatchedBuild(prompt: string, existingFileCount: number): boole
   return score >= 2 || wordCount > 100;
 }
 
-async function planFilesForBatch(
+interface PlannedModule {
+  name: string;
+  nameAr: string;
+  description: string;
+  files: string[];
+}
+
+async function planModulesForBuild(
   prompt: string,
   constitution: ReturnType<typeof getConstitution>
-): Promise<{ framework: string; files: string[]; packages: string[]; directories: string[] }> {
+): Promise<{ framework: string; files: string[]; packages: string[]; directories: string[]; modules: PlannedModule[] }> {
   const plannerAgent = new PlannerAgent(constitution);
   const context: BuildContext = {
     buildId: "plan-only",
@@ -766,58 +773,25 @@ async function planFilesForBatch(
   }
 
   const plan = result.data.plan as ProjectPlan;
+
+  const modules: PlannedModule[] = plan.phases.map(p => ({
+    name: p.name,
+    nameAr: p.nameAr,
+    description: p.description,
+    files: p.files,
+  }));
+
+  if (modules.length === 0) {
+    modules.push({ name: "all", nameAr: "الكل", description: "All files", files: plan.files });
+  }
+
   return {
     framework: plan.framework,
     files: plan.files,
     packages: plan.packages,
     directories: plan.directoryStructure,
+    modules,
   };
-}
-
-function splitIntoBatches(files: string[], batchSize: number): string[][] {
-  const configFiles: string[] = [];
-  const coreFiles: string[] = [];
-  const componentFiles: string[] = [];
-  const pageFiles: string[] = [];
-  const otherFiles: string[] = [];
-
-  for (const f of files) {
-    const lower = f.toLowerCase();
-    if (lower.includes("package.json") || lower.includes("tsconfig") || lower.includes("vite.config") ||
-        lower.includes("tailwind") || lower.includes("postcss") || lower.includes("index.html") ||
-        lower.includes("requirements.txt") || lower.includes("main.py") || lower.includes(".env")) {
-      configFiles.push(f);
-    } else if (lower.includes("app.tsx") || lower.includes("app.jsx") || lower.includes("app.css") ||
-               lower.includes("index.tsx") || lower.includes("index.jsx") || lower.includes("index.css") ||
-               lower.includes("main.tsx") || lower.includes("layout") || lower.includes("router") ||
-               lower.includes("context") || lower.includes("provider") || lower.includes("types")) {
-      coreFiles.push(f);
-    } else if (lower.includes("/components/") || lower.includes("/component/")) {
-      componentFiles.push(f);
-    } else if (lower.includes("/pages/") || lower.includes("/page/") || lower.includes("/views/") ||
-               lower.includes("/routes/") || lower.includes("/screens/")) {
-      pageFiles.push(f);
-    } else {
-      otherFiles.push(f);
-    }
-  }
-
-  const batches: string[][] = [];
-
-  if (configFiles.length > 0) {
-    batches.push([...configFiles]);
-  }
-
-  for (let i = 0; i < coreFiles.length; i += batchSize) {
-    batches.push(coreFiles.slice(i, i + batchSize));
-  }
-
-  const remaining = [...componentFiles, ...pageFiles, ...otherFiles];
-  for (let i = 0; i < remaining.length; i += batchSize) {
-    batches.push(remaining.slice(i, i + batchSize));
-  }
-
-  return batches;
 }
 
 async function executeBatchedBuildPipeline(
@@ -838,32 +812,32 @@ async function executeBatchedBuildPipeline(
   let totalCost = 0;
 
   try {
-    await logExecution(buildId, projectId, null, "system", "build_started", "in_progress", {
-      prompt, mode: "batched",
+    logExecution(buildId, projectId, null, "system", "build_started", "in_progress", {
+      prompt, mode: "module-parallel",
       message: lang === "ar"
-        ? `بدأ بناء المشروع بنظام الدفعات — "${prompt.slice(0, 80)}"`
-        : `Build started (batched mode) — "${prompt.slice(0, 80)}"`,
+        ? `بدأ بناء المشروع بنظام الأقسام المتوازية — "${prompt.slice(0, 80)}"`
+        : `Build started (module-parallel mode) — "${prompt.slice(0, 80)}"`,
     });
 
     const limitCheck = await checkSpendingLimits(userId, projectId);
     if (!limitCheck.allowed) {
-      await logExecution(buildId, projectId, null, "system", "limit_exceeded", "failed", { reason: limitCheck.reason });
+      logExecution(buildId, projectId, null, "system", "limit_exceeded", "failed", { reason: limitCheck.reason });
       await finalizeBuild(buildId, projectId, "failed", totalTokens, totalCost);
       return;
     }
 
-    await logExecution(buildId, projectId, null, "planner", "planning_batches", "in_progress", {
+    logExecution(buildId, projectId, null, "planner", "planning_modules", "in_progress", {
       message: lang === "ar"
-        ? "أخطط بنية المشروع وأقسّم الملفات لدفعات..."
-        : "Planning project structure and splitting files into batches...",
+        ? "أخطط بنية المشروع وأقسّمه لأقسام مستقلة..."
+        : "Planning project structure and splitting into modules...",
     });
 
-    let filePlan: { framework: string; files: string[]; packages: string[]; directories: string[] };
+    let modulePlan: { framework: string; files: string[]; packages: string[]; directories: string[]; modules: PlannedModule[] };
     try {
-      filePlan = await planFilesForBatch(prompt, constitution);
+      modulePlan = await planModulesForBuild(prompt, constitution);
     } catch (planErr) {
       console.error(`Build ${buildId} planning failed, falling back to single-shot:`, planErr);
-      await logExecution(buildId, projectId, null, "planner", "planning_batches", "failed", {
+      logExecution(buildId, projectId, null, "planner", "planning_modules", "failed", {
         error: planErr instanceof Error ? planErr.message : String(planErr),
         message: lang === "ar" ? "فشل التخطيط — أرجع للتوليد العادي" : "Planning failed — falling back to normal generation",
       });
@@ -874,137 +848,201 @@ async function executeBatchedBuildPipeline(
       return;
     }
 
-    const batches = splitIntoBatches(filePlan.files, BATCH_SIZE);
-    const totalBatches = batches.length;
-    const totalPlannedFiles = filePlan.files.length;
+    const modules = modulePlan.modules;
+    const totalModules = modules.length;
+    const totalPlannedFiles = modulePlan.files.length;
+    const allModuleNames = modules.map(m => m.name);
 
-    await logExecution(buildId, projectId, null, "planner", "planning_batches", "completed", {
-      framework: filePlan.framework,
+    logExecution(buildId, projectId, null, "planner", "planning_modules", "completed", {
+      framework: modulePlan.framework,
       totalFiles: totalPlannedFiles,
-      totalBatches,
-      batchSizes: batches.map(b => b.length),
+      totalModules,
+      modules: modules.map(m => ({ name: m.name, nameAr: m.nameAr, files: m.files.length })),
       message: lang === "ar"
-        ? `خطة المشروع: ${totalPlannedFiles} ملف في ${totalBatches} دفعات (${filePlan.framework})`
-        : `Project plan: ${totalPlannedFiles} files in ${totalBatches} batches (${filePlan.framework})`,
+        ? `خطة المشروع: ${totalPlannedFiles} ملف في ${totalModules} قسم (${modulePlan.framework}) — ${modules.map(m => `${m.nameAr || m.name}(${m.files.length})`).join(", ")}`
+        : `Project plan: ${totalPlannedFiles} files in ${totalModules} modules (${modulePlan.framework}) — ${modules.map(m => `${m.name}(${m.files.length})`).join(", ")}`,
     });
+
+    const { getProjectTemplate } = await import("./project-templates");
+    const rawFw = (modulePlan.framework || "react-vite").toLowerCase();
+    const frameworkMap: Record<string, string> = { "react": "react-vite", "vite": "react-vite", "react-vite": "react-vite", "next": "nextjs", "nextjs": "nextjs", "express": "express", "fastapi": "fastapi", "static": "static", "html": "static" };
+    const framework = (frameworkMap[rawFw] || "react-vite") as any;
 
     const allGeneratedFiles: GeneratedFile[] = [];
     let allDeps: Record<string, string> = {};
     let allDevDeps: Record<string, string> = {};
     let allScripts: Record<string, string> = {};
 
-    for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {
-      if (build.cancelRequested) {
-        await finalizeBuild(buildId, projectId, "cancelled", totalTokens, totalCost);
-        return;
-      }
+    const spendCheckOnce = await checkSpendingLimits(userId, projectId);
+    if (!spendCheckOnce.allowed) {
+      logExecution(buildId, projectId, null, "system", "limit_exceeded", "failed", { reason: spendCheckOnce.reason });
+      await finalizeBuild(buildId, projectId, "failed", totalTokens, totalCost);
+      return;
+    }
 
-      const batchSpendCheck = await checkSpendingLimits(userId, projectId);
-      if (!batchSpendCheck.allowed) {
-        await logExecution(buildId, projectId, null, "system", "limit_exceeded_mid_build", "failed", {
-          reason: batchSpendCheck.reason, batch: batchIdx + 1,
-        });
-        if (allGeneratedFiles.length > 0) {
-          await finalizeBuild(buildId, projectId, "completed", totalTokens, totalCost);
-        } else {
-          await finalizeBuild(buildId, projectId, "failed", totalTokens, totalCost);
-        }
-        return;
-      }
+    const coreModuleIdx = modules.findIndex(m => m.name.toLowerCase() === "core" || m.name.toLowerCase() === "setup" || m.name.toLowerCase() === "base");
+    let coreFiles: GeneratedFile[] = [];
 
-      const batch = batches[batchIdx];
-      const batchTaskId = await createTask(buildId, projectId, "codegen", `Batch ${batchIdx + 1}/${totalBatches}`);
+    if (coreModuleIdx >= 0) {
+      const coreModule = modules[coreModuleIdx];
+      const coreTaskId = await createTask(buildId, projectId, "codegen", `Module: ${coreModule.name}`);
 
-      await logExecution(buildId, projectId, batchTaskId, "codegen", "generate_batch", "in_progress", {
-        batchIndex: batchIdx + 1,
-        totalBatches,
-        files: batch,
+      logExecution(buildId, projectId, coreTaskId, "codegen", "generate_module", "in_progress", {
+        moduleName: coreModule.name, moduleNameAr: coreModule.nameAr, totalModules, files: coreModule.files,
         message: lang === "ar"
-          ? `الدفعة ${batchIdx + 1}/${totalBatches}: أولّد ${batch.length} ملف...\n${batch.map(f => `  📝 ${f}`).join("\n")}`
-          : `Batch ${batchIdx + 1}/${totalBatches}: generating ${batch.length} files...\n${batch.map(f => `  📝 ${f}`).join("\n")}`,
+          ? `🔧 أبني القسم الأساسي "${coreModule.nameAr}" (${coreModule.files.length} ملف)...`
+          : `🔧 Building core module "${coreModule.name}" (${coreModule.files.length} files)...`,
       });
 
-      const context: BuildContext = {
-        buildId,
-        projectId,
-        userId,
-        prompt,
-        existingFiles: allGeneratedFiles.map(f => ({ filePath: f.filePath, content: f.content })),
+      const coreAgent = new CodeGenAgent(constitution);
+      const ctx: BuildContext = {
+        buildId, projectId, userId, prompt,
+        existingFiles: [],
         tokensUsedSoFar: totalTokens,
-        framework: filePlan.framework as any,
+        framework: framework,
       };
 
-      const batchResult = await codegenAgent.executeBatch(context, batch, batchIdx, totalBatches, allGeneratedFiles);
-      totalTokens += batchResult.tokensUsed;
-      const batchCost = estimateCost(batchResult.tokensUsed, codegenAgent.modelConfig.model);
-      totalCost += batchCost;
+      const coreResult = await coreAgent.executeModule(ctx, coreModule.name, coreModule.description, coreModule.files, 0, totalModules, allModuleNames, []);
+      
+      if (coreResult.success) {
+        coreFiles = (coreResult.data?.files as GeneratedFile[]) || [];
+        const coreCost = estimateCost(coreResult.tokensUsed, codegenAgent.modelConfig.model);
+        totalTokens += coreResult.tokensUsed;
+        totalCost += coreCost;
+        recordTokenUsage(userId, projectId, buildId, "codegen", codegenAgent.modelConfig.model, coreResult.tokensUsed, coreCost);
+        await completeTask(coreTaskId, coreResult.tokensUsed, coreCost, coreResult.durationMs);
 
-      await recordTokenUsage(userId, projectId, buildId, "codegen", codegenAgent.modelConfig.model, batchResult.tokensUsed, batchCost);
+        for (const f of coreFiles) allGeneratedFiles.push(f);
+        if (coreResult.data?.dependencies) Object.assign(allDeps, coreResult.data.dependencies as Record<string, string>);
+        if (coreResult.data?.devDependencies) Object.assign(allDevDeps, coreResult.data.devDependencies as Record<string, string>);
+        if (coreResult.data?.scripts) Object.assign(allScripts, coreResult.data.scripts as Record<string, string>);
 
-      if (!batchResult.success) {
-        await failTask(batchTaskId, batchResult.error ?? "Batch generation failed", batchResult.durationMs);
-        await logExecution(buildId, projectId, batchTaskId, "codegen", "generate_batch", "failed", {
-          batchIndex: batchIdx + 1, error: batchResult.error,
+        const earlyTemplate = getProjectTemplate(framework) || { dependencies: {}, devDependencies: {}, scripts: {}, baseFiles: [], directories: [] };
+        const earlyDeps = { ...(earlyTemplate.dependencies || {}), ...allDeps };
+        const earlyDevDeps = { ...(earlyTemplate.devDependencies || {}), ...allDevDeps };
+        const earlyScripts = { ...(earlyTemplate.scripts || {}), ...allScripts };
+        const earlyFiles: GeneratedFile[] = [...allGeneratedFiles];
+
+        if (framework !== "fastapi") {
+          const earlyPkg: GeneratedFile = {
+            filePath: "package.json",
+            content: JSON.stringify({
+              name: "generated-project", version: "1.0.0", private: true,
+              scripts: earlyScripts, dependencies: earlyDeps, devDependencies: earlyDevDeps,
+            }, null, 2),
+            fileType: "json",
+          };
+          const pkgIdx = earlyFiles.findIndex(f => f.filePath === "package.json");
+          if (pkgIdx >= 0) earlyFiles[pkgIdx] = earlyPkg;
+          else earlyFiles.push(earlyPkg);
+        }
+        for (const tf of (earlyTemplate.baseFiles || [])) {
+          if (!earlyFiles.some(f => f.filePath === tf.filePath)) {
+            earlyFiles.push(tf);
+          }
+        }
+
+        fileManager.saveFiles(projectId, [...earlyFiles]).catch(e =>
+          console.error(`Build ${buildId}: core module save failed:`, e)
+        );
+
+        logExecution(buildId, projectId, coreTaskId, "codegen", "generate_module", "completed", {
+          moduleName: coreModule.name, fileCount: coreFiles.length,
           message: lang === "ar"
-            ? `فشلت الدفعة ${batchIdx + 1}: ${batchResult.error}`
-            : `Batch ${batchIdx + 1} failed: ${batchResult.error}`,
-        }, batchResult.tokensUsed, batchResult.durationMs);
-
-        if (allGeneratedFiles.length > 0) {
-          console.log(`Build ${buildId}: batch ${batchIdx + 1} failed but ${allGeneratedFiles.length} files already generated, finalizing partial build`);
-          break;
-        }
-        await finalizeBuild(buildId, projectId, "failed", totalTokens, totalCost);
-        return;
+            ? `✅ القسم الأساسي "${coreModule.nameAr}": ${coreFiles.length} ملف — جاهز، أبدأ باقي الأقسام بالتوازي`
+            : `✅ Core module "${coreModule.name}": ${coreFiles.length} files — ready, starting parallel modules`,
+        }, coreResult.tokensUsed, coreResult.durationMs);
+      } else {
+        logExecution(buildId, projectId, coreTaskId, "codegen", "generate_module", "failed", {
+          moduleName: coreModule.name, error: coreResult.error,
+        }, coreResult.tokensUsed, coreResult.durationMs);
       }
 
-      const batchFiles = (batchResult.data?.files as GeneratedFile[]) || [];
-      await completeTask(batchTaskId, batchResult.tokensUsed, batchCost, batchResult.durationMs);
+      modules.splice(coreModuleIdx, 1);
+    }
 
-      const batchFileNames = batchFiles.map(f => f.filePath);
-      await logExecution(buildId, projectId, batchTaskId, "codegen", "generate_batch", "completed", {
-        batchIndex: batchIdx + 1,
-        totalBatches,
-        fileCount: batchFiles.length,
-        files: batchFileNames,
+    if (build.cancelRequested) {
+      await finalizeBuild(buildId, projectId, "cancelled", totalTokens, totalCost);
+      return;
+    }
+
+    const remainingModules = modules;
+    if (remainingModules.length > 0) {
+      logExecution(buildId, projectId, null, "system", "parallel_modules_started", "in_progress", {
+        moduleCount: remainingModules.length,
         message: lang === "ar"
-          ? `الدفعة ${batchIdx + 1}/${totalBatches}: تم توليد ${batchFiles.length} ملف ✓\n${batchFileNames.map(f => `  ✅ ${f}`).join("\n")}`
-          : `Batch ${batchIdx + 1}/${totalBatches}: generated ${batchFiles.length} files ✓\n${batchFileNames.map(f => `  ✅ ${f}`).join("\n")}`,
-      }, batchResult.tokensUsed, batchResult.durationMs);
-
-      for (const f of batchFiles) {
-        const existIdx = allGeneratedFiles.findIndex(g => g.filePath === f.filePath);
-        if (existIdx >= 0) {
-          allGeneratedFiles[existIdx] = f;
-        } else {
-          allGeneratedFiles.push(f);
-        }
-      }
-
-      if (batchResult.data?.dependencies) Object.assign(allDeps, batchResult.data.dependencies as Record<string, string>);
-      if (batchResult.data?.devDependencies) Object.assign(allDevDeps, batchResult.data.devDependencies as Record<string, string>);
-      if (batchResult.data?.scripts) Object.assign(allScripts, batchResult.data.scripts as Record<string, string>);
-
-      await logExecution(buildId, projectId, null, "filemanager", "save_batch", "in_progress", {
-        batchIndex: batchIdx + 1,
-        fileCount: batchFiles.length,
-        message: lang === "ar"
-          ? `أحفظ ملفات الدفعة ${batchIdx + 1}...`
-          : `Saving batch ${batchIdx + 1} files...`,
+          ? `🚀 أطلق ${remainingModules.length} وكيل مبرمج بالتوازي: ${remainingModules.map(m => m.nameAr || m.name).join(", ")}`
+          : `🚀 Launching ${remainingModules.length} parallel developer agents: ${remainingModules.map(m => m.name).join(", ")}`,
       });
 
-      const batchSaveResult = await fileManager.saveFiles(projectId, allGeneratedFiles);
-      await logExecution(buildId, projectId, null, "filemanager", "save_batch",
-        batchSaveResult.success ? "completed" : "failed", {
-          batchIndex: batchIdx + 1,
-          totalFilesSoFar: allGeneratedFiles.length,
-          message: batchSaveResult.success
-            ? (lang === "ar"
-              ? `تم حفظ الدفعة ${batchIdx + 1} — ${allGeneratedFiles.length} ملف محفوظ حتى الآن`
-              : `Batch ${batchIdx + 1} saved — ${allGeneratedFiles.length} files saved so far`)
-            : (lang === "ar" ? "فشل حفظ الملفات" : "Failed to save files"),
-        }, 0, batchSaveResult.durationMs
-      );
+      const modulePromises = remainingModules.map(async (mod, idx) => {
+        const moduleTaskId = await createTask(buildId, projectId, "codegen", `Module: ${mod.name}`);
+
+        logExecution(buildId, projectId, moduleTaskId, "codegen", "generate_module", "in_progress", {
+          moduleName: mod.name, moduleNameAr: mod.nameAr, files: mod.files,
+          message: lang === "ar"
+            ? `👨‍💻 الوكيل "${mod.nameAr || mod.name}": يبني ${mod.files.length} ملف...`
+            : `👨‍💻 Agent "${mod.name}": building ${mod.files.length} files...`,
+        });
+
+        const agent = new CodeGenAgent(constitution);
+        const ctx: BuildContext = {
+          buildId, projectId, userId, prompt,
+          existingFiles: [],
+          tokensUsedSoFar: totalTokens,
+          framework: framework,
+        };
+
+        const result = await agent.executeModule(
+          ctx, mod.name, mod.description, mod.files, idx + 1, totalModules, allModuleNames, coreFiles
+        );
+
+        if (result.success) {
+          const moduleFiles = (result.data?.files as GeneratedFile[]) || [];
+          const modCost = estimateCost(result.tokensUsed, codegenAgent.modelConfig.model);
+          totalTokens += result.tokensUsed;
+          totalCost += modCost;
+          recordTokenUsage(userId, projectId, buildId, "codegen", codegenAgent.modelConfig.model, result.tokensUsed, modCost);
+          await completeTask(moduleTaskId, result.tokensUsed, modCost, result.durationMs);
+
+          for (const f of moduleFiles) {
+            const existIdx = allGeneratedFiles.findIndex(g => g.filePath === f.filePath);
+            if (existIdx >= 0) allGeneratedFiles[existIdx] = f;
+            else allGeneratedFiles.push(f);
+          }
+          if (result.data?.dependencies) Object.assign(allDeps, result.data.dependencies as Record<string, string>);
+          if (result.data?.devDependencies) Object.assign(allDevDeps, result.data.devDependencies as Record<string, string>);
+          if (result.data?.scripts) Object.assign(allScripts, result.data.scripts as Record<string, string>);
+
+          fileManager.saveFiles(projectId, [...allGeneratedFiles]).catch(e =>
+            console.error(`Build ${buildId}: module ${mod.name} save failed:`, e)
+          );
+
+          logExecution(buildId, projectId, moduleTaskId, "codegen", "generate_module", "completed", {
+            moduleName: mod.name, fileCount: moduleFiles.length,
+            files: moduleFiles.map(f => f.filePath),
+            message: lang === "ar"
+              ? `✅ الوكيل "${mod.nameAr || mod.name}": أنهى ${moduleFiles.length} ملف ودمجها`
+              : `✅ Agent "${mod.name}": completed ${moduleFiles.length} files and merged`,
+          }, result.tokensUsed, result.durationMs);
+        } else {
+          const modCost = estimateCost(result.tokensUsed, codegenAgent.modelConfig.model);
+          totalTokens += result.tokensUsed;
+          totalCost += modCost;
+          recordTokenUsage(userId, projectId, buildId, "codegen", codegenAgent.modelConfig.model, result.tokensUsed, modCost);
+          await failTask(moduleTaskId, result.error ?? "Module failed", result.durationMs);
+          logExecution(buildId, projectId, moduleTaskId, "codegen", "generate_module", "failed", {
+            moduleName: mod.name, error: result.error,
+            message: lang === "ar"
+              ? `❌ فشل الوكيل "${mod.nameAr || mod.name}": ${result.error}`
+              : `❌ Agent "${mod.name}" failed: ${result.error}`,
+          }, result.tokensUsed, result.durationMs);
+        }
+
+        return { result, moduleTaskId, mod };
+      });
+
+      await Promise.allSettled(modulePromises);
     }
 
     if (allGeneratedFiles.length === 0) {
@@ -1012,13 +1050,11 @@ async function executeBatchedBuildPipeline(
       return;
     }
 
-    const { getProjectTemplate } = await import("./project-templates");
-    const framework = (filePlan.framework || "react-vite") as any;
-    const template = getProjectTemplate(framework);
+    const template = getProjectTemplate(framework) || { dependencies: {}, devDependencies: {}, scripts: {}, baseFiles: [], directories: [] };
 
-    const mergedDeps = { ...template.dependencies, ...allDeps };
-    const mergedDevDeps = { ...template.devDependencies, ...allDevDeps };
-    const mergedScripts = { ...template.scripts, ...allScripts };
+    const mergedDeps = { ...(template.dependencies || {}), ...allDeps };
+    const mergedDevDeps = { ...(template.devDependencies || {}), ...allDevDeps };
+    const mergedScripts = { ...(template.scripts || {}), ...allScripts };
 
     if (framework !== "fastapi") {
       const packageJson: GeneratedFile = {
@@ -1038,13 +1074,15 @@ async function executeBatchedBuildPipeline(
       else allGeneratedFiles.push(packageJson);
     }
 
-    for (const tf of template.baseFiles) {
+    for (const tf of (template.baseFiles || [])) {
       if (!allGeneratedFiles.some(f => f.filePath === tf.filePath)) {
         allGeneratedFiles.push(tf);
       }
     }
 
-    await logExecution(buildId, projectId, null, "filemanager", "save_files", "in_progress", {
+    fixBrokenImports(allGeneratedFiles);
+
+    logExecution(buildId, projectId, null, "filemanager", "save_files", "in_progress", {
       fileCount: allGeneratedFiles.length,
       message: lang === "ar"
         ? `أحفظ جميع الملفات النهائية (${allGeneratedFiles.length} ملف)...`
@@ -1052,7 +1090,7 @@ async function executeBatchedBuildPipeline(
     });
 
     const finalSave = await fileManager.saveFiles(projectId, allGeneratedFiles);
-    await logExecution(buildId, projectId, null, "filemanager", "save_files",
+    logExecution(buildId, projectId, null, "filemanager", "save_files",
       finalSave.success ? "completed" : "failed", {
         fileCount: allGeneratedFiles.length,
         message: finalSave.success
@@ -1063,7 +1101,7 @@ async function executeBatchedBuildPipeline(
 
     if (finalSave.success && !build.cancelRequested) {
       const runnerTaskId = await createTask(buildId, projectId, "package_runner");
-      await logExecution(buildId, projectId, runnerTaskId, "package_runner", "install_and_run", "in_progress", {
+      logExecution(buildId, projectId, runnerTaskId, "package_runner", "install_and_run", "in_progress", {
         fileCount: allGeneratedFiles.length,
         message: lang === "ar"
           ? `أثبّت الحزم وأشغّل المشروع (${allGeneratedFiles.length} ملف)...`
@@ -1084,21 +1122,21 @@ async function executeBatchedBuildPipeline(
           await failTask(runnerTaskId, runnerResult.error ?? "Package runner failed", runnerDuration);
         }
 
-        await logExecution(buildId, projectId, runnerTaskId, "package_runner", "install_and_run",
+        logExecution(buildId, projectId, runnerTaskId, "package_runner", "install_and_run",
           runnerResult.success ? "completed" : "failed", runnerResult.data, 0, runnerDuration);
       } catch (runnerError) {
         const runnerDuration = Date.now() - runnerStartTime;
         const errMsg = runnerError instanceof Error ? runnerError.message : String(runnerError);
         await failTask(runnerTaskId, errMsg, runnerDuration);
-        await logExecution(buildId, projectId, runnerTaskId, "package_runner", "install_and_run", "failed", { error: errMsg }, 0, runnerDuration);
+        logExecution(buildId, projectId, runnerTaskId, "package_runner", "install_and_run", "failed", { error: errMsg }, 0, runnerDuration);
       }
 
       try {
-        await logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "in_progress");
+        logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "in_progress");
         const qaReportId = await runQaWithRetry(buildId, projectId, userId);
-        await logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "completed", { qaReportId });
+        logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "completed", { qaReportId });
       } catch (qaError) {
-        await logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "failed", {
+        logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "failed", {
           error: qaError instanceof Error ? qaError.message : String(qaError),
         });
       }
@@ -1107,8 +1145,8 @@ async function executeBatchedBuildPipeline(
     const finalStatus = build.cancelRequested ? "cancelled" : (finalSave.success ? "completed" : "failed");
     await finalizeBuild(buildId, projectId, finalStatus, totalTokens, totalCost);
   } catch (error) {
-    console.error(`Build ${buildId} (batched) error:`, error);
-    await logExecution(buildId, projectId, null, "system", "build_error", "failed", {
+    console.error(`Build ${buildId} (module-parallel) error:`, error);
+    logExecution(buildId, projectId, null, "system", "build_error", "failed", {
       error: error instanceof Error ? error.message : String(error),
     });
     await finalizeBuild(buildId, projectId, "failed", totalTokens, totalCost);
@@ -1153,7 +1191,7 @@ async function savePatchedFilesAndRun(
   }
 
   const saveTaskId = await createTask(buildId, projectId, "filemanager");
-  await logExecution(buildId, projectId, saveTaskId, "filemanager", "save_files", "in_progress", {
+  logExecution(buildId, projectId, saveTaskId, "filemanager", "save_files", "in_progress", {
     fileCount: allFiles.length,
   });
 
@@ -1165,7 +1203,7 @@ async function savePatchedFilesAndRun(
     await failTask(saveTaskId, "Failed to save some files", saveResult.durationMs);
   }
 
-  await logExecution(
+  logExecution(
     buildId, projectId, saveTaskId, "filemanager", "save_files",
     saveResult.success ? "completed" : "failed",
     saveResult.data, 0, saveResult.durationMs
@@ -1178,7 +1216,7 @@ async function savePatchedFilesAndRun(
     }
 
     const runnerTaskId = await createTask(buildId, projectId, "package_runner");
-    await logExecution(buildId, projectId, runnerTaskId, "package_runner", "install_and_run", "in_progress", {
+    logExecution(buildId, projectId, runnerTaskId, "package_runner", "install_and_run", "in_progress", {
       fileCount: allFiles.length,
     });
 
@@ -1201,7 +1239,7 @@ async function savePatchedFilesAndRun(
         await failTask(runnerTaskId, runnerResult.error ?? "Package runner failed", runnerDuration);
       }
 
-      await logExecution(
+      logExecution(
         buildId, projectId, runnerTaskId, "package_runner", "install_and_run",
         runnerResult.success ? "completed" : "failed",
         {
@@ -1219,19 +1257,19 @@ async function savePatchedFilesAndRun(
       const runnerDuration = Date.now() - runnerStartTime;
       const errMsg = runnerError instanceof Error ? runnerError.message : String(runnerError);
       await failTask(runnerTaskId, errMsg, runnerDuration);
-      await logExecution(buildId, projectId, runnerTaskId, "package_runner", "install_and_run", "failed", {
+      logExecution(buildId, projectId, runnerTaskId, "package_runner", "install_and_run", "failed", {
         error: errMsg,
       }, 0, runnerDuration);
       console.error(`Build ${buildId} package runner error:`, runnerError);
     }
 
     try {
-      await logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "in_progress");
+      logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "in_progress");
       const qaReportId = await runQaWithRetry(buildId, projectId, userId);
-      await logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "completed", { qaReportId });
+      logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "completed", { qaReportId });
     } catch (qaError) {
       console.error(`Build ${buildId} QA pipeline error:`, qaError);
-      await logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "failed", {
+      logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "failed", {
         error: qaError instanceof Error ? qaError.message : String(qaError),
       });
     }
@@ -1262,7 +1300,7 @@ async function executeBuildPipelineWithPlan(
   let totalCost = 0;
 
   try {
-    await logExecution(buildId, projectId, null, "system", "build_started_with_plan", "in_progress", {
+    logExecution(buildId, projectId, null, "system", "build_started_with_plan", "in_progress", {
       prompt, plan,
       message: lang === "ar"
         ? `بدأ البناء بخطة من ${plan.steps?.length || 0} خطوات — "${prompt.slice(0, 80)}"`
@@ -1271,7 +1309,7 @@ async function executeBuildPipelineWithPlan(
 
     const limitCheck = await checkSpendingLimits(userId, projectId);
     if (!limitCheck.allowed) {
-      await logExecution(buildId, projectId, null, "system", "limit_exceeded", "failed", { reason: limitCheck.reason });
+      logExecution(buildId, projectId, null, "system", "limit_exceeded", "failed", { reason: limitCheck.reason });
       await finalizeBuild(buildId, projectId, "failed", totalTokens, totalCost);
       return;
     }
@@ -1306,14 +1344,14 @@ ${prompt}`;
     };
 
     const codegenTaskId = await createTask(buildId, projectId, "codegen", planContext);
-    await logExecution(buildId, projectId, codegenTaskId, "codegen", "generate_code", "in_progress");
+    logExecution(buildId, projectId, codegenTaskId, "codegen", "generate_code", "in_progress");
 
     const codegenResult = await codegenAgent.execute(context);
     totalTokens += codegenResult.tokensUsed;
     const codegenCost = estimateCost(codegenResult.tokensUsed, codegenAgent.modelConfig.model);
     totalCost += codegenCost;
 
-    await recordTokenUsage(userId, projectId, buildId, "codegen", codegenAgent.modelConfig.model, codegenResult.tokensUsed, codegenCost);
+    recordTokenUsage(userId, projectId, buildId, "codegen", codegenAgent.modelConfig.model, codegenResult.tokensUsed, codegenCost);
 
     if (codegenResult.success) {
       await completeTask(codegenTaskId, codegenResult.tokensUsed, codegenCost, codegenResult.durationMs);
@@ -1325,7 +1363,7 @@ ${prompt}`;
       const _genFiles = (codegenResult.data?.files as GeneratedFile[]) || [];
       const _genNames = _genFiles.map(f => f.filePath);
       const _genDur = Math.round((codegenResult.durationMs || 0) / 1000);
-      await logExecution(
+      logExecution(
         buildId, projectId, codegenTaskId, "codegen", "generate_code",
         codegenResult.success ? "completed" : "failed",
         {
@@ -1347,7 +1385,7 @@ ${prompt}`;
 
     const postCodegenLimit = await checkSpendingLimits(userId, projectId);
     if (!postCodegenLimit.allowed) {
-      await logExecution(buildId, projectId, null, "system", "limit_exceeded_mid_build", "failed", {
+      logExecution(buildId, projectId, null, "system", "limit_exceeded_mid_build", "failed", {
         reason: postCodegenLimit.reason,
         after_agent: "codegen",
       });
@@ -1368,7 +1406,7 @@ ${prompt}`;
     }
 
     const reviewTaskId = await createTask(buildId, projectId, "reviewer");
-    await logExecution(buildId, projectId, reviewTaskId, "reviewer", "review_code", "in_progress", {
+    logExecution(buildId, projectId, reviewTaskId, "reviewer", "review_code", "in_progress", {
       message: lang === "ar"
         ? "أراجع الكود المُولَّد... أبحث عن أخطاء، مشاكل أمنية، وأفضل الممارسات"
         : "Reviewing generated code... checking for errors, security issues, and best practices",
@@ -1379,7 +1417,7 @@ ${prompt}`;
     const reviewCost = estimateCost(reviewResult.tokensUsed, reviewerAgent.modelConfig.model);
     totalCost += reviewCost;
 
-    await recordTokenUsage(userId, projectId, buildId, "reviewer", reviewerAgent.modelConfig.model, reviewResult.tokensUsed, reviewCost);
+    recordTokenUsage(userId, projectId, buildId, "reviewer", reviewerAgent.modelConfig.model, reviewResult.tokensUsed, reviewCost);
 
     if (reviewResult.success) {
       await completeTask(reviewTaskId, reviewResult.tokensUsed, reviewCost, reviewResult.durationMs);
@@ -1387,7 +1425,7 @@ ${prompt}`;
       await failTask(reviewTaskId, reviewResult.error ?? "Unknown error", reviewResult.durationMs);
     }
 
-    await logExecution(
+    logExecution(
       buildId, projectId, reviewTaskId, "reviewer", "review_code",
       reviewResult.success ? "completed" : "failed",
       reviewResult.data,
@@ -1402,7 +1440,7 @@ ${prompt}`;
 
     const postReviewLimit = await checkSpendingLimits(userId, projectId);
     if (!postReviewLimit.allowed) {
-      await logExecution(buildId, projectId, null, "system", "limit_exceeded_mid_build", "failed", {
+      logExecution(buildId, projectId, null, "system", "limit_exceeded_mid_build", "failed", {
         reason: postReviewLimit.reason,
         after_agent: "reviewer",
       });
@@ -1423,7 +1461,7 @@ ${prompt}`;
       const errorIssues = review.issues.filter((i) => i.severity === "error");
       if (errorIssues.length > 0) {
         const fixTaskId = await createTask(buildId, projectId, "fixer");
-        await logExecution(buildId, projectId, fixTaskId, "fixer", "fix_code", "in_progress", { issueCount: errorIssues.length });
+        logExecution(buildId, projectId, fixTaskId, "fixer", "fix_code", "in_progress", { issueCount: errorIssues.length });
 
         context.tokensUsedSoFar = totalTokens;
         const fixResult = await fixerAgent.executeWithIssues(context, errorIssues);
@@ -1431,7 +1469,7 @@ ${prompt}`;
         const fixCost = estimateCost(fixResult.tokensUsed, fixerAgent.modelConfig.model);
         totalCost += fixCost;
 
-        await recordTokenUsage(userId, projectId, buildId, "fixer", fixerAgent.modelConfig.model, fixResult.tokensUsed, fixCost);
+        recordTokenUsage(userId, projectId, buildId, "fixer", fixerAgent.modelConfig.model, fixResult.tokensUsed, fixCost);
 
         if (fixResult.success) {
           await completeTask(fixTaskId, fixResult.tokensUsed, fixCost, fixResult.durationMs);
@@ -1439,7 +1477,7 @@ ${prompt}`;
           await failTask(fixTaskId, fixResult.error ?? "Unknown error", fixResult.durationMs);
         }
 
-        await logExecution(
+        logExecution(
           buildId, projectId, fixTaskId, "fixer", "fix_code",
           fixResult.success ? "completed" : "failed",
           { tokensUsed: fixResult.tokensUsed },
@@ -1454,7 +1492,7 @@ ${prompt}`;
 
         const postFixerLimit = await checkSpendingLimits(userId, projectId);
         if (!postFixerLimit.allowed) {
-          await logExecution(buildId, projectId, null, "system", "limit_exceeded_mid_build", "failed", {
+          logExecution(buildId, projectId, null, "system", "limit_exceeded_mid_build", "failed", {
             reason: postFixerLimit.reason,
             after_agent: "fixer",
           });
@@ -1481,7 +1519,7 @@ ${prompt}`;
     }
 
     const saveTaskId = await createTask(buildId, projectId, "filemanager");
-    await logExecution(buildId, projectId, saveTaskId, "filemanager", "save_files", "in_progress", { fileCount: generatedFiles.length });
+    logExecution(buildId, projectId, saveTaskId, "filemanager", "save_files", "in_progress", { fileCount: generatedFiles.length });
 
     const saveResult = await fileManager.saveFiles(projectId, generatedFiles);
 
@@ -1491,7 +1529,7 @@ ${prompt}`;
       await failTask(saveTaskId, "Failed to save some files", saveResult.durationMs);
     }
 
-    await logExecution(
+    logExecution(
       buildId, projectId, saveTaskId, "filemanager", "save_files",
       saveResult.success ? "completed" : "failed",
       saveResult.data,
@@ -1506,7 +1544,7 @@ ${prompt}`;
       }
 
       const runnerTaskId = await createTask(buildId, projectId, "package_runner");
-      await logExecution(buildId, projectId, runnerTaskId, "package_runner", "install_and_run", "in_progress", { fileCount: generatedFiles.length });
+      logExecution(buildId, projectId, runnerTaskId, "package_runner", "install_and_run", "in_progress", { fileCount: generatedFiles.length });
 
       const runnerStartTime = Date.now();
       const packageRunner = new PackageRunnerAgent(constitution);
@@ -1522,7 +1560,7 @@ ${prompt}`;
           await failTask(runnerTaskId, runnerResult.error ?? "Package runner failed", runnerDuration);
         }
 
-        await logExecution(
+        logExecution(
           buildId, projectId, runnerTaskId, "package_runner", "install_and_run",
           runnerResult.success ? "completed" : "failed",
           runnerResult.data,
@@ -1533,16 +1571,16 @@ ${prompt}`;
         const runnerDuration = Date.now() - runnerStartTime;
         const errMsg = runnerError instanceof Error ? runnerError.message : String(runnerError);
         await failTask(runnerTaskId, errMsg, runnerDuration);
-        await logExecution(buildId, projectId, runnerTaskId, "package_runner", "install_and_run", "failed", { error: errMsg }, 0, runnerDuration);
+        logExecution(buildId, projectId, runnerTaskId, "package_runner", "install_and_run", "failed", { error: errMsg }, 0, runnerDuration);
       }
 
       try {
-        await logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "in_progress");
+        logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "in_progress");
         const qaReportId = await runQaWithRetry(buildId, projectId, userId);
-        await logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "completed", { qaReportId });
+        logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "completed", { qaReportId });
       } catch (qaError) {
         console.error(`Build ${buildId} QA pipeline error:`, qaError);
-        await logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "failed", {
+        logExecution(buildId, projectId, null, "qa_pipeline", "qa_validation", "failed", {
           error: qaError instanceof Error ? qaError.message : String(qaError),
         });
       }
@@ -1552,7 +1590,7 @@ ${prompt}`;
     await finalizeBuild(buildId, projectId, finalStatus, totalTokens, totalCost);
   } catch (error) {
     console.error(`Build ${buildId} (with plan) error:`, error);
-    await logExecution(buildId, projectId, null, "system", "build_error", "failed", {
+    logExecution(buildId, projectId, null, "system", "build_error", "failed", {
       error: error instanceof Error ? error.message : String(error),
     });
     await finalizeBuild(buildId, projectId, "failed", totalTokens, totalCost);
@@ -1594,14 +1632,14 @@ export async function startSurgicalFix(
       prompt: `Fix: ${errorMessage}`,
     });
 
-    await logExecution(buildId, projectId, null, "system", "surgical_fix_started", "in_progress", {
+    logExecution(buildId, projectId, null, "system", "surgical_fix_started", "in_progress", {
       errorMessage,
       targetFiles: targetFiles?.map(f => f.path),
     });
 
     const existingFiles = await fileManager.getProjectFiles(projectId);
     if (existingFiles.length === 0) {
-      await logExecution(buildId, projectId, null, "system", "surgical_fix_no_files", "failed", {});
+      logExecution(buildId, projectId, null, "system", "surgical_fix_no_files", "failed", {});
       await finalizeBuild(buildId, projectId, "failed", 0, 0);
       return { success: false, buildId, fixedFiles: [], error: "No files to fix" };
     }
@@ -1612,7 +1650,7 @@ export async function startSurgicalFix(
 
     const analysisFiles = filesToAnalyze.length > 0 ? filesToAnalyze : existingFiles;
 
-    await logExecution(buildId, projectId, null, "analyzer", "analyze_error", "in_progress", {
+    logExecution(buildId, projectId, null, "analyzer", "analyze_error", "in_progress", {
       errorMessage,
       analyzingFiles: analysisFiles.map(f => f.filePath),
     });
@@ -1633,7 +1671,7 @@ export async function startSurgicalFix(
       tokensUsedSoFar: 0,
     };
 
-    await logExecution(buildId, projectId, null, "fixer", "fix_code", "in_progress", {
+    logExecution(buildId, projectId, null, "fixer", "fix_code", "in_progress", {
       issueCount: issues.length,
       filesBeingFixed: analysisFiles.map(f => f.filePath),
     });
@@ -1643,10 +1681,10 @@ export async function startSurgicalFix(
     const fixCost = estimateCost(fixResult.tokensUsed, fixerAgent.modelConfig.model);
     totalCost += fixCost;
 
-    await recordTokenUsage(userId, projectId, buildId, "fixer", fixerAgent.modelConfig.model, fixResult.tokensUsed, fixCost);
+    recordTokenUsage(userId, projectId, buildId, "fixer", fixerAgent.modelConfig.model, fixResult.tokensUsed, fixCost);
 
     if (!fixResult.success) {
-      await logExecution(buildId, projectId, null, "fixer", "fix_code", "failed", {
+      logExecution(buildId, projectId, null, "fixer", "fix_code", "failed", {
         error: fixResult.error,
       });
       await finalizeBuild(buildId, projectId, "failed", totalTokens, totalCost);
@@ -1655,7 +1693,7 @@ export async function startSurgicalFix(
 
     const patchedFiles = fixResult.data?.files as GeneratedFile[];
     if (!patchedFiles?.length) {
-      await logExecution(buildId, projectId, null, "fixer", "fix_code", "failed", {
+      logExecution(buildId, projectId, null, "fixer", "fix_code", "failed", {
         error: "No files returned from fixer",
       });
       await finalizeBuild(buildId, projectId, "failed", totalTokens, totalCost);
@@ -1664,12 +1702,12 @@ export async function startSurgicalFix(
 
     for (const pf of patchedFiles) fixedFilesList.push(pf.filePath);
 
-    await logExecution(buildId, projectId, null, "fixer", "fix_code", "completed", {
+    logExecution(buildId, projectId, null, "fixer", "fix_code", "completed", {
       fixedFiles: fixedFilesList,
       tokensUsed: fixResult.tokensUsed,
     });
 
-    await logExecution(buildId, projectId, null, "reviewer", "review_fix", "in_progress", {
+    logExecution(buildId, projectId, null, "reviewer", "review_fix", "in_progress", {
       reviewingFiles: fixedFilesList,
     });
 
@@ -1684,12 +1722,12 @@ export async function startSurgicalFix(
     const reviewCost = estimateCost(reviewResult.tokensUsed, reviewerAgent.modelConfig.model);
     totalCost += reviewCost;
 
-    await recordTokenUsage(userId, projectId, buildId, "reviewer", reviewerAgent.modelConfig.model, reviewResult.tokensUsed, reviewCost);
+    recordTokenUsage(userId, projectId, buildId, "reviewer", reviewerAgent.modelConfig.model, reviewResult.tokensUsed, reviewCost);
 
     const reviewIssues = (reviewResult.data?.issues as { severity: string }[]) || [];
     const hasErrors = reviewIssues.some(i => i.severity === "error");
 
-    await logExecution(buildId, projectId, null, "reviewer", "review_fix", "completed", {
+    logExecution(buildId, projectId, null, "reviewer", "review_fix", "completed", {
       issueCount: reviewIssues.length,
       hasErrors,
     });
@@ -1698,7 +1736,7 @@ export async function startSurgicalFix(
 
     const saveResult = await fileManager.saveFiles(projectId, allFiles);
 
-    await logExecution(buildId, projectId, null, "filemanager", "save_fixed_files", saveResult.success ? "completed" : "failed", {
+    logExecution(buildId, projectId, null, "filemanager", "save_fixed_files", saveResult.success ? "completed" : "failed", {
       savedCount: allFiles.length,
       fixedCount: patchedFiles.length,
     });
@@ -1709,7 +1747,7 @@ export async function startSurgicalFix(
 
   } catch (error) {
     console.error(`[SURGICAL FIX] Error:`, error);
-    await logExecution(buildId, projectId, null, "system", "surgical_fix_error", "failed", {
+    logExecution(buildId, projectId, null, "system", "surgical_fix_error", "failed", {
       error: error instanceof Error ? error.message : String(error),
     });
     await finalizeBuild(buildId, projectId, "failed", totalTokens, totalCost);
@@ -1754,7 +1792,7 @@ async function finalizeBuild(
       );
   }
 
-  await logExecution(buildId, projectId, null, "system", "build_finished", status, {
+  logExecution(buildId, projectId, null, "system", "build_finished", status, {
     totalTokens,
     totalCost,
   });
@@ -1839,4 +1877,126 @@ async function finalizeBuild(
     activeBuilds.delete(buildId);
     removeRunner(buildId);
   }, 5 * 60 * 1000);
+}
+
+function fixBrokenImports(files: GeneratedFile[]): void {
+  const filePaths = new Set(files.map(f => f.filePath));
+
+  const stripExt = (p: string) => p.replace(/\.(tsx?|jsx?|css)$/, "");
+  const barePathSet = new Map<string, string>();
+  for (const fp of filePaths) {
+    barePathSet.set(stripExt(fp), fp);
+  }
+
+  const importRe = /^(import\s+(?:[\s\S]*?\s+from\s+|)['"])([^'"]+)(['"];?\s*)$/gm;
+
+  for (const file of files) {
+    if (!/\.(tsx?|jsx?)$/.test(file.filePath)) continue;
+
+    let changed = false;
+    const dir = file.filePath.includes("/")
+      ? file.filePath.substring(0, file.filePath.lastIndexOf("/"))
+      : "";
+
+    const newContent = file.content.replace(importRe, (match, pre, importPath, post) => {
+      if (!importPath.startsWith(".")) return match;
+
+      let resolved = "";
+      if (dir && importPath.startsWith("./")) {
+        resolved = dir + "/" + importPath.substring(2);
+      } else if (dir && importPath.startsWith("../")) {
+        const parts = dir.split("/");
+        let rel = importPath;
+        while (rel.startsWith("../") && parts.length > 0) {
+          parts.pop();
+          rel = rel.substring(3);
+        }
+        resolved = parts.length > 0 ? parts.join("/") + "/" + rel : rel;
+      } else if (importPath.startsWith("./")) {
+        resolved = importPath.substring(2);
+      } else {
+        resolved = importPath;
+      }
+
+      const barePath = stripExt(resolved);
+
+      if (barePathSet.has(barePath) || filePaths.has(resolved)) {
+        return match;
+      }
+
+      const importBase = barePath.split("/").pop()!;
+      let bestMatch: string | null = null;
+      let bestScore = 0;
+
+      for (const [bp, fp] of barePathSet) {
+        const bpBase = bp.split("/").pop()!;
+        if (!bpBase) continue;
+
+        const bpDir = bp.includes("/") ? bp.substring(0, bp.lastIndexOf("/")) : "";
+        const bareDir = barePath.includes("/") ? barePath.substring(0, barePath.lastIndexOf("/")) : "";
+
+        if (bpDir !== bareDir) continue;
+
+        const baseLC = importBase.toLowerCase();
+        const candLC = bpBase.toLowerCase();
+
+        if (baseLC === candLC) {
+          bestMatch = fp;
+          bestScore = 100;
+          break;
+        }
+
+        if (baseLC.includes(candLC) || candLC.includes(baseLC)) {
+          const score = 80;
+          if (score > bestScore) {
+            bestScore = score;
+            bestMatch = fp;
+          }
+        }
+
+        const stripped1 = baseLC.replace(/page$/, "").replace(/component$/, "").replace(/view$/, "");
+        const stripped2 = candLC.replace(/page$/, "").replace(/component$/, "").replace(/view$/, "");
+        if (stripped1 === stripped2 && stripped1.length > 0) {
+          const score = 90;
+          if (score > bestScore) {
+            bestScore = score;
+            bestMatch = fp;
+          }
+        }
+      }
+
+      if (bestMatch && bestScore >= 80) {
+        const matchBare = stripExt(bestMatch);
+        let newImportPath = "";
+        if (dir) {
+          const fromParts = dir.split("/");
+          const toParts = matchBare.split("/");
+          let common = 0;
+          while (common < fromParts.length && common < toParts.length && fromParts[common] === toParts[common]) {
+            common++;
+          }
+          const ups = fromParts.length - common;
+          const prefix = ups > 0 ? "../".repeat(ups) : "./";
+          newImportPath = prefix + toParts.slice(common).join("/");
+        } else {
+          newImportPath = "./" + matchBare;
+        }
+        console.log(`[ImportFixer] ${file.filePath}: "${importPath}" → "${newImportPath}"`);
+        changed = true;
+        return pre + newImportPath + post;
+      }
+
+      if (importPath.includes("/pages/") || importPath.includes("/components/") || importPath.includes("/hooks/") || importPath.includes("/contexts/")) {
+        console.warn(`[ImportFixer] UNRESOLVED: ${file.filePath} imports "${importPath}" — no matching file found, removing line`);
+        changed = true;
+        return "";
+      }
+
+      return match;
+    });
+
+    if (changed) {
+      file.content = newContent.replace(/\n{3,}/g, "\n\n");
+    }
+  }
 }

@@ -21,6 +21,15 @@ const SAFE_ENV_KEYS = new Set([
   "SHELL",
   "TMPDIR",
   "NODE_ENV",
+  "XDG_CONFIG_HOME",
+  "XDG_DATA_HOME",
+  "XDG_CACHE_HOME",
+  "XDG_STATE_HOME",
+  "XDG_RUNTIME_DIR",
+  "NIX_PROFILES",
+  "NIX_SSL_CERT_FILE",
+  "SSL_CERT_FILE",
+  "LOCALE_ARCHIVE",
 ]);
 
 interface SandboxProcess {
@@ -137,10 +146,17 @@ export async function createSandbox(
   const clampedTimeout = Math.min(Math.max(timeoutSeconds, 30), 600);
 
   const existingSandbox = Array.from(activeSandboxes.values()).find(
-    (s) => s.projectId === projectId && (s.status === "created" || s.status === "running")
+    (s) => s.projectId === projectId
   );
   if (existingSandbox) {
-    throw new Error(`Project already has an active sandbox: ${existingSandbox.id}`);
+    console.log(`[Sandbox] Stopping existing sandbox ${existingSandbox.id} for project ${projectId}`);
+    try {
+      await stopSandbox(existingSandbox.id);
+    } catch (e) {
+      console.warn(`[Sandbox] Failed to stop existing sandbox: ${e}`);
+      activeSandboxes.delete(existingSandbox.id);
+      releasePort(existingSandbox.port);
+    }
   }
 
   const port = allocatePort();

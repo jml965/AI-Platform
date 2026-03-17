@@ -250,7 +250,7 @@ MULTI-PAGE PROJECTS:
       const qualityRules = getCodeQualityPrompt(this.constitution.codeQualityRules);
 
       const previousFilesList = previousFiles.length > 0
-        ? `\n\nAlready generated files (use these as context — import from them, reference them, maintain consistency):\n${previousFiles.map(f => `--- ${f.filePath} ---\n${f.content.slice(0, 500)}${f.content.length > 500 ? "\n... (truncated)" : ""}`).join("\n\n")}`
+        ? `\n\nAlready generated/planned files (import from them, reference them, maintain consistency):\n${previousFiles.map(f => `- ${f.filePath}`).join("\n")}`
         : "";
 
       const batchPrompt = `Generate ONLY the following files for batch ${batchIndex + 1}/${totalBatches}:
@@ -270,6 +270,83 @@ IMPORTANT:
         [
           { role: "system", content: `${this.systemPrompt}\n\n${qualityRules}` },
           { role: "user", content: batchPrompt },
+        ],
+        context
+      );
+
+      const result = this.parseResponse(content);
+
+      return {
+        success: true,
+        tokensUsed,
+        durationMs: Date.now() - startTime,
+        data: {
+          files: result.files,
+          dependencies: result.dependencies || {},
+          devDependencies: result.devDependencies || {},
+          scripts: result.scripts || {},
+          directories: result.directories || [],
+        },
+      };
+    } catch (error) {
+      return {
+        success: false,
+        tokensUsed: 0,
+        durationMs: Date.now() - startTime,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  async executeModule(
+    context: BuildContext,
+    moduleName: string,
+    moduleDescription: string,
+    moduleFiles: string[],
+    moduleIndex: number,
+    totalModules: number,
+    allModuleNames: string[],
+    coreFiles: GeneratedFile[]
+  ): Promise<AgentResult> {
+    const startTime = Date.now();
+
+    try {
+      const qualityRules = getCodeQualityPrompt(this.constitution.codeQualityRules);
+
+      const coreFilesList = coreFiles.length > 0
+        ? `\n\nCore/shared files already built (import from them, use same patterns):\n${coreFiles.map(f => `- ${f.filePath}`).join("\n")}`
+        : "";
+
+      const otherModules = allModuleNames
+        .filter(n => n !== moduleName)
+        .map(n => `- ${n}`)
+        .join("\n");
+
+      const modulePrompt = `You are building the "${moduleName}" module (${moduleIndex + 1}/${totalModules}) of a large project.
+Module description: ${moduleDescription}
+
+Generate ONLY these files for this module:
+${moduleFiles.map(f => `- ${f}`).join("\n")}
+
+Original project request:
+${context.prompt}
+${coreFilesList}
+
+Other modules being built in parallel:
+${otherModules}
+
+IMPORTANT:
+- Generate ALL ${moduleFiles.length} files listed above — complete, production-ready code
+- This module is self-contained — include all components, hooks, utils it needs
+- Import shared code from core files (types, contexts, layouts) — they exist
+- Do NOT generate files from other modules
+- Use consistent naming, styling (Tailwind CSS), and patterns
+- Each file must be complete — no placeholders, no TODOs`;
+
+      const { content, tokensUsed } = await this.callLLM(
+        [
+          { role: "system", content: `${this.systemPrompt}\n\n${qualityRules}` },
+          { role: "user", content: modulePrompt },
         ],
         context
       );

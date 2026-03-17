@@ -108,15 +108,48 @@ export class PackageRunnerAgent extends BaseAgent {
     }
   }
 
+  private isViteProject(files: GeneratedFile[]): boolean {
+    const hasViteConfig = files.some(f =>
+      /^(vite\.config\.(ts|js|mjs)|vite\.config\.(ts|js|mjs))$/.test(f.filePath) ||
+      f.filePath.endsWith("/vite.config.ts") || f.filePath.endsWith("/vite.config.js")
+    );
+    if (hasViteConfig) return true;
+
+    const pkgFile = files.find(f => f.filePath === "package.json" || f.filePath.endsWith("/package.json"));
+    if (pkgFile) {
+      try {
+        const pkg = JSON.parse(pkgFile.content);
+        const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
+        if (allDeps["vite"]) return true;
+      } catch {}
+    }
+    return false;
+  }
+
   private getStartCommand(projectType: ProjectType, files: GeneratedFile[]): string | null {
     if (projectType === "nodejs") {
+      const isVite = this.isViteProject(files);
+
+      if (isVite) {
+        return "npx vite --port $PORT --host 0.0.0.0 --strictPort";
+      }
+
       const pkgFile = files.find(
         (f) => f.filePath === "package.json" || f.filePath.endsWith("/package.json")
       );
       if (pkgFile) {
         try {
           const pkg = JSON.parse(pkgFile.content);
-          if (pkg.scripts?.dev) return "npm run dev";
+          if (pkg.scripts?.dev) {
+            const devScript = pkg.scripts.dev;
+            if (devScript.includes("vite")) {
+              return "npx vite --port $PORT --host 0.0.0.0 --strictPort";
+            }
+            if (devScript.includes("next")) {
+              return "npx next dev -p $PORT -H 0.0.0.0";
+            }
+            return "npm run dev";
+          }
           if (pkg.scripts?.start) return "npm start";
           if (pkg.main) return `node ${pkg.main}`;
         } catch {}

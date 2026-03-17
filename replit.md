@@ -31,8 +31,8 @@ The platform uses a pnpm workspace monorepo structure, separating deployable app
 - **AI Agents:** A multi-agent system orchestrates website generation, review, fixing, translation, SEO analysis, and more. Key agents include `CodeGenerator`, `CodeReviewer`, `FixAgent`, `PlannerAgent`, `SurgicalEditAgent`, `TranslationAgent`, `SeoAgent`, and `ExecutionEngine`.
 - **Agent Management System:** An admin panel at `/agents` allows per-agent configuration, including model selection, system prompts, memory, pipeline ordering, token limits, and custom agent creation. It features a Governor System for merging solutions from multiple models.
 - **AI Control Center:** An admin panel at `/control-center` manages AI providers (20 pre-seeded), API keys, budget tracking, usage statistics, and fallback configurations. It supports text, image, and video models, with a shared API key system for providers like OpenAI. A background service verifies API key validity.
-- **Agent Orchestration:** The `execution-engine` orchestrates the build pipeline (codegen → review → fix → save → package_runner → QA). It supports a batched build mode for large projects.
-- **Sandbox System:** Provides isolated execution environments for project lifecycle management, with a proxy for live previews.
+- **Agent Orchestration:** The `execution-engine` orchestrates the build pipeline (codegen → review → fix → save → package_runner → QA). It supports a batched build mode for large projects. An `ImportFixer` post-processor resolves mismatched import paths across parallel-generated modules before file save.
+- **Sandbox System:** Provides isolated execution environments for project lifecycle management, with a proxy for live previews. Automatically stops existing sandboxes before creating new ones. Uses `--strictPort` for Vite to prevent port conflicts. Temperature parameter removed from all LLM calls (Anthropic/OpenAI) to avoid model compatibility issues.
 - **Deployment System:** Real deployment via GitHub Pages, creating and pushing project files to a GitHub repository.
 - **Email Notification System:** Event-driven email notifications for critical events.
 - **Validation:** Zod for schema validation.
@@ -47,7 +47,7 @@ The platform uses a pnpm workspace monorepo structure, separating deployable app
 - **Admin Dashboard:** A separate dashboard at `/admin` for platform-wide statistics and cost analysis.
 - **Analytics Dashboard:** Provides per-project analytics including visitor stats and traffic sources.
 - **AI Chat:** Context-aware chat in the Builder panel using Anthropic Claude, distinguishing between build requests and general questions.
-- **Live Preview:** A dual-mode system using either a sandbox proxy for real server environments or an `srcDoc` fallback for client-side rendering. Supports 23 device presets.
+- **Live Preview:** A dual-mode system using either a sandbox proxy for real server environments or an `srcDoc` fallback for client-side rendering. Supports 23 device presets. The proxy injects a `history.replaceState` script to fix BrowserRouter path issues inside the iframe. The frontend polls `/api/sandbox/project/:id` to detect running sandboxes even after build completion.
 - **Builder Layout:** Replit-style three-panel workspace: Chat (left), Live Preview (center), and Files/Code/Library/Snapshots/Plugins/Collaboration/Domains/SEO (right).
 - **Snapshots:** Project backup snapshots for one-click restore and comparison.
 - **File Upload:** Multer-based file upload system supporting various file types (images, fonts, CSS, JS, JSON).

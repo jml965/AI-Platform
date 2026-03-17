@@ -35,7 +35,6 @@ async function callModel(
   maxTokens: number,
   fallbackCreativity?: number
 ): Promise<{ content: string; tokensUsed: number; model: string } | null> {
-  const temperature = slot.creativity ?? fallbackCreativity ?? 0.7;
   const timeoutMs = (slot.timeoutSeconds ?? 240) * 1000;
 
   try {
@@ -44,7 +43,6 @@ async function callModel(
       const stream = client.messages.stream({
         model: slot.model,
         max_tokens: maxTokens,
-        temperature,
         system: systemPrompt,
         messages: [{ role: "user", content: userMessage }],
       });
@@ -70,7 +68,6 @@ async function callModel(
       const response = await client.chat.completions.create({
         model: slot.model,
         max_completion_tokens: maxTokens,
-        temperature,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userMessage },

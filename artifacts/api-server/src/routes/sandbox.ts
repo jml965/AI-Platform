@@ -316,6 +316,9 @@ router.use("/sandbox/proxy", async (req: Request, res: Response) => {
       }
     }
 
+    const isHtmlRequest = cleanPath === "/" || cleanPath.endsWith(".html");
+    const proxyPrefix = `/api/sandbox/proxy/${projectId}`;
+
     const proxyReq = http.request(
       {
         hostname: "127.0.0.1",
@@ -325,8 +328,32 @@ router.use("/sandbox/proxy", async (req: Request, res: Response) => {
         headers: safeHeaders,
       },
       (proxyRes) => {
-        res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
-        proxyRes.pipe(res, { end: true });
+        if (isHtmlRequest && proxyRes.headers["content-type"]?.includes("text/html")) {
+          const chunks: Buffer[] = [];
+          proxyRes.on("data", (chunk: Buffer) => chunks.push(chunk));
+          proxyRes.on("end", () => {
+            let html = Buffer.concat(chunks).toString("utf8");
+            const routerFixScript = `<script>
+(function(){
+  var prefix = "${proxyPrefix}";
+  if(window.location.pathname.startsWith(prefix)){
+    var real = window.location.pathname.slice(prefix.length) || "/";
+    window.history.replaceState(null, "", real);
+  }
+})();
+</script>`;
+            html = html.replace("<head>", "<head>" + routerFixScript);
+            const headers = { ...proxyRes.headers };
+            delete headers["content-length"];
+            delete headers["content-encoding"];
+            headers["transfer-encoding"] = "chunked";
+            res.writeHead(proxyRes.statusCode || 200, headers);
+            res.end(html);
+          });
+        } else {
+          res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
+          proxyRes.pipe(res, { end: true });
+        }
       }
     );
 

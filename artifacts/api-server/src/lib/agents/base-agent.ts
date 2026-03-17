@@ -61,7 +61,12 @@ export abstract class BaseAgent {
   }
 
   protected getEffectiveTimeoutMs(): number {
-    return (this._overrideTimeoutSeconds ?? 600) * 1000;
+    if (this._overrideTimeoutSeconds) return this._overrideTimeoutSeconds * 1000;
+    return this.defaultTimeoutSeconds * 1000;
+  }
+
+  protected get defaultTimeoutSeconds(): number {
+    return 600;
   }
 
   protected getEffectiveMaxTokens(): number | undefined {
@@ -106,12 +111,10 @@ export abstract class BaseAgent {
     modelCfg?: ModelConfig
   ): Promise<{ content: string; tokensUsed: number }> {
     const cfg = modelCfg || this.getEffectiveModel();
-    const temperature = this.getEffectiveCreativity();
     const client = await getOpenAIClient();
     const response = await client.chat.completions.create({
       model: cfg.model,
       max_completion_tokens: maxCompletion,
-      ...(temperature !== undefined ? { temperature } : {}),
       messages,
     });
 
@@ -137,44 +140,56 @@ export abstract class BaseAgent {
     const RETRY_DELAYS = [5000, 15000, 30000];
 
     const client = await getAnthropicClient();
+    const timeoutMs = this.getEffectiveTimeoutMs();
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      let streamedContent = "";
       try {
-        const temperature = this.getEffectiveCreativity();
         const stream = client.messages.stream({
           model: cfg.model,
-          max_tokens: maxCompletion,
-          ...(temperature !== undefined ? { temperature } : {}),
+          max_tokens: Math.min(maxCompletion, 64000),
           system: systemMessage?.content,
           messages: chatMessages,
         });
 
-        const timeoutMs = this.getEffectiveTimeoutMs();
+        stream.on("text", (text: string) => { streamedContent += text; });
+
         const response = await Promise.race([
           stream.finalMessage(),
           new Promise<never>((_, reject) =>
             setTimeout(() => {
               stream.abort();
-              reject(new Error(`Anthropic API call timed out after ${Math.round(timeoutMs / 60000)} minutes`));
+              reject(new Error(`Anthropic timeout after ${Math.round(timeoutMs / 1000)}s`));
             }, timeoutMs)
           ),
         ]);
 
-        const content = response.content
-          .filter((block: { type: string }) => block.type === "text")
-          .map((block: { type: string; text: string }) => block.text)
-          .join("");
+        let content = streamedContent;
+        if (!content) {
+          content = response.content
+            .filter((block: { type: string }) => block.type === "text")
+            .map((block: { type: string; text: string }) => block.text)
+            .join("");
+        }
 
-        const tokensUsed = (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0);
+        const inputTokens = response.usage?.input_tokens ?? 0;
+        const outputTokens = response.usage?.output_tokens ?? 0;
 
-        return { content, tokensUsed };
+        return { content, tokensUsed: inputTokens + outputTokens };
       } catch (error: any) {
+        if (streamedContent.length > 200) {
+          console.log(`[${this.agentType}] Stream error but got ${streamedContent.length} chars, using partial response`);
+          const estimatedTokens = Math.ceil(streamedContent.length / 4);
+          return { content: streamedContent, tokensUsed: estimatedTokens };
+        }
+
         const errorStr = typeof error === "object" ? JSON.stringify(error) : String(error);
-        const isRetryable = errorStr.includes("overloaded") || errorStr.includes("529") || errorStr.includes("rate_limit") || errorStr.includes("500") || errorStr.includes("503");
+        const errMsg = error?.message || errorStr;
+        const isRetryable = errorStr.includes("overloaded") || errorStr.includes("529") || errorStr.includes("rate_limit") || errorStr.includes("500") || errorStr.includes("503") || errMsg === "terminated" || errMsg === "aborted" || errMsg.includes("aborted");
 
         if (isRetryable && attempt < MAX_RETRIES) {
           const delay = RETRY_DELAYS[attempt] || 30000;
-          console.log(`[${this.agentType}] Anthropic overloaded/rate-limited, retry ${attempt + 1}/${MAX_RETRIES} in ${delay / 1000}s`);
+          console.log(`[${this.agentType}] Anthropic error (${errMsg}), retry ${attempt + 1}/${MAX_RETRIES} in ${delay / 1000}s`);
           await new Promise(resolve => setTimeout(resolve, delay));
           continue;
         }
