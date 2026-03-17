@@ -1072,8 +1072,14 @@ async function executeBatchedBuildPipeline(
           } else {
             try {
               const runner = getRunner(buildId);
-              if (runner && runner.isRunning()) {
-                runner.updateSandboxFiles(moduleFiles);
+              if (runner) {
+                const written = runner.updateSandboxFiles(moduleFiles);
+                logExecution(buildId, projectId, moduleTaskId, "package_runner", "live_file_sync", "completed", {
+                  moduleName: mod.name, filesWritten: written,
+                  message: lang === "ar"
+                    ? `🔄 تحديث مباشر: ${written} ملف من "${mod.nameAr || mod.name}"`
+                    : `🔄 Live sync: ${written} files from "${mod.name}"`,
+                });
               }
             } catch {}
           }
