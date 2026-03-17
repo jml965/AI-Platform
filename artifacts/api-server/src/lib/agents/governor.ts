@@ -1,5 +1,4 @@
-import { openai } from "@workspace/integrations-openai-ai-server";
-import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { getOpenAIClient, getAnthropicClient } from "./ai-clients";
 import { db } from "@workspace/db";
 import { agentConfigsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
@@ -41,7 +40,8 @@ async function callModel(
 
   try {
     if (slot.provider === "anthropic") {
-      const stream = anthropic.messages.stream({
+      const client = await getAnthropicClient();
+      const stream = client.messages.stream({
         model: slot.model,
         max_tokens: maxTokens,
         temperature,
@@ -66,7 +66,8 @@ async function callModel(
       const tokensUsed = (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0);
       return { content, tokensUsed, model: slot.model };
     } else if (slot.provider === "openai") {
-      const response = await openai.chat.completions.create({
+      const client = await getOpenAIClient();
+      const response = await client.chat.completions.create({
         model: slot.model,
         max_completion_tokens: maxTokens,
         temperature,

@@ -1,5 +1,6 @@
-import { openai } from "@workspace/integrations-openai-ai-server";
-import { anthropic } from "@workspace/integrations-anthropic-ai";
+import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
+import { getOpenAIClient, getAnthropicClient } from "./ai-clients";
 import { AgentConstitution, checkTokenBudget } from "./constitution";
 import type { AgentResult, AgentType, BuildContext } from "./types";
 import { getAgentConfig, updateAgentStats } from "./governor";
@@ -44,7 +45,6 @@ export abstract class BaseAgent {
         }
       }
     } catch (err) {
-      // Silently fall back to defaults
     }
   }
 
@@ -107,7 +107,8 @@ export abstract class BaseAgent {
   ): Promise<{ content: string; tokensUsed: number }> {
     const cfg = modelCfg || this.getEffectiveModel();
     const temperature = this.getEffectiveCreativity();
-    const response = await openai.chat.completions.create({
+    const client = await getOpenAIClient();
+    const response = await client.chat.completions.create({
       model: cfg.model,
       max_completion_tokens: maxCompletion,
       ...(temperature !== undefined ? { temperature } : {}),
@@ -135,10 +136,12 @@ export abstract class BaseAgent {
     const MAX_RETRIES = 3;
     const RETRY_DELAYS = [5000, 15000, 30000];
 
+    const client = await getAnthropicClient();
+
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
         const temperature = this.getEffectiveCreativity();
-        const stream = anthropic.messages.stream({
+        const stream = client.messages.stream({
           model: cfg.model,
           max_tokens: maxCompletion,
           ...(temperature !== undefined ? { temperature } : {}),

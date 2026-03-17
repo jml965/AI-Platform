@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { getAnthropicClient } from "../lib/agents/ai-clients";
 import { db } from "@workspace/db";
 import { projectsTable, usersTable, projectFilesTable, buildTasksTable } from "@workspace/db/schema";
 import { eq, desc } from "drizzle-orm";
@@ -160,7 +160,8 @@ router.post("/chat/message", async (req, res) => {
 
     messages.push({ role: "user", content: message });
 
-    const response = await anthropic.messages.create({
+    const anthropicClient = await getAnthropicClient();
+    const response = await anthropicClient.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 300,
       system: AGENT_SYSTEM_PROMPT + contextInfo,
