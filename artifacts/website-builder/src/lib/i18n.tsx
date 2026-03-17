@@ -648,6 +648,12 @@ const en = {
   home_documentation: "Documentation",
   home_refer_earn: "Refer & Earn",
   home_new_badge: "New",
+  preview_building: "Building your website...",
+  preview_connecting: "Connecting to preview...",
+  preview_sandbox_starting: "Starting preview server...",
+  preview_sandbox_failed: "Preview connection failed",
+  preview_retry: "Retry",
+  preview_error_render: "Preview rendering error",
 };
 
 const ar = {
@@ -1298,6 +1304,12 @@ const ar = {
   home_documentation: "التوثيق",
   home_refer_earn: "أحِل واكسب",
   home_new_badge: "جديد",
+  preview_building: "جاري بناء موقعك...",
+  preview_connecting: "جاري الاتصال بالمعاينة...",
+  preview_sandbox_starting: "جاري تشغيل خادم المعاينة...",
+  preview_sandbox_failed: "فشل الاتصال بالمعاينة",
+  preview_retry: "إعادة المحاولة",
+  preview_error_render: "خطأ في عرض المعاينة",
 };
 
 type Language = "en" | "ar";

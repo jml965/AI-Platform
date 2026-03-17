@@ -642,25 +642,28 @@ export default function Builder() {
       return;
     }
     let cancelled = false;
-    fetch(sandboxProxyUrl, { method: "HEAD" })
-      .then(r => {
-        if (cancelled) return;
-        if (r.ok || (r.status >= 200 && r.status < 400)) {
-          setProxyVerified(true);
-          setProxyFailed(false);
-        } else {
-          setProxyVerified(false);
-          setProxyFailed(true);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setProxyVerified(false);
-          setProxyFailed(true);
-        }
-      });
+    const verify = () => {
+      fetch(sandboxProxyUrl, { method: "HEAD", credentials: "include" })
+        .then(r => {
+          if (cancelled) return;
+          if (r.ok || (r.status >= 200 && r.status < 400)) {
+            setProxyVerified(true);
+            setProxyFailed(false);
+          } else {
+            setProxyVerified(false);
+            setProxyFailed(true);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setProxyVerified(false);
+            setProxyFailed(true);
+          }
+        });
+    };
+    verify();
     return () => { cancelled = true; };
-  }, [sandboxProxyUrl]);
+  }, [sandboxProxyUrl, previewKey]);
 
   const previewUrl = (sandboxProxyUrl && proxyVerified && !proxyFailed) ? sandboxProxyUrl : null;
 
@@ -1362,7 +1365,7 @@ export default function Builder() {
   return (
     <div className="flex h-screen bg-[#0e1525] text-[#e1e4e8] overflow-hidden">
 
-      {leftPanelOpen && <div style={{ width: leftWidth }} className="flex flex-col border-e border-[#1c2333] bg-[#0d1117] flex-shrink-0 relative">
+      {leftPanelOpen && <div style={{ width: leftWidth, maxWidth: "50vw" }} className="flex flex-col border-e border-[#1c2333] bg-[#0d1117] flex-shrink-0 relative overflow-hidden">
         <div className="border-b border-[#1c2333]">
           <div className="px-3 py-2 flex items-center gap-2">
             <Link href="/dashboard" className="p-1.5 text-[#8b949e] hover:text-[#e1e4e8] transition-colors rounded hover:bg-[#1c2333]">
@@ -1777,7 +1780,7 @@ export default function Builder() {
       )}
 
       <div className="flex-1 flex flex-col border-e border-[#1c2333] min-w-0">
-        {(hasPreview || previewUrl) && (
+        {(hasPreview || previewUrl || isBuilding || sandboxRunning) && (
           <div className="h-8 flex items-center gap-1 px-2 border-b border-[#1c2333] bg-[#161b22] flex-shrink-0">
             <button
               onClick={handleNavBack}
@@ -1889,52 +1892,115 @@ export default function Builder() {
 
         <div className="flex-1 relative bg-[#0d1117] overflow-hidden flex flex-col" onClick={() => showDeviceMenu && setShowDeviceMenu(false)}>
           <div className="flex-1 overflow-hidden relative">
-            {(hasPreview || previewUrl) ? (
+            {previewUrl ? (
               <DevicePreviewFrame device={currentDevice} previewKey={previewKey}>
-                {previewUrl ? (
-                  <iframe
-                    key={`url-${previewKey}`}
-                    ref={iframeRef}
-                    src={previewUrl}
-                    className="border-0 bg-white"
-                    style={{ width: "100%", height: "100%", display: "block" }}
-                    title={t.live_preview}
-                    onError={() => {
-                      setProxyFailed(true);
-                      setProxyVerified(false);
-                    }}
-                    onLoad={(e) => {
-                      try {
-                        const iframe = e.currentTarget as HTMLIFrameElement;
-                        const doc = iframe.contentDocument;
-                        if (doc) {
-                          const bodyText = doc.body?.innerText || "";
-                          const title = doc.title || "";
-                          if (
-                            title.includes("Dashboard") ||
-                            bodyText.includes("UNAUTHORIZED") ||
-                            bodyText.includes("Authentication required")
-                          ) {
-                            setProxyFailed(true);
-                            setProxyVerified(false);
-                          }
+                <iframe
+                  key={`url-${previewKey}`}
+                  ref={iframeRef}
+                  src={previewUrl}
+                  className="border-0 bg-white"
+                  style={{ width: "100%", height: "100%", display: "block" }}
+                  title={t.live_preview}
+                  onError={() => {
+                    setProxyFailed(true);
+                    setProxyVerified(false);
+                  }}
+                  onLoad={(e) => {
+                    try {
+                      const iframe = e.currentTarget as HTMLIFrameElement;
+                      const doc = iframe.contentDocument;
+                      if (doc) {
+                        const bodyText = doc.body?.innerText || "";
+                        const title = doc.title || "";
+                        if (
+                          title.includes("Dashboard") ||
+                          bodyText.includes("UNAUTHORIZED") ||
+                          bodyText.includes("Authentication required")
+                        ) {
+                          setProxyFailed(true);
+                          setProxyVerified(false);
                         }
-                      } catch (_) {
                       }
-                    }}
-                  />
-                ) : (
-                  <iframe
-                    key={`doc-${previewKey}`}
-                    ref={iframeRef}
-                    srcDoc={buildPreviewHtml()}
-                    sandbox="allow-scripts"
-                    className="border-0 bg-white"
-                    style={{ width: "100%", height: "100%", display: "block" }}
-                    title={t.live_preview}
-                  />
-                )}
+                    } catch (_) {
+                    }
+                  }}
+                />
               </DevicePreviewFrame>
+            ) : hasPreview ? (
+              <DevicePreviewFrame device={currentDevice} previewKey={previewKey}>
+                {(() => {
+                  try {
+                    const html = buildPreviewHtml();
+                    if (!html) return (
+                      <div className="w-full h-full flex items-center justify-center bg-[#0d1117] text-[#484f58]">
+                        <div className="text-center">
+                          <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                          <p className="text-xs">{t.preview_error_render}</p>
+                        </div>
+                      </div>
+                    );
+                    return (
+                      <iframe
+                        key={`doc-${previewKey}`}
+                        ref={iframeRef}
+                        srcDoc={html}
+                        sandbox="allow-scripts"
+                        className="border-0 bg-white"
+                        style={{ width: "100%", height: "100%", display: "block" }}
+                        title={t.live_preview}
+                      />
+                    );
+                  } catch {
+                    return (
+                      <div className="w-full h-full flex items-center justify-center bg-[#0d1117] text-red-400">
+                        <div className="text-center">
+                          <AlertTriangle className="w-8 h-8 mx-auto mb-2" />
+                          <p className="text-xs">{t.preview_error_render}</p>
+                        </div>
+                      </div>
+                    );
+                  }
+                })()}
+              </DevicePreviewFrame>
+            ) : isBuilding ? (
+              <div className="h-full flex items-center justify-center text-[#8b949e]">
+                <div className="text-center">
+                  <Loader2 className="w-10 h-10 mx-auto mb-3 text-[#58a6ff] animate-spin" />
+                  <p className="text-sm font-medium text-[#58a6ff]">{t.preview_building}</p>
+                  <p className="text-xs mt-1 text-[#484f58]">{t.agents_working}</p>
+                </div>
+              </div>
+            ) : sandboxRunning && sandboxProxyUrl && !proxyVerified ? (
+              <div className="h-full flex items-center justify-center text-[#8b949e]">
+                <div className="text-center">
+                  <Loader2 className="w-10 h-10 mx-auto mb-3 text-[#d2a8ff] animate-spin" />
+                  <p className="text-sm font-medium text-[#d2a8ff]">{t.preview_connecting}</p>
+                </div>
+              </div>
+            ) : sandboxProxyUrl && proxyFailed ? (
+              <div className="h-full flex items-center justify-center text-[#484f58]">
+                <div className="text-center">
+                  <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-red-400 opacity-60" />
+                  <p className="text-sm text-red-400">{t.preview_sandbox_failed}</p>
+                  <button
+                    onClick={() => {
+                      setProxyFailed(false);
+                      setProxyVerified(false);
+                      setPreviewKey(k => k + 1);
+                    }}
+                    className="mt-3 px-4 py-1.5 text-xs bg-[#1f6feb]/20 text-[#58a6ff] rounded-md hover:bg-[#1f6feb]/30 transition-colors"
+                  >
+                    {t.preview_retry}
+                  </button>
+                </div>
+              </div>
+            ) : sandboxRunning && !sandboxProxyUrl ? (
+              <div className="h-full flex items-center justify-center text-[#8b949e]">
+                <div className="text-center">
+                  <Loader2 className="w-10 h-10 mx-auto mb-3 text-emerald-400 animate-spin" />
+                  <p className="text-sm font-medium text-emerald-400">{t.preview_sandbox_starting}</p>
+                </div>
+              </div>
             ) : (
               <div className="h-full flex items-center justify-center text-[#484f58]">
                 <div className="text-center">
@@ -1986,7 +2052,7 @@ export default function Builder() {
           isSaving={cssSaving}
         />
       ) : rightPanelOpen ? (
-        <div style={{ width: rightWidth }} className="flex flex-col bg-[#0d1117] flex-shrink-0 border-s border-[#1c2333]">
+        <div style={{ width: rightWidth, maxWidth: "50vw" }} className="flex flex-col bg-[#0d1117] flex-shrink-0 border-s border-[#1c2333] overflow-hidden">
           <div className="h-9 flex items-center border-b border-[#1c2333] bg-[#161b22] flex-shrink-0 px-1 overflow-x-auto">
             {(isBuilding || logs.length > 0) && (
               <button
