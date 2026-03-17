@@ -10,6 +10,7 @@ import {
   subscribeSandboxOutput,
   getSandboxStatus,
   getSandboxWorkDir,
+  writeFilesToSandboxDirect,
 } from "../sandbox/sandbox-manager";
 import type { AgentResult, AgentType, BuildContext, GeneratedFile } from "./types";
 
@@ -271,6 +272,108 @@ export class PackageRunnerAgent extends BaseAgent {
     }
   }
 
+  async initSandboxEarly(
+    projectId: string,
+    files: GeneratedFile[],
+  ): Promise<{ sandboxId: string; port: number } | null> {
+    try {
+      this.lastProjectId = projectId;
+      this.lastFiles = files;
+      this.status.phase = "detecting";
+      const projectType = this.detectProjectType(files);
+      this.status.projectType = projectType;
+
+      if (projectType === "unknown") return null;
+
+      const runtime = projectType === "python" ? "python" : "node";
+      this.emitOutput("info", "Creating early sandbox for live preview...");
+
+      const existingSandboxId = getProjectSandbox(projectId);
+      if (existingSandboxId) {
+        try { await stopSandbox(existingSandboxId); } catch {}
+      }
+
+      const sandbox = await createSandbox(projectId, runtime as "node" | "python", 512, 600);
+      this.sandboxId = sandbox.id;
+      this.status.sandboxId = sandbox.id;
+      this.emitOutput("info", `Early sandbox created (id: ${sandbox.id}, port: ${sandbox.port})`);
+
+      const installCmd = this.getInstallCommand(projectType, files);
+      if (installCmd) {
+        this.status.phase = "installing";
+        this.emitOutput("info", `Installing dependencies: ${installCmd}`);
+        try {
+          const result = await executeCommand(sandbox.id, installCmd, (data) => {
+            this.emitOutput("stdout", data);
+          });
+          if (result.exitCode !== 0) {
+            const retryCmd = this.analyzeInstallError(result.output);
+            if (retryCmd) {
+              await executeCommand(sandbox.id, retryCmd, (data) => {
+                this.emitOutput("stdout", data);
+              });
+            }
+          }
+          this.emitOutput("info", "Dependencies installed.");
+        } catch (err) {
+          this.emitOutput("error", `Install error: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+
+      this.unsubscribeSandbox = subscribeSandboxOutput(sandbox.id, (data: string) => {
+        const isStderr = data.startsWith("[stderr]");
+        this.emitOutput(isStderr ? "stderr" : "stdout", data);
+      });
+
+      const startCmd = this.getStartCommand(projectType, files);
+      let serverStarted = false;
+      if (startCmd) {
+        this.status.phase = "starting";
+        this.lastStartCommand = startCmd;
+        this.emitOutput("info", `Starting dev server early: ${startCmd}`);
+        try {
+          const server = await startServer(sandbox.id, startCmd);
+          this.status.phase = "running";
+          this.status.serverPort = sandbox.port;
+          serverStarted = true;
+          this.emitOutput("info", `Early server running on port ${sandbox.port} (pid: ${server.pid})`);
+          this.setupFileWatcher();
+        } catch (err) {
+          this.emitOutput("error", `Early server start failed: ${err instanceof Error ? err.message : String(err)}`);
+          this.status.phase = "failed";
+        }
+      }
+
+      if (serverStarted) {
+        return { sandboxId: sandbox.id, port: sandbox.port };
+      }
+      return null;
+    } catch (err) {
+      this.emitOutput("error", `Early sandbox init failed: ${err instanceof Error ? err.message : String(err)}`);
+      return null;
+    }
+  }
+
+  updateSandboxFiles(files: GeneratedFile[]): number {
+    if (!this.sandboxId) return 0;
+    const written = writeFilesToSandboxDirect(
+      this.sandboxId,
+      files.map(f => ({ filePath: f.filePath, content: f.content }))
+    );
+    if (written > 0) {
+      this.emitOutput("info", `Live update: ${written} files written to sandbox`);
+    }
+    return written;
+  }
+
+  getSandboxId(): string | null {
+    return this.sandboxId;
+  }
+
+  isRunning(): boolean {
+    return this.status.phase === "running";
+  }
+
   async execute(context: BuildContext): Promise<AgentResult> {
     const files = context.existingFiles.map((f) => ({
       filePath: f.filePath,
@@ -287,6 +390,51 @@ export class PackageRunnerAgent extends BaseAgent {
     const startTime = Date.now();
     this.lastProjectId = projectId;
     this.lastFiles = files;
+
+    if (this.sandboxId && this.status.phase === "running") {
+      const sandboxStatus = getSandboxStatus(this.sandboxId);
+      if (sandboxStatus && sandboxStatus.status === "running") {
+        this.emitOutput("info", "Sandbox already running (early init). Syncing final files...");
+        const written = this.updateSandboxFiles(files);
+        this.emitOutput("info", `Final sync: ${written} files updated in running sandbox`);
+
+        const pkgFile = files.find(f => f.filePath === "package.json");
+        const earlyPkg = this.lastFiles.find(f => f.filePath === "package.json");
+        if (pkgFile && earlyPkg && pkgFile.content !== earlyPkg.content) {
+          this.emitOutput("info", "package.json changed — reinstalling dependencies...");
+          try {
+            await executeCommand(this.sandboxId, "npm install --legacy-peer-deps", (data) => {
+              this.emitOutput("stdout", data);
+            });
+            this.emitOutput("info", "Dependencies reinstalled. Restarting server...");
+            if (this.lastStartCommand) {
+              await restartSandbox(this.sandboxId, this.lastStartCommand);
+              this.emitOutput("info", "Server restarted after dependency update.");
+            }
+          } catch (err) {
+            this.emitOutput("error", `Reinstall failed: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }
+
+        this.lastFiles = files;
+        return {
+          success: true,
+          tokensUsed: 0,
+          durationMs: Date.now() - startTime,
+          data: {
+            projectType: this.status.projectType,
+            sandboxId: this.sandboxId,
+            installed: true,
+            serverStarted: true,
+            port: this.status.serverPort,
+            earlyInit: true,
+          },
+        };
+      }
+      this.emitOutput("info", "Early sandbox no longer running. Creating fresh sandbox...");
+      this.sandboxId = null;
+      this.status.phase = "idle";
+    }
 
     try {
       this.status.phase = "detecting";

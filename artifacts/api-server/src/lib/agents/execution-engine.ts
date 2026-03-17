@@ -16,7 +16,7 @@ import { ReviewerAgent } from "./reviewer-agent";
 import { FixerAgent } from "./fixer-agent";
 import { FileManagerAgent } from "./filemanager-agent";
 import { SurgicalEditAgent, isModificationRequest } from "./surgical-edit-agent";
-import { PackageRunnerAgent, setRunner, removeRunner } from "./package-runner-agent";
+import { PackageRunnerAgent, setRunner, removeRunner, getRunner } from "./package-runner-agent";
 import { PlannerAgent, classifyComplexity } from "./planner-agent";
 import { checkSpendingLimits, checkAndNotifyLimits } from "../token-limits";
 import { runQaWithRetry } from "./qa-pipeline";
@@ -952,6 +952,20 @@ async function executeBatchedBuildPipeline(
             ? `✅ القسم الأساسي "${coreModule.nameAr}": ${coreFiles.length} ملف — جاهز، أبدأ باقي الأقسام بالتوازي`
             : `✅ Core module "${coreModule.name}": ${coreFiles.length} files — ready, starting parallel modules`,
         }, coreResult.tokensUsed, coreResult.durationMs);
+
+        const earlyRunner = new PackageRunnerAgent(constitution);
+        setRunner(buildId, earlyRunner);
+        const earlyInitResult = await earlyRunner.initSandboxEarly(projectId, earlyFiles);
+        if (earlyInitResult) {
+          logExecution(buildId, projectId, null, "package_runner", "early_sandbox", "completed", {
+            sandboxId: earlyInitResult.sandboxId,
+            port: earlyInitResult.port,
+            serverStarted: true,
+            message: lang === "ar"
+              ? `🖥️ المعاينة الحية جاهزة — الموقع يتبنى أمامك الآن`
+              : `🖥️ Live preview ready — site building in real-time`,
+          });
+        }
       } else {
         logExecution(buildId, projectId, coreTaskId, "codegen", "generate_module", "failed", {
           moduleName: coreModule.name, error: coreResult.error,
@@ -1017,6 +1031,13 @@ async function executeBatchedBuildPipeline(
           fileManager.saveFiles(projectId, [...allGeneratedFiles]).catch(e =>
             console.error(`Build ${buildId}: module ${mod.name} save failed:`, e)
           );
+
+          try {
+            const runner = getRunner(buildId);
+            if (runner && runner.isRunning()) {
+              runner.updateSandboxFiles(moduleFiles);
+            }
+          } catch {}
 
           logExecution(buildId, projectId, moduleTaskId, "codegen", "generate_module", "completed", {
             moduleName: mod.name, fileCount: moduleFiles.length,
@@ -1109,8 +1130,9 @@ async function executeBatchedBuildPipeline(
       });
 
       const runnerStartTime = Date.now();
-      const packageRunner = new PackageRunnerAgent(constitution);
-      setRunner(buildId, packageRunner);
+      const existingRunner = getRunner(buildId);
+      const packageRunner = existingRunner || new PackageRunnerAgent(constitution);
+      if (!existingRunner) setRunner(buildId, packageRunner);
 
       try {
         const runnerResult = await packageRunner.executeWithFiles(projectId, allGeneratedFiles);

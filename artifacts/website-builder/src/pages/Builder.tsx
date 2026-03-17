@@ -581,15 +581,16 @@ export default function Builder() {
       if (stopped) return;
       fetch(`${baseUrl}/api/sandbox/proxy/${id}/`, { method: "HEAD" })
         .then(() => {
-          setTimeout(check, 3000);
+          setTimeout(check, 2000);
         })
         .catch(() => {});
     };
     check();
     triggerRecovery();
-    const iv = setInterval(check, 5000);
+    const pollInterval = isBuilding ? 2000 : 5000;
+    const iv = setInterval(check, pollInterval);
     return () => { stopped = true; clearInterval(iv); };
-  }, [id]);
+  }, [id, isBuilding]);
 
   const sandboxProxyUrl = useMemo(() => {
     if (!id) return null;
@@ -598,7 +599,6 @@ export default function Builder() {
       l.status === "completed" &&
       l.details &&
       typeof l.details === "object" &&
-      "sandboxId" in l.details &&
       "serverStarted" in l.details &&
       (l.details as any).serverStarted === true
     );

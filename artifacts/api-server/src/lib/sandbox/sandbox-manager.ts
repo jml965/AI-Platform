@@ -568,6 +568,35 @@ export async function recoverSandboxForProject(projectId: string): Promise<strin
   }
 }
 
+export function writeFilesToSandboxDirect(
+  sandboxId: string,
+  files: Array<{ filePath: string; content: string }>
+): number {
+  const sandbox = activeSandboxes.get(sandboxId);
+  if (!sandbox) return 0;
+
+  let written = 0;
+  for (const file of files) {
+    if (!isPathSafe(file.filePath, sandbox.workDir)) continue;
+
+    const normalizedPath = normalize(file.filePath);
+    const fullPath = join(sandbox.workDir, normalizedPath);
+    const dir = join(fullPath, "..");
+    mkdirSync(dir, { recursive: true });
+
+    const dataUriMatch = file.content.match(/^data:[^;]+;base64,(.+)$/s);
+    if (dataUriMatch) {
+      writeFileSync(fullPath, Buffer.from(dataUriMatch[1], "base64"));
+    } else {
+      writeFileSync(fullPath, file.content, "utf-8");
+    }
+    written++;
+  }
+
+  sandbox.lastActivity = new Date();
+  return written;
+}
+
 export function getSandboxLastCommand(sandboxId: string): string | null {
   const sandbox = activeSandboxes.get(sandboxId);
   return sandbox?.lastCommand ?? null;
