@@ -245,6 +245,7 @@ router.get("/strategic/config", async (_req, res) => {
     res.json({
       enabled: config.enabled,
       governorEnabled: config.governorEnabled,
+      autoGovernor: config.autoGovernor,
       tokenLimit: config.tokenLimit,
       creativity: config.creativity,
       batchSize: config.batchSize,
@@ -326,7 +327,7 @@ router.post("/strategic/configure-agent", async (req, res) => {
     }
 
     const safeFields = [
-      "enabled", "governorEnabled", "primaryModel", "secondaryModel", "tertiaryModel",
+      "enabled", "governorEnabled", "autoGovernor", "primaryModel", "secondaryModel", "tertiaryModel",
       "systemPrompt", "instructions", "permissions", "tokenLimit", "batchSize", "creativity",
     ];
     const safeUpdates: Record<string, any> = { updatedAt: new Date() };
@@ -547,7 +548,7 @@ Respond in the same language as the user.`;
         configChanges = parsed.changes;
         explanation = parsed.explanation || parsed.analysis || configResult.content;
 
-        const safeFields = ["enabled", "governorEnabled", "primaryModel", "secondaryModel", "tertiaryModel",
+        const safeFields = ["enabled", "governorEnabled", "autoGovernor", "primaryModel", "secondaryModel", "tertiaryModel",
           "systemPrompt", "instructions", "permissions", "tokenLimit", "batchSize", "creativity"];
         const safeUpdates: Record<string, any> = { updatedAt: new Date() };
         for (const key of safeFields) {

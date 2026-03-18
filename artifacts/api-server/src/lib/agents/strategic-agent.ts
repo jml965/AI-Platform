@@ -34,6 +34,29 @@ interface ConversationMessage {
   content: string;
 }
 
+type MessageComplexity = "simple" | "technical";
+
+function classifyMessageComplexity(message: string, hasAttachments: boolean): MessageComplexity {
+  if (hasAttachments) return "technical";
+
+  const trimmed = message.trim();
+  const wordCount = trimmed.split(/\s+/).length;
+
+  const greetings = /^(مرحب|أهل|سلام|هلا|هاي|صباح|مساء|hi|hello|hey|good morning|good evening|thanks|thank you|شكر|ممتاز|تمام|ok|okay|bye|مع السلام|وداع)/i;
+  if (greetings.test(trimmed) && wordCount <= 8) return "simple";
+
+  if (wordCount <= 4 && !/error|bug|خطأ|مشكل|كود|code|fix|عطل|crash|fail/i.test(trimmed)) return "simple";
+
+  const technicalPatterns = /error|bug|خطأ|مشكل|كود|code|fix|عطل|crash|fail|import|export|function|component|api|server|database|css|html|build|deploy|webpack|vite|react|node|typescript|لا يعمل|doesn't work|not working|broken|undefined|null|exception|stack trace|console|log|debug|refactor|optimize|performance|أداء|تحسين|هيكل|architecture|migration|schema|route|endpoint|port|token|auth|permission/i;
+  if (technicalPatterns.test(trimmed)) return "technical";
+
+  if (wordCount >= 30) return "technical";
+
+  if (/[`{}()<>\[\];=]/.test(trimmed)) return "technical";
+
+  return "simple";
+}
+
 const STRATEGIC_SYSTEM_PROMPT = `You are the Strategic Execution Agent — the primary reasoning and problem-solving brain of the AI Website Builder system.
 
 You work alongside: Planner, CodeGenerator, CodeReviewer, CodeFixer, SurgicalEditor, TranslationAgent, SeoAgent, FileManager, PackageRunner, and QA Pipeline.
@@ -299,7 +322,22 @@ export async function runStrategicAgent(
     throw new Error("No enabled models for strategic agent");
   }
 
-  const useGovernor = config.governorEnabled && slots.length >= 2;
+  const hasAttachments = (fileAttachments && fileAttachments.length > 0) || (imageAttachments && imageAttachments.length > 0);
+  let useGovernor = config.governorEnabled && slots.length >= 2;
+
+  if ((config as any).autoGovernor && slots.length >= 2) {
+    const complexity = classifyMessageComplexity(userMessage, hasAttachments);
+    if (complexity === "technical") {
+      useGovernor = true;
+      console.log(`[Strategic] Auto-Governor: technical message detected — activating multi-model`);
+      logStrategicActivity("auto_governor", "Auto-Governor activated: technical message detected", "الحاكم التلقائي: رسالة تقنية — تفعيل النماذج المتعددة", { status: "info", details: { complexity, wordCount: userMessage.trim().split(/\s+/).length, hasAttachments } });
+    } else {
+      useGovernor = false;
+      console.log(`[Strategic] Auto-Governor: simple message detected — using single model`);
+      logStrategicActivity("auto_governor", "Auto-Governor: simple message — single model", "الحاكم التلقائي: رسالة بسيطة — نموذج واحد", { status: "info", details: { complexity, wordCount: userMessage.trim().split(/\s+/).length } });
+    }
+  }
+
   const thinking: { model: string; summary: string; durationMs: number }[] = [];
   let totalTokens = 0;
 

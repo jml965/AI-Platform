@@ -12,6 +12,7 @@ export const agentConfigsTable = pgTable("agent_configs", {
   isCustom: boolean("is_custom").notNull().default(false),
 
   governorEnabled: boolean("governor_enabled").notNull().default(false),
+  autoGovernor: boolean("auto_governor").notNull().default(false),
   governorModel: jsonb("governor_model").$type<{ provider: string; model: string; creativity: number; timeoutSeconds: number; maxTokens: number }>(),
   primaryModel: jsonb("primary_model").$type<{ provider: string; model: string; enabled: boolean; creativity: number; timeoutSeconds: number; maxTokens: number }>().notNull(),
   secondaryModel: jsonb("secondary_model").$type<{ provider: string; model: string; enabled: boolean; creativity: number; timeoutSeconds: number; maxTokens: number }>(),
