@@ -1,6 +1,6 @@
 import { getAnthropicClient, getOpenAIClient } from "./ai-clients";
 import { db } from "@workspace/db";
-import { agentConfigsTable, projectFilesTable } from "@workspace/db/schema";
+import { agentConfigsTable, projectFilesTable, agentLogsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import type { AgentConfig } from "@workspace/db/schema";
 
@@ -268,6 +268,7 @@ export async function runStrategicAgent(
 
   if (!useGovernor) {
     const slot = slots[0];
+    logStrategicActivity("think_single", `Starting single-model analysis: ${slot.model}`, `بدء تحليل بنموذج واحد: ${slot.model}`, { status: "in_progress", details: { model: slot.model, governorEnabled: false, messagePreview: userMessage.substring(0, 100) } });
     const start = Date.now();
     let maxTok = slot.maxTokens || 16000;
     if (tokenLimitCap > 0 && tokenLimitCap < maxTok) maxTok = tokenLimitCap;
@@ -279,7 +280,10 @@ export async function runStrategicAgent(
     );
     const duration = Date.now() - start;
 
-    if (!result) throw new Error("Strategic agent model returned empty response");
+    if (!result) {
+      logStrategicActivity("think_failed", "Single model returned empty response", "النموذج أرجع استجابة فارغة", { level: "error", status: "failed", durationMs: duration, details: { model: slot.model } });
+      throw new Error("Strategic agent model returned empty response");
+    }
 
     thinking.push({ model: slot.model, summary: "Single model analysis", durationMs: duration });
     totalTokens = result.tokensUsed;
@@ -288,6 +292,7 @@ export async function runStrategicAgent(
     const cost = totalTokens * 0.000015;
 
     await updateStats(config.agentKey, totalTokens, true, duration, cost);
+    logStrategicActivity("response_complete", `Single-model response: ${slot.model}, ${totalTokens} tokens, ${duration}ms`, `اكتمل رد النموذج الواحد: ${slot.model}، ${totalTokens} توكن، ${duration} مللي ثانية`, { status: "completed", tokensUsed: totalTokens, durationMs: duration, details: { model: slot.model, cost: cost.toFixed(4) } });
 
     return {
       reply: parsed.reply,
@@ -300,6 +305,7 @@ export async function runStrategicAgent(
   }
 
   console.log(`[Strategic] Running ${slots.length} thinker models in parallel`);
+  logStrategicActivity("think_parallel", `Running ${slots.length} thinker models in parallel`, `تشغيل ${slots.length} نموذج تفكير بالتوازي`, { status: "in_progress", details: { models: slots.map(s => s.model), governorEnabled: true, messagePreview: userMessage.substring(0, 100) } });
 
   const thinkResults = await Promise.allSettled(
     slots.map(async (slot): Promise<ThinkResult | null> => {
@@ -328,6 +334,7 @@ export async function runStrategicAgent(
   }
 
   if (successThinks.length === 0) {
+    logStrategicActivity("think_failed", "All thinker models failed", "فشلت جميع نماذج التفكير", { level: "error", status: "failed" });
     throw new Error("All strategic thinker models failed");
   }
 
@@ -335,6 +342,7 @@ export async function runStrategicAgent(
     const parsed = parseResponse(successThinks[0].content, userMessage);
     const cost = totalTokens * 0.000015;
     await updateStats(config.agentKey, totalTokens, true, successThinks[0].durationMs, cost);
+    logStrategicActivity("response_single", `Single model response: ${successThinks[0].model}, ${totalTokens} tokens`, `رد بنموذج واحد: ${successThinks[0].model}، ${totalTokens} توكن`, { status: "completed", tokensUsed: totalTokens, durationMs: successThinks[0].durationMs, details: { model: successThinks[0].model, cost: cost.toFixed(4) } });
     return { reply: parsed.reply, actions: parsed.actions, thinking, tokensUsed: totalTokens, modelsUsed: [successThinks[0].model], cost };
   }
 
@@ -349,6 +357,7 @@ export async function runStrategicAgent(
   const govTimeout = govModelConfig?.timeoutSeconds ?? 240;
 
   console.log(`[Strategic] Governor merging ${successThinks.length} proposals using ${govModel}`);
+  logStrategicActivity("governor_merge", `Governor merging ${successThinks.length} proposals using ${govModel}`, `الحاكم يدمج ${successThinks.length} مقترحات باستخدام ${govModel}`, { status: "in_progress", tokensUsed: totalTokens, details: { modelsCompleted: successThinks.map(t => t.model), governorModel: govModel } });
 
   const govStart = Date.now();
   const mergeResult = await callModelDirect(
@@ -367,6 +376,7 @@ export async function runStrategicAgent(
     const cost = totalTokens * 0.000015;
     const totalDuration = thinking.reduce((s, t) => s + t.durationMs, 0);
     await updateStats(config.agentKey, totalTokens, true, totalDuration, cost);
+    logStrategicActivity("response_complete", `Response completed: ${totalTokens} tokens, ${totalDuration}ms, $${cost.toFixed(4)}`, `اكتمل الرد: ${totalTokens} توكن، ${totalDuration} مللي ثانية، $${cost.toFixed(4)}`, { status: "completed", tokensUsed: totalTokens, durationMs: totalDuration, details: { modelsUsed: successThinks.map(t => t.model), governorModel: govModel, cost: cost.toFixed(4) } });
     return {
       reply: parsed.reply,
       actions: parsed.actions,
@@ -418,6 +428,23 @@ function parseResponse(raw: string, _userMessage: string): { reply: string; acti
   } catch {}
 
   return { reply: raw };
+}
+
+function logStrategicActivity(action: string, message: string, messageAr: string, opts?: {
+  level?: string; status?: string; details?: Record<string, unknown>;
+  tokensUsed?: number; durationMs?: number;
+}) {
+  db.insert(agentLogsTable).values({
+    agentKey: "strategic",
+    level: opts?.level || "info",
+    action,
+    message,
+    messageAr,
+    details: opts?.details || null,
+    tokensUsed: opts?.tokensUsed || 0,
+    durationMs: opts?.durationMs || null,
+    status: opts?.status || "info",
+  }).catch(() => {});
 }
 
 async function updateStats(agentKey: string, tokensUsed: number, success: boolean, durationMs: number, costUsd: number) {

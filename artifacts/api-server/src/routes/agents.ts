@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
-import { buildTasksTable, agentConfigsTable, tokenUsageTable } from "@workspace/db/schema";
+import { buildTasksTable, agentConfigsTable, tokenUsageTable, agentLogsTable } from "@workspace/db/schema";
 import { eq, sql, desc } from "drizzle-orm";
 
 const router: IRouter = Router();
@@ -647,6 +647,35 @@ router.get("/agents/tasks/:taskId", async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: { code: "INTERNAL", message: "Failed to get task" } });
+  }
+});
+
+router.get("/agents/logs/:agentKey", requireAdmin, async (req, res) => {
+  try {
+    const { agentKey } = req.params;
+    const rawLimit = parseInt(req.query.limit as string) || 50;
+    const limit = Math.max(1, Math.min(rawLimit, 200));
+
+    const logs = await db.select()
+      .from(agentLogsTable)
+      .where(eq(agentLogsTable.agentKey, agentKey))
+      .orderBy(desc(agentLogsTable.createdAt))
+      .limit(limit);
+
+    res.json({ logs });
+  } catch (error) {
+    console.error("Failed to get agent logs:", error);
+    res.status(500).json({ error: { code: "INTERNAL", message: "Failed to get agent logs" } });
+  }
+});
+
+router.delete("/agents/logs/:agentKey", requireAdmin, async (req, res) => {
+  try {
+    const { agentKey } = req.params;
+    await db.delete(agentLogsTable).where(eq(agentLogsTable.agentKey, agentKey));
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: { code: "INTERNAL", message: "Failed to clear agent logs" } });
   }
 });
 

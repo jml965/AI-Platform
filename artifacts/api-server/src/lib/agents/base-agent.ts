@@ -4,6 +4,8 @@ import { getOpenAIClient, getAnthropicClient } from "./ai-clients";
 import { AgentConstitution, checkTokenBudget } from "./constitution";
 import type { AgentResult, AgentType, BuildContext } from "./types";
 import { getAgentConfig, updateAgentStats } from "./governor";
+import { db } from "@workspace/db";
+import { agentLogsTable } from "@workspace/db/schema";
 
 export type AIProvider = "openai" | "anthropic";
 
@@ -179,6 +181,25 @@ export abstract class BaseAgent {
 
   protected async trackStats(tokensUsed: number, success: boolean, durationMs: number, costUsd: number) {
     await updateAgentStats(this.agentType, tokensUsed, success, durationMs, costUsd);
+  }
+
+  async logActivity(action: string, message: string, messageAr: string, opts?: {
+    level?: string; status?: string; details?: Record<string, unknown>;
+    tokensUsed?: number; durationMs?: number; buildId?: string; projectId?: string;
+  }) {
+    db.insert(agentLogsTable).values({
+      agentKey: this.agentType,
+      level: opts?.level || "info",
+      action,
+      message,
+      messageAr,
+      details: opts?.details || null,
+      tokensUsed: opts?.tokensUsed || 0,
+      durationMs: opts?.durationMs || null,
+      status: opts?.status || "info",
+      buildId: opts?.buildId || null,
+      projectId: opts?.projectId || null,
+    }).catch(e => console.error(`[AgentLog:${this.agentType}] write failed:`, e));
   }
 
   protected async callLLM(

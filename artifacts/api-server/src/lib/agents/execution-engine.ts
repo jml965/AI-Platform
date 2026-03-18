@@ -7,6 +7,7 @@ import {
   creditsLedgerTable,
   usersTable,
   notificationsTable,
+  agentLogsTable,
 } from "@workspace/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
@@ -105,6 +106,22 @@ function logExecution(
     tokensUsed: tokensUsed ?? 0,
     durationMs: durationMs ?? null,
   }).catch(e => console.error("[logExecution] write failed:", e));
+
+  const msg = (details?.message as string) || `${action} — ${status}`;
+  const msgAr = (details?.message as string) || `${action} — ${status}`;
+  db.insert(agentLogsTable).values({
+    agentKey: agentType,
+    level: status === "failed" ? "error" : (status === "in_progress" ? "info" : "success"),
+    action,
+    message: msg,
+    messageAr: msgAr,
+    details: details ?? null,
+    tokensUsed: tokensUsed ?? 0,
+    durationMs: durationMs ?? null,
+    status,
+    buildId,
+    projectId,
+  }).catch(() => {});
 }
 
 function recordTokenUsage(
@@ -469,6 +486,8 @@ async function executeBuildPipeline(
         ? "أبدأ الآن بكتابة الكود... أحلل البنية المطلوبة وأحدد الملفات والمكونات"
         : "Starting code generation... analyzing required structure, files, and components",
     });
+
+    codegenAgent.logActivity("generate_code", "Starting code generation", "بدأ توليد الكود", { status: "in_progress", buildId, projectId, details: { model: codegenAgent.modelConfig.model, promptLength: prompt.length } });
 
     const codegenResult = await codegenAgent.execute(context);
     totalTokens += codegenResult.tokensUsed;

@@ -6,7 +6,7 @@ import {
   ToggleLeft, ToggleRight, Settings, FileText, Brain, Shield,
   MessageSquare, BarChart2, Zap, GripVertical, ArrowUpDown,
   Activity, Clock, Coins, AlertTriangle, CheckCircle, XCircle,
-  Cpu, RefreshCw, Eye, Code
+  Cpu, RefreshCw, Eye, Code, ScrollText
 } from "lucide-react";
 
 const API = "/api";
@@ -275,6 +275,7 @@ export default function AgentManagement() {
     { key: "pipeline", icon: ArrowUpDown, label: isRTL ? "خط الأنابيب" : "Pipeline" },
     { key: "tokens", icon: Coins, label: isRTL ? "التوكن والدفعات" : "Tokens & Batches" },
     { key: "code", icon: Code, label: isRTL ? "الكود المصدري" : "Source Code" },
+    { key: "logs", icon: ScrollText, label: isRTL ? "السجلات" : "Logs" },
     { key: "stats", icon: BarChart2, label: isRTL ? "الإحصائيات" : "Statistics" },
   ];
 
@@ -420,6 +421,7 @@ export default function AgentManagement() {
               {activeTab === "pipeline" && <PipelineTab agent={currentAgent} agents={agents} onUpdate={(u) => updateAgent(currentAgent.agentKey, u)} onSaveOrder={savePipelineOrder} isRTL={isRTL} />}
               {activeTab === "tokens" && <TokensTab agent={currentAgent} onUpdate={(u) => updateAgent(currentAgent.agentKey, u)} isRTL={isRTL} />}
               {activeTab === "code" && <CodeTab agent={currentAgent} onUpdate={(u) => updateAgent(currentAgent.agentKey, u)} isRTL={isRTL} />}
+              {activeTab === "logs" && <LogsTab agent={currentAgent} isRTL={isRTL} />}
               {activeTab === "stats" && <StatsTab agent={currentAgent} stats={stats[currentAgent.agentKey]} isRTL={isRTL} />}
             </div>
           </>
@@ -1054,6 +1056,199 @@ function CodeTab({ agent, onUpdate, isRTL }: { agent: AgentConfig; onUpdate: (u:
           <p className="text-[12px] text-[#8b949e]">{isRTL ? "لا توجد ملفات مصدرية — الوكيل يعمل على جميع الملفات" : "No source files — agent operates on all files"}</p>
         )}
       </div>
+    </div>
+  );
+}
+
+interface AgentLog {
+  id: string;
+  agentKey: string;
+  level: string;
+  action: string;
+  message: string;
+  messageAr: string;
+  details: Record<string, unknown> | null;
+  tokensUsed: number;
+  durationMs: number | null;
+  status: string;
+  buildId: string | null;
+  projectId: string | null;
+  createdAt: string;
+}
+
+function LogsTab({ agent, isRTL }: { agent: AgentConfig; isRTL: boolean }) {
+  const [logs, setLogs] = useState<AgentLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [expandedLog, setExpandedLog] = useState<string | null>(null);
+
+  const fetchLogs = async () => {
+    try {
+      const res = await fetch(`${API}/agents/logs/${agent.agentKey}?limit=100`);
+      if (res.ok) {
+        const data = await res.json();
+        setLogs(data.logs || []);
+      }
+    } catch (e) {
+      console.error("Failed to fetch logs:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    setLoading(true);
+    setLogs([]);
+    fetchLogs();
+  }, [agent.agentKey]);
+
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const interval = setInterval(fetchLogs, 5000);
+    return () => clearInterval(interval);
+  }, [autoRefresh, agent.agentKey]);
+
+  const clearLogs = async () => {
+    if (!confirm(isRTL ? "هل أنت متأكد من حذف جميع السجلات؟" : "Clear all logs for this agent?")) return;
+    try {
+      await fetch(`${API}/agents/logs/${agent.agentKey}`, { method: "DELETE" });
+      setLogs([]);
+    } catch (e) {
+      console.error("Failed to clear logs:", e);
+    }
+  };
+
+  const levelIcon = (level: string) => {
+    if (level === "error") return <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />;
+    if (level === "success") return <CheckCircle className="w-3.5 h-3.5 text-green-400 shrink-0" />;
+    if (level === "warn") return <AlertTriangle className="w-3.5 h-3.5 text-yellow-400 shrink-0" />;
+    return <Activity className="w-3.5 h-3.5 text-blue-400 shrink-0" />;
+  };
+
+  const levelBg = (level: string) => {
+    if (level === "error") return "border-red-500/20 bg-red-500/5";
+    if (level === "success") return "border-green-500/20 bg-green-500/5";
+    if (level === "warn") return "border-yellow-500/20 bg-yellow-500/5";
+    return "border-white/7 bg-white/2";
+  };
+
+  const formatTime = (dateStr: string) => {
+    const d = new Date(dateStr);
+    return d.toLocaleString(isRTL ? "ar-SA" : "en-US", {
+      month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit"
+    });
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16 text-[#8b949e]">
+        <RefreshCw className="w-5 h-5 animate-spin mr-2" />
+        {isRTL ? "جاري تحميل السجلات..." : "Loading logs..."}
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-4xl space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <button onClick={fetchLogs} className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-[#161b22] border border-white/7 hover:bg-white/5 transition-colors">
+            <RefreshCw className="w-3.5 h-3.5" />
+            {isRTL ? "تحديث" : "Refresh"}
+          </button>
+          <button
+            onClick={() => setAutoRefresh(!autoRefresh)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-colors ${autoRefresh ? "bg-[#7c3aed]/20 border-[#7c3aed]/40 text-[#7c3aed]" : "bg-[#161b22] border-white/7 hover:bg-white/5"}`}
+          >
+            <Activity className="w-3.5 h-3.5" />
+            {isRTL ? "تحديث تلقائي" : "Auto-refresh"}
+          </button>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-[#8b949e]">
+            {logs.length} {isRTL ? "سجل" : "entries"}
+          </span>
+          <button onClick={clearLogs} className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-colors">
+            <Trash2 className="w-3.5 h-3.5" />
+            {isRTL ? "مسح الكل" : "Clear"}
+          </button>
+        </div>
+      </div>
+
+      {logs.length === 0 ? (
+        <div className="text-center py-16 text-[#8b949e]">
+          <ScrollText className="w-10 h-10 mx-auto mb-3 opacity-40" />
+          <p>{isRTL ? "لا توجد سجلات بعد" : "No logs yet"}</p>
+          <p className="text-xs mt-1">{isRTL ? "ستظهر السجلات عند تنفيذ الوكيل" : "Logs will appear when the agent executes"}</p>
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          {logs.map((log) => (
+            <div
+              key={log.id}
+              className={`border rounded-lg transition-colors cursor-pointer ${levelBg(log.level)} ${expandedLog === log.id ? "ring-1 ring-[#7c3aed]/30" : ""}`}
+              onClick={() => setExpandedLog(expandedLog === log.id ? null : log.id)}
+            >
+              <div className="flex items-center gap-2.5 px-3 py-2">
+                {levelIcon(log.level)}
+                <span className="flex-1 text-[13px] leading-snug">
+                  {isRTL ? (log.messageAr || log.message) : log.message}
+                </span>
+                <div className="flex items-center gap-3 text-[11px] text-[#8b949e] shrink-0">
+                  {log.tokensUsed > 0 && (
+                    <span className="flex items-center gap-1">
+                      <Coins className="w-3 h-3" />
+                      {log.tokensUsed.toLocaleString()}
+                    </span>
+                  )}
+                  {log.durationMs && (
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {(log.durationMs / 1000).toFixed(1)}s
+                    </span>
+                  )}
+                  <span>{formatTime(log.createdAt)}</span>
+                  <ChevronRight className={`w-3.5 h-3.5 transition-transform ${expandedLog === log.id ? "rotate-90" : ""}`} />
+                </div>
+              </div>
+
+              {expandedLog === log.id && (
+                <div className="px-3 pb-3 border-t border-white/5 mt-0 pt-2 space-y-2">
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div>
+                      <span className="text-[#8b949e]">{isRTL ? "الإجراء: " : "Action: "}</span>
+                      <span className="text-[#7c3aed] font-mono">{log.action}</span>
+                    </div>
+                    <div>
+                      <span className="text-[#8b949e]">{isRTL ? "الحالة: " : "Status: "}</span>
+                      <span className={log.status === "failed" ? "text-red-400" : log.status === "completed" ? "text-green-400" : "text-blue-400"}>{log.status}</span>
+                    </div>
+                    {log.buildId && (
+                      <div>
+                        <span className="text-[#8b949e]">{isRTL ? "معرف البناء: " : "Build ID: "}</span>
+                        <span className="font-mono text-[10px]">{log.buildId.substring(0, 8)}...</span>
+                      </div>
+                    )}
+                    {log.projectId && (
+                      <div>
+                        <span className="text-[#8b949e]">{isRTL ? "معرف المشروع: " : "Project ID: "}</span>
+                        <span className="font-mono text-[10px]">{log.projectId.substring(0, 8)}...</span>
+                      </div>
+                    )}
+                  </div>
+                  {log.details && Object.keys(log.details).length > 0 && (
+                    <div className="bg-black/30 rounded-lg p-2">
+                      <pre className="text-[11px] text-[#8b949e] overflow-x-auto whitespace-pre-wrap font-mono leading-relaxed">
+                        {JSON.stringify(log.details, null, 2)}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
