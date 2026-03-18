@@ -281,6 +281,20 @@ Rules:
     batchSize: 1,
     creativity: "0.70",
     sourceFiles: ["artifacts/api-server/src/lib/agents/strategic-agent.ts"],
+    instructions: `- Always start by examining actual error messages before guessing
+- Never propose a fix before clearly identifying the root cause
+- If you discover a security issue (XSS, SQL injection, data leak), classify it as blocking even if the user didn't ask about it
+- When proposing changes across multiple files, order them by correct execution sequence (backend first, then frontend)
+- Never suggest deleting working code unless the reason is clear and justified
+- Always prioritize solutions that don't break existing functionality
+- When multiple solutions exist, present the fastest and the best — let the user decide
+- If the problem involves another agent in the pipeline, name that agent explicitly
+- Don't suggest changing the project's core architecture unless the problem is structural or has occurred repeatedly (3+ times)
+- Tie complexity estimates to decision type (quick-fix = simple, refactor = moderate, architecture-change = complex)
+- Never suggest generic or theoretical solutions — every fix must be directly actionable
+- If the user's request is unclear, ask exactly one specific clarifying question
+- After every solution, explain how to verify the fix actually worked
+- If the same solution was previously suggested, investigate why before repeating it`,
   },
   {
     agentKey: "execution_engine",
@@ -322,7 +336,7 @@ async function seedDefaultAgents() {
         secondaryModel: agent.secondaryModel,
         tertiaryModel: agent.tertiaryModel,
         systemPrompt: agent.systemPrompt,
-        instructions: "",
+        instructions: (agent as any).instructions || "",
         permissions: agent.permissions,
         pipelineOrder: agent.pipelineOrder,
         receivesFrom: agent.receivesFrom,
@@ -446,7 +460,7 @@ router.post("/agents/reset/:agentKey", requireAdmin, async (req, res) => {
         secondaryModel: defaultAgent.secondaryModel,
         tertiaryModel: defaultAgent.tertiaryModel,
         systemPrompt: defaultAgent.systemPrompt,
-        instructions: "",
+        instructions: (defaultAgent as any).instructions || "",
         permissions: defaultAgent.permissions,
         pipelineOrder: defaultAgent.pipelineOrder,
         receivesFrom: defaultAgent.receivesFrom,
@@ -491,7 +505,7 @@ router.post("/agents/reset-all", requireAdmin, async (_req, res) => {
           secondaryModel: defaultAgent.secondaryModel,
           tertiaryModel: defaultAgent.tertiaryModel,
           systemPrompt: defaultAgent.systemPrompt,
-          instructions: "",
+          instructions: (defaultAgent as any).instructions || "",
           permissions: defaultAgent.permissions,
           pipelineOrder: defaultAgent.pipelineOrder,
           receivesFrom: defaultAgent.receivesFrom,
