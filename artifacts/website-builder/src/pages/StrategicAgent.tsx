@@ -111,6 +111,7 @@ export default function StrategicAgent() {
   const [expandedMsgIds, setExpandedMsgIds] = useState<Set<string>>(new Set());
   const [fontSize, setFontSize] = useState(16);
   const [lineSpacing, setLineSpacing] = useState(1.75);
+  const [fontWeight, setFontWeight] = useState(400);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [showProjectDropdown, setShowProjectDropdown] = useState(false);
@@ -507,6 +508,15 @@ export default function StrategicAgent() {
               <Plus className="w-3 h-3" />
             </button>
           </div>
+          <div className="flex items-center gap-0.5 bg-[#1c2333] rounded-lg px-1 py-0.5">
+            <button onClick={() => setFontWeight(w => Math.max(100, w - 100))} className="p-1 text-[#8b949e] hover:text-[#e1e4e8] transition-colors" title={lang === "ar" ? "تخفيف الخط" : "Lighter"}>
+              <Minus className="w-3 h-3" />
+            </button>
+            <span className="text-[10px] text-[#8b949e] min-w-[16px] text-center font-bold">B</span>
+            <button onClick={() => setFontWeight(w => Math.min(900, w + 100))} className="p-1 text-[#8b949e] hover:text-[#e1e4e8] transition-colors" title={lang === "ar" ? "تعريض الخط" : "Bolder"}>
+              <Plus className="w-3 h-3" />
+            </button>
+          </div>
           <button
             onClick={clearChat}
             className="p-1.5 text-[#8b949e] hover:text-red-400 transition-colors rounded hover:bg-[#1c2333]"
@@ -676,7 +686,7 @@ export default function StrategicAgent() {
                   </div>
                 )}
 
-                <p className="whitespace-pre-wrap" style={{ fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif", fontSize: `${fontSize}px`, lineHeight: lineSpacing }}>{msg.content}</p>
+                <p className="whitespace-pre-wrap" style={{ fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif", fontSize: `${fontSize}px`, lineHeight: lineSpacing, fontWeight }}>{msg.content}</p>
 
                 {msg.images && msg.images.length > 0 && (
                   <div className="mt-2 grid grid-cols-2 gap-2">
