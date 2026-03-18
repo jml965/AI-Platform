@@ -106,6 +106,7 @@ export default function StrategicAgent() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
+  const [expandedMsgIds, setExpandedMsgIds] = useState<Set<string>>(new Set());
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [showProjectDropdown, setShowProjectDropdown] = useState(false);
@@ -616,120 +617,79 @@ export default function StrategicAgent() {
           </div>
         )}
 
-        {messages.map(msg => (
-          <div key={msg.id} className={cn("flex gap-3", msg.role === "user" ? "flex-row-reverse" : "")}>
-            <div className={cn(
-              "w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1",
-              msg.role === "user" ? "bg-[#1f6feb]/20 text-[#58a6ff]" : "bg-amber-500/20 text-amber-400"
-            )}>
-              {msg.role === "user" ? <User className="w-4 h-4" /> : <LightbulbIcon className="w-4 h-4" />}
-            </div>
-            <div className={cn(
-              "max-w-[80%] px-2 py-1 text-sm",
-              msg.role === "user"
-                ? "text-[#e1e4e8]"
-                : "text-[#c9d1d9]"
-            )}>
-              {msg.attachments && msg.attachments.length > 0 && (
-                <div className="flex flex-wrap gap-2 mb-3">
-                  {msg.attachments.map(att => (
-                    <div key={att.id} className="flex-shrink-0">
-                      {att.preview ? (
-                        <button onClick={() => setPreviewImage(att.preview!)} className="relative group">
-                          <img src={att.preview} alt={att.name} className="w-20 h-20 object-cover rounded-lg border border-[#30363d]" />
-                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
-                            <Eye className="w-4 h-4 text-white" />
-                          </div>
-                        </button>
-                      ) : (
-                        <div className="flex items-center gap-1.5 px-2 py-1 bg-[#1c2333] rounded-lg text-[10px] text-[#8b949e]">
-                          <FileCode className="w-3 h-3" />
-                          <span className="truncate max-w-[80px]">{att.name}</span>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">{msg.content}</pre>
-
-              {msg.images && msg.images.length > 0 && (
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  {msg.images.map((img, i) => (
-                    <button key={i} onClick={() => setPreviewImage(img)} className="relative group">
-                      <img src={img} alt="" className="w-full rounded-lg border border-[#30363d]" />
-                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center gap-2">
-                        <Maximize2 className="w-4 h-4 text-white" />
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {msg.thinking && msg.thinking.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-[#30363d]">
-                  <div className="text-[10px] text-[#8b949e] space-y-1">
-                    {msg.thinking.map((th, i) => (
-                      <div key={i} className="flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                        <span>{th.model}</span>
-                        <span className="text-[#484f58]">•</span>
-                        <span>{(th.durationMs / 1000).toFixed(1)}s</span>
+        {messages.map(msg => {
+          const isExpanded = expandedMsgIds.has(msg.id);
+          const hasDetails = msg.role === "assistant" && (msg.thinking?.length || msg.tokensUsed || msg.cost || msg.fixApplied !== undefined || (msg.changesApplied && msg.appliedChanges?.length));
+          const toggleExpand = () => {
+            if (!hasDetails) return;
+            setExpandedMsgIds(prev => {
+              const next = new Set(prev);
+              if (next.has(msg.id)) next.delete(msg.id); else next.add(msg.id);
+              return next;
+            });
+          };
+          return (
+            <div key={msg.id} className={cn("py-1", msg.role === "user" ? "text-end" : "")}>
+              <div
+                className={cn(
+                  "inline-block text-start text-sm leading-relaxed",
+                  msg.role === "user" ? "text-[#e1e4e8]" : "text-[#c9d1d9]",
+                  hasDetails && "cursor-pointer"
+                )}
+                onClick={toggleExpand}
+              >
+                {msg.attachments && msg.attachments.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {msg.attachments.map(att => (
+                      <div key={att.id} className="flex-shrink-0">
+                        {att.preview ? (
+                          <button onClick={e => { e.stopPropagation(); setPreviewImage(att.preview!); }} className="relative group">
+                            <img src={att.preview} alt={att.name} className="w-20 h-20 object-cover rounded-lg border border-[#30363d]" />
+                          </button>
+                        ) : (
+                          <span className="text-[10px] text-[#8b949e]">[{att.name}]</span>
+                        )}
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
+                )}
 
-              {msg.fixApplied !== undefined && (
-                <div className={cn(
-                  "mt-2 pt-2 border-t border-[#30363d] text-[10px] flex items-center gap-1.5",
-                  msg.fixApplied ? "text-emerald-400" : "text-[#8b949e]"
-                )}>
-                  {msg.fixApplied ? <Check className="w-3 h-3" /> : null}
-                  <span>{msg.fixApplied ? t.strategic_fix_applied : ""}</span>
-                  {msg.fixedFiles && msg.fixedFiles.length > 0 && (
-                    <span className="text-[#484f58]">{msg.fixedFiles.join(", ")}</span>
-                  )}
-                </div>
-              )}
+                <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">{msg.content}</pre>
 
-              {msg.changesApplied && msg.appliedChanges && msg.appliedChanges.length > 0 && (
-                <div className="mt-2 pt-2 border-t border-[#30363d]">
-                  <div className="flex items-center gap-1.5 text-[10px] text-emerald-400 mb-1">
-                    <Check className="w-3 h-3" />
-                    <span className="font-medium">{t.strategic_changes_applied}</span>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {msg.appliedChanges.map((field, i) => (
-                      <span key={i} className="px-1.5 py-0.5 bg-emerald-500/10 rounded text-[9px] text-emerald-300 border border-emerald-500/20">
-                        {field}
-                      </span>
+                {msg.images && msg.images.length > 0 && (
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    {msg.images.map((img, i) => (
+                      <button key={i} onClick={e => { e.stopPropagation(); setPreviewImage(img); }} className="relative group">
+                        <img src={img} alt="" className="w-full rounded-lg border border-[#30363d]" />
+                      </button>
                     ))}
                   </div>
-                </div>
-              )}
+                )}
 
-              {msg.tokensUsed && (
-                <div className="mt-1 text-[10px] text-[#484f58] flex items-center gap-2">
-                  <span>{msg.tokensUsed.toLocaleString()} {t.strategic_tokens_used}</span>
-                  {msg.cost && <span>${msg.cost.toFixed(4)}</span>}
-                </div>
-              )}
+                {isExpanded && (
+                  <div className="mt-2 text-[10px] text-[#8b949e] space-y-1">
+                    {msg.thinking && msg.thinking.map((th, i) => (
+                      <div key={i}>{th.model} · {(th.durationMs / 1000).toFixed(1)}s</div>
+                    ))}
+                    {msg.tokensUsed && (
+                      <div>{msg.tokensUsed.toLocaleString()} {t.strategic_tokens_used}{msg.cost ? ` · $${msg.cost.toFixed(4)}` : ""}</div>
+                    )}
+                    {msg.fixApplied && (
+                      <div className="text-emerald-400">{t.strategic_fix_applied}{msg.fixedFiles?.length ? ` — ${msg.fixedFiles.join(", ")}` : ""}</div>
+                    )}
+                    {msg.changesApplied && msg.appliedChanges && msg.appliedChanges.length > 0 && (
+                      <div className="text-emerald-400">{t.strategic_changes_applied}: {msg.appliedChanges.join(", ")}</div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {loading && (
-          <div className="flex gap-3">
-            <div className={cn(
-              "w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0",
-              agentMode ? "bg-purple-500/20 text-purple-400" : "bg-amber-500/20 text-amber-400"
-            )}>
-              {agentMode ? <Bot className="w-4 h-4 animate-pulse" /> : <LightbulbIcon className="w-4 h-4 animate-pulse" />}
-            </div>
-            <div className="flex items-center gap-2 px-4 py-3 bg-[#161b22] border border-[#30363d] rounded-xl">
+          <div className="py-1">
+            <div className="flex items-center gap-2">
               <Loader2 className={cn("w-4 h-4 animate-spin", agentMode ? "text-purple-400" : "text-amber-400")} />
               <span className="text-sm text-[#c9d1d9]">{agentMode ? t.strategic_configuring : t.strategic_thinking}</span>
             </div>
