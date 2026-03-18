@@ -633,7 +633,7 @@ export default function StrategicAgent() {
               <div
                 className={cn(
                   "inline-block text-start text-sm leading-relaxed",
-                  msg.role === "user" ? "text-[#e1e4e8]" : "text-[#c9d1d9]",
+                  msg.role === "user" ? "text-amber-400" : "text-[#c9d1d9]",
                   hasDetails && "cursor-pointer"
                 )}
                 onClick={toggleExpand}
