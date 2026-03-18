@@ -18,6 +18,7 @@ import {
   Rocket,
   Activity,
   Bot,
+  Crown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -33,15 +34,17 @@ interface InfraAgent {
 
 interface ChatMessage {
   id: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "status";
   content: string;
   timestamp: Date;
   tokensUsed?: number;
   cost?: number;
   model?: string;
+  models?: string[];
 }
 
 const AGENT_ICONS: Record<string, React.ReactNode> = {
+  infra_sysadmin: <Crown className="w-5 h-5" />,
   infra_monitor: <Activity className="w-5 h-5" />,
   infra_bugfixer: <Crosshair className="w-5 h-5" />,
   infra_builder: <Server className="w-5 h-5" />,
@@ -52,6 +55,7 @@ const AGENT_ICONS: Record<string, React.ReactNode> = {
 };
 
 const AGENT_COLORS: Record<string, string> = {
+  infra_sysadmin: "text-yellow-400",
   infra_monitor: "text-green-400",
   infra_bugfixer: "text-red-400",
   infra_builder: "text-blue-400",
@@ -228,7 +232,7 @@ export default function InfraPanel() {
       const streamMsgId = crypto.randomUUID();
       let streamedContent = "";
       let displayedContent = "";
-      let streamMeta: { tokensUsed?: number; cost?: number; model?: string } = {};
+      let streamMeta: { tokensUsed?: number; cost?: number; model?: string; models?: string[] } = {};
       let typewriterRunning = false;
       let typewriterStopped = false;
 
@@ -273,12 +277,18 @@ export default function InfraPanel() {
 
       setMessages(prev => [...prev, { id: streamMsgId, role: "assistant", content: "", timestamp: new Date() }]);
 
-      const res = await fetch("/api/infra/chat-stream", {
+      const isDirector = selectedAgent.agentKey === "infra_sysadmin";
+      const endpoint = isDirector ? "/api/infra/director-stream" : "/api/infra/chat-stream";
+      const body = isDirector
+        ? { message: currentPrompt }
+        : { agentKey: selectedAgent.agentKey, message: currentPrompt };
+
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         signal: controller.signal,
-        body: JSON.stringify({ agentKey: selectedAgent.agentKey, message: currentPrompt }),
+        body: JSON.stringify(body),
       });
 
       if (!res.ok) {
@@ -302,7 +312,11 @@ export default function InfraPanel() {
           try {
             const event = JSON.parse(line.slice(6));
             if (event.type === "chunk") { streamedContent += event.text; typewriterFlush(); }
-            else if (event.type === "done") { streamMeta = { tokensUsed: event.tokensUsed, cost: event.cost, model: event.model }; }
+            else if (event.type === "status") {
+              setMessages(prev => [...prev, { id: crypto.randomUUID(), role: "status", content: event.message || event.messageEn, timestamp: new Date() }]);
+              scrollToBottomIfNeeded();
+            }
+            else if (event.type === "done") { streamMeta = { tokensUsed: event.tokensUsed, cost: event.cost, model: event.model, models: event.models }; }
             else if (event.type === "error") { streamedContent += event.message; typewriterFlush(); }
           } catch {}
         }
@@ -365,7 +379,32 @@ export default function InfraPanel() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
-          {agents.map(agent => (
+          {agents.filter(a => a.agentKey === "infra_sysadmin").map(agent => (
+            <button
+              key={agent.agentKey}
+              onClick={() => selectAgent(agent)}
+              className={cn(
+                "w-full flex items-center gap-3 px-3 py-3 rounded-lg text-start transition-all mb-2",
+                selectedAgent?.agentKey === agent.agentKey
+                  ? "bg-gradient-to-r from-yellow-500/20 to-amber-500/10 border border-yellow-500/40"
+                  : "bg-gradient-to-r from-yellow-500/10 to-transparent border border-yellow-500/20 hover:border-yellow-500/40"
+              )}
+            >
+              <div className="flex-shrink-0 text-yellow-400">
+                <Crown className="w-6 h-6" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-sm font-bold text-yellow-300 truncate">
+                  {lang === "ar" ? agent.displayNameAr : agent.displayNameEn}
+                </div>
+                <div className="text-[10px] text-yellow-500/70 truncate">
+                  3 models + governor
+                </div>
+              </div>
+            </button>
+          ))}
+          <div className="border-t border-[#1c2333] my-2" />
+          {agents.filter(a => a.agentKey !== "infra_sysadmin").map(agent => (
             <button
               key={agent.agentKey}
               onClick={() => selectAgent(agent)}
@@ -450,7 +489,18 @@ export default function InfraPanel() {
                 </div>
               )}
 
-              {messages.map(msg => (
+              {messages.map(msg => {
+                if (msg.role === "status") {
+                  return (
+                    <div key={msg.id} className="flex items-center justify-center py-1">
+                      <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-[#161b22] border border-[#30363d]">
+                        <div className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse" />
+                        <span className="text-[11px] text-[#8b949e]">{msg.content}</span>
+                      </div>
+                    </div>
+                  );
+                }
+                return (
                 <div key={msg.id} className={cn("py-1", msg.role === "user" ? "text-end" : "")}>
                   <div className={cn(
                     "inline-block text-start text-sm leading-relaxed max-w-full",
@@ -472,12 +522,13 @@ export default function InfraPanel() {
                     )}
                     {msg.tokensUsed && (
                       <div className="text-[10px] text-[#484f58] mt-1">
-                        {msg.model} · {msg.tokensUsed.toLocaleString()} tokens{msg.cost ? ` · $${msg.cost.toFixed(4)}` : ""}
+                        {msg.models ? msg.models.join(" + ") : msg.model} · {msg.tokensUsed.toLocaleString()} tokens{msg.cost ? ` · $${msg.cost.toFixed(4)}` : ""}
                       </div>
                     )}
                   </div>
                 </div>
-              ))}
+              );
+              })}
               <div ref={chatEndRef} />
             </div>
 

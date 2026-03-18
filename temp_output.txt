@@ -1,0 +1,401 @@
+391:export async function runStrategicAgent(
+392-  projectId: string,
+393-  userMessage: string,
+394-  history: ConversationMessage[],
+395-  shortTermMemory: any[],
+396-  longTermMemory: any[],
+397-  attachments?: FileAttachment[]
+398-): Promise<StrategicResult> {
+399-  const [config] = await db.select().from(agentConfigsTable)
+400-    .where(eq(agentConfigsTable.agentKey, "strategic"))
+401-    .limit(1);
+402-
+403-  if (!config || !config.enabled) {
+404-    throw new Error("Strategic agent is not configured or disabled");
+405-  }
+406-
+407-  const files = projectId === "general" ? [] : await db.select({
+408-    filePath: projectFilesTable.filePath,
+409-  }).from(projectFilesTable).where(eq(projectFilesTable.projectId, projectId));
+410-
+411-  let contextBlock = "";
+412-  if (files.length > 0) {
+413-    const fileList = files.map(f => f.filePath).join("\n");
+414-    contextBlock = `\n\nProject files (${files.length} files):\n${fileList}`;
+415-  }
+416-
+417-  let memoryBlock = "";
+418-  if (shortTermMemory.length > 0) {
+419-    memoryBlock += `\n\nShort-term memory:\n${JSON.stringify(shortTermMemory.slice(-10))}`;
+420-  }
+421-  if (longTermMemory.length > 0) {
+422-    memoryBlock += `\n\nLong-term memory:\n${JSON.stringify(longTermMemory.slice(-20))}`;
+423-  }
+424-
+425-  let attachmentBlock = "";
+426-  const imageAttachments: { name: string; data: string; mediaType: string }[] = [];
+427-  if (attachments && attachments.length > 0) {
+428-    for (const att of attachments) {
+429-      const isImage = att.type.startsWith("image/");
+430-      if (isImage) {
+431-        imageAttachments.push({
+432-          name: att.name,
+433-          data: att.content.replace(/^data:[^;]+;base64,/, ""),
+434-          mediaType: att.type,
+435-        });
+436-      } else {
+437-        const decoded = att.content.startsWith("data:")
+438-          ? Buffer.from(att.content.split(",")[1] || "", "base64").toString("utf-8")
+439-          : att.content;
+440-        attachmentBlock += `\n\n--- Attached file: ${att.name} (${att.type}) ---\n${decoded.slice(0, 50000)}`;
+441-      }
+442-    }
+443-  }
+444-
+445-  let fullSystemPrompt = config.systemPrompt || STRATEGIC_SYSTEM_PROMPT;
+446-  fullSystemPrompt += STRATEGIC_JSON_PROMPT_SUFFIX;
+447-
+448-  if (config.description && (config.description as string).trim()) {
+449-    fullSystemPrompt += `\n\nAgent description: ${(config.description as string).trim()}`;
+450-  }
+451-
+452-  if (config.instructions && (config.instructions as string).trim()) {
+453-    fullSystemPrompt += `\n\nAdditional instructions:\n${(config.instructions as string).trim()}`;
+454-  }
+455-
+456-  if (config.permissions && Array.isArray(config.permissions) && config.permissions.length > 0) {
+457-    fullSystemPrompt += `\n\nYour permissions: ${config.permissions.join(", ")}. Only perform actions within these permissions.`;
+458-  }
+459-
+460-  if (config.roleOnReceive && (config.roleOnReceive as string).trim()) {
+461-    fullSystemPrompt += `\n\nWhen receiving input: ${(config.roleOnReceive as string).trim()}`;
+462-  }
+463-
+464-  if (config.roleOnSend && (config.roleOnSend as string).trim()) {
+465-    fullSystemPrompt += `\n\nWhen sending output: ${(config.roleOnSend as string).trim()}`;
+466-  }
+467-
+468-  const enrichedPrompt = fullSystemPrompt + contextBlock + memoryBlock + attachmentBlock;
+469-
+470-  let userContent: any = userMessage;
+471-  if (imageAttachments.length > 0) {
+472-    const parts: any[] = [];
+473-    for (const img of imageAttachments) {
+474-      parts.push({
+475-        type: "image",
+476-        source: { type: "base64", media_type: img.mediaType, data: img.data },
+477-      });
+478-    }
+479-    parts.push({ type: "text", text: userMessage + (attachmentBlock ? `\n\nAdditional attached files:${attachmentBlock}` : "") });
+480-    userContent = parts;
+481-  } else if (attachmentBlock) {
+482-    userContent = userMessage + `\n\nAttached files:${attachmentBlock}`;
+483-  }
+484-
+485-  const conversationMessages: ConversationMessage[] = [
+486-    ...history.slice(-20),
+487-    { role: "user", content: userContent },
+488-  ];
+489-
+490-  const slots = getEnabledSlots(config);
+491-  if (slots.length === 0) {
+492-    throw new Error("No enabled models for strategic agent");
+493-  }
+494-
+495-  const hasFileAtts = attachments ? attachments.filter(a => !a.type.startsWith("image/")).length > 0 : false;
+496-  const hasImageAtts = imageAttachments.length > 0;
+497-
+498-  let useGovernor = config.governorEnabled && slots.length >= 2;
+499-  let autoGovMode: AutoGovernorMode | null = null;
+500-  let autoGovScore: ComplexityResult | null = null;
+501-
+502-  if ((config as any).autoGovernor) {
+503-    autoGovScore = computeComplexityScore(userMessage, hasFileAtts, hasImageAtts);
+504-    autoGovMode = autoGovScore.mode;
+505-
+506-    if (autoGovMode === "advanced" && slots.length >= 2) {
+507-      useGovernor = true;
+508-    } else {
+509-      useGovernor = false;
+510-    }
+511-
+512-    console.log(`[Strategic] Auto-Governor: mode=${autoGovMode}, score=${autoGovScore.score}, breakdown=${JSON.stringify(autoGovScore.breakdown)}`);
+513-    logStrategicActivity("auto_governor", `Auto-Governor: ${autoGovMode} (score: ${autoGovScore.score})`, `الحاكم التلقائي: ${autoGovMode === "simple" ? "بسيط" : autoGovMode === "standard" ? "عادي" : "متقدم"} (درجة: ${autoGovScore.score})`, {
+514-      status: "info",
+515-      details: { mode: autoGovMode, score: autoGovScore.score, breakdown: autoGovScore.breakdown, hasTechnicalKeyword: autoGovScore.hasTechnicalKeyword },
+516-    });
+517-  }
+518-
+519-  const thinking: { model: string; summary: string; durationMs: number }[] = [];
+520-  let totalTokens = 0;
+521-
+522-  const effectiveCreativity = config.creativity ? parseFloat(String(config.creativity)) : undefined;
+523-  const tokenLimitCap = config.tokenLimit || 0;
+524-
+525-  function pickSlotForMode(mode: AutoGovernorMode | null): ModelSlot {
+526-    if (mode === "simple") {
+527-      const lightweight = slots[slots.length - 1];
+528-      return lightweight;
+529-    }
+530-    return slots[0];
+531-  }
+532-
+533-  if (!useGovernor) {
+534-    const slot = pickSlotForMode(autoGovMode);
+535-    const modeLabel = autoGovMode || "single";
+536-    logStrategicActivity("think_single", `[${modeLabel}] Starting analysis: ${slot.model}`, `[${modeLabel === "simple" ? "بسيط" : modeLabel === "standard" ? "عادي" : "مفرد"}] بدء تحليل: ${slot.model}`, { status: "in_progress", details: { model: slot.model, autoGovMode: autoGovMode, messagePreview: userMessage.substring(0, 100) } });
+537-    const start = Date.now();
+538-    let maxTok = slot.maxTokens || 16000;
+539-    if (tokenLimitCap > 0 && tokenLimitCap < maxTok) maxTok = tokenLimitCap;
+540-    const result = await callModelDirect(
+541-      slot.provider, slot.model,
+542-      enrichedPrompt, conversationMessages,
+543-      maxTok, slot.timeoutSeconds || 240,
+544-      effectiveCreativity
+545-    );
+546-    const duration = Date.now() - start;
+547-
+548-    if (!result) {
+549-      logStrategicActivity("think_failed", "Model returned empty response", "النموذج أرجع استجابة فارغة", { level: "error", status: "failed", durationMs: duration, details: { model: slot.model } });
+550-      throw new Error("Strategic agent model returned empty response");
+551-    }
+552-
+553-    thinking.push({ model: slot.model, summary: `${modeLabel} analysis`, durationMs: duration });
+554-    totalTokens = result.tokensUsed;
+555-
+556-    if ((config as any).autoGovernor && autoGovScore && slots.length >= 2) {
+557-      const escalation = checkLazyEscalation(result.content, autoGovMode || "standard", autoGovScore.hasTechnicalKeyword);
+558-      if (escalation.shouldEscalate) {
+559-        console.log(`[Strategic] Lazy Escalation triggered: ${escalation.reason}`);
+560-        logStrategicActivity("escalation", `Lazy Escalation: ${escalation.reason} — upgrading to Advanced`, `تصعيد: ${escalation.reasonAr} — ترقية للوضع المتقدم`, {
+561-          status: "info",
+562-          details: { reason: escalation.reason, previousMode: autoGovMode, previousResponse: result.content.substring(0, 200) },
+563-        });
+564-        useGovernor = true;
+565-      }
+566-    }
+567-
+568-    if (!useGovernor) {
+569-      const parsed = parseResponse(result.content, userMessage);
+570-      const cost = totalTokens * 0.000015;
+571-      await updateStats(config.agentKey, totalTokens, true, duration, cost);
+572-      logStrategicActivity("response_complete", `[${modeLabel}] Response: ${slot.model}, ${totalTokens} tokens, ${duration}ms`, `[${modeLabel === "simple" ? "بسيط" : "عادي"}] اكتمل: ${slot.model}، ${totalTokens} توكن، ${duration}ms`, { status: "completed", tokensUsed: totalTokens, durationMs: duration, details: { model: slot.model, autoGovMode: autoGovMode, cost: cost.toFixed(4) } });
+573-      return {
+574-        reply: parsed.reply,
+575-        actions: parsed.actions,
+576-        thinking,
+577-        tokensUsed: totalTokens,
+578-        modelsUsed: [slot.model],
+579-        cost,
+580-      };
+581-    }
+582-  }
+583-
+584-  console.log(`[Strategic] Running ${slots.length} thinker models in parallel (Advanced mode)`);
+585-  logStrategicActivity("think_parallel", `Running ${slots.length} thinker models in parallel`, `تشغيل ${slots.length} نموذج تفكير بالتوازي`, { status: "in_progress", details: { models: slots.map(s => s.model), autoGovMode: autoGovMode || "manual", escalated: autoGovMode !== "advanced", messagePreview: userMessage.substring(0, 100) } });
+586-
+587-  const thinkResults = await Promise.allSettled(
+588-    slots.map(async (slot): Promise<ThinkResult | null> => {
+589-      const start = Date.now();
+590-      let slotMaxTok = slot.maxTokens || 16000;
+591-      if (tokenLimitCap > 0 && tokenLimitCap < slotMaxTok) slotMaxTok = tokenLimitCap;
+592-      const result = await callModelDirect(
+593-        slot.provider, slot.model,
+594-        enrichedPrompt, conversationMessages,
+595-        slotMaxTok, slot.timeoutSeconds || 240,
+596-        effectiveCreativity
+597-      );
+598-      const duration = Date.now() - start;
+599-      if (!result) return null;
+600-      return { content: result.content, tokensUsed: result.tokensUsed, model: slot.model, durationMs: duration };
+601-    })
+602-  );
+603-
+604-  const successThinks: ThinkResult[] = [];
+605-  for (const r of thinkResults) {
+606-    if (r.status === "fulfilled" && r.value) {
+607-      successThinks.push(r.value);
+608-      thinking.push({ model: r.value.model, summary: `Analysis completed`, durationMs: r.value.durationMs });
+609-      totalTokens += r.value.tokensUsed;
+610-    }
+611-  }
+612-
+613-  if (successThinks.length === 0) {
+614-    logStrategicActivity("think_failed", "All thinker models failed", "فشلت جميع نماذج التفكير", { level: "error", status: "failed" });
+615-    throw new Error("All strategic thinker models failed");
+616-  }
+617-
+618-  if (successThinks.length === 1) {
+619-    const parsed = parseResponse(successThinks[0].content, userMessage);
+620-    const cost = totalTokens * 0.000015;
+621-    await updateStats(config.agentKey, totalTokens, true, successThinks[0].durationMs, cost);
+622-    logStrategicActivity("response_single", `Single model response: ${successThinks[0].model}, ${totalTokens} tokens`, `رد بنموذج واحد: ${successThinks[0].model}، ${totalTokens} توكن`, { status: "completed", tokensUsed: totalTokens, durationMs: successThinks[0].durationMs, details: { model: successThinks[0].model, cost: cost.toFixed(4) } });
+623-    return { reply: parsed.reply, actions: parsed.actions, thinking, tokensUsed: totalTokens, modelsUsed: [successThinks[0].model], cost };
+624-  }
+625-
+626-  const proposalsText = successThinks.map((r, i) =>
+627-    `=== PROPOSAL ${i + 1} (from ${r.model}) ===\n${r.content}`
+628-  ).join("\n\n");
+629-
+630-  const govModelConfig = config.governorModel as { provider: string; model: string; maxTokens?: number; timeoutSeconds?: number } | null;
+631-  const govProvider = govModelConfig?.provider ?? slots[0].provider;
+632-  const govModel = govModelConfig?.model ?? slots[0].model;
+633-  const govMaxTokens = govModelConfig?.maxTokens ?? 16000;
+634-  const govTimeout = govModelConfig?.timeoutSeconds ?? 240;
+635-
+636-  console.log(`[Strategic] Governor merging ${successThinks.length} proposals using ${govModel}`);
+637-  logStrategicActivity("governor_merge", `Governor merging ${successThinks.length} proposals using ${govModel}`, `الحاكم يدمج ${successThinks.length} مقترحات باستخدام ${govModel}`, { status: "in_progress", tokensUsed: totalTokens, details: { modelsCompleted: successThinks.map(t => t.model), governorModel: govModel } });
+638-
+639-  const govStart = Date.now();
+640-  const mergeResult = await callModelDirect(
+641-    govProvider, govModel,
+642-    GOVERNOR_MERGE_PROMPT,
+643-    [{ role: "user", content: `User's original message: "${userMessage}"\n\n${proposalsText}\n\nProduce the BEST unified analysis:` }],
+644-    govMaxTokens, govTimeout,
+645-    effectiveCreativity
+646-  );
+647-  const govDuration = Date.now() - govStart;
+648-
+649-  if (mergeResult) {
+650-    totalTokens += mergeResult.tokensUsed;
+651-    thinking.push({ model: `${govModel} (governor)`, summary: `Merged ${successThinks.length} proposals`, durationMs: govDuration });
+652-    const parsed = parseResponse(mergeResult.content, userMessage);
+653-    const cost = totalTokens * 0.000015;
+654-    const totalDuration = thinking.reduce((s, t) => s + t.durationMs, 0);
+655-    await updateStats(config.agentKey, totalTokens, true, totalDuration, cost);
+656-    logStrategicActivity("response_complete", `Response completed: ${totalTokens} tokens, ${totalDuration}ms, $${cost.toFixed(4)}`, `اكتمل الرد: ${totalTokens} توكن، ${totalDuration} مللي ثانية، $${cost.toFixed(4)}`, { status: "completed", tokensUsed: totalTokens, durationMs: totalDuration, details: { modelsUsed: successThinks.map(t => t.model), governorModel: govModel, cost: cost.toFixed(4) } });
+657-    return {
+658-      reply: parsed.reply,
+659-      actions: parsed.actions,
+660-      thinking,
+661-      tokensUsed: totalTokens,
+662-      modelsUsed: [...successThinks.map(r => r.model), `${govModel}(governor)`],
+663-      cost,
+664-    };
+665-  }
+666-
+667-  const parsed = parseResponse(successThinks[0].content, userMessage);
+668-  const cost = totalTokens * 0.000015;
+669-  await updateStats(config.agentKey, totalTokens, true, 0, cost);
+670-  return { reply: parsed.reply, actions: parsed.actions, thinking, tokensUsed: totalTokens, modelsUsed: successThinks.map(r => r.model), cost };
+671-}
+672-
+673-function parseResponse(raw: string, _userMessage: string): { reply: string; actions?: { type: "fix"; files: { path: string; description: string }[] } } {
+674-  const jsonBlockMatch = raw.match(/```json\s*\n?([\s\S]*?)\n?```\s*$/);
+675-  if (jsonBlockMatch) {
+676-    try {
+677-      const parsed = JSON.parse(jsonBlockMatch[1].trim());
+678-      const reply = raw.slice(0, raw.lastIndexOf("```json")).trim();
+679-      if (parsed.fixFiles && Array.isArray(parsed.fixFiles) && parsed.fixFiles.length > 0) {
+680-        return { reply, actions: { type: "fix", files: parsed.fixFiles } };
+681-      }
+682-      return { reply };
+683-    } catch {}
+684-  }
+685-
+686-  try {
+687-    const cleaned = raw.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+688-    let parsed: any = null;
+689-    try { parsed = JSON.parse(cleaned); } catch {
+690-      const braceStart = cleaned.indexOf("{");
+691-      const braceEnd = cleaned.lastIndexOf("}");
+692-      if (braceStart !== -1 && braceEnd > braceStart) {
+693-        try { parsed = JSON.parse(cleaned.substring(braceStart, braceEnd + 1)); } catch { parsed = null; }
+694-      }
+695-    }
+696-    if (parsed) {
+697-      const analysis = parsed.analysis || "";
+698-      const solution = parsed.solution || "";
+699-      const reply = solution ? `${analysis}\n\n${solution}` : analysis || raw;
+700-      if (parsed.fixFiles && Array.isArray(parsed.fixFiles) && parsed.fixFiles.length > 0) {
+701-        return { reply, actions: { type: "fix", files: parsed.fixFiles } };
+702-      }
+703-      return { reply };
+704-    }
+705-  } catch {}
+706-
+707-  return { reply: raw };
+708-}
+709-
+710-function logStrategicActivity(action: string, message: string, messageAr: string, opts?: {
+711-  level?: string; status?: string; details?: Record<string, unknown>;
+712-  tokensUsed?: number; durationMs?: number;
+713-}) {
+714-  db.insert(agentLogsTable).values({
+715-    agentKey: "strategic",
+716-    level: opts?.level || "info",
+717-    action,
+718-    message,
+719-    messageAr,
+720-    details: opts?.details || null,
+721-    tokensUsed: opts?.tokensUsed || 0,
+722-    durationMs: opts?.durationMs || null,
+723-    status: opts?.status || "info",
+724-  }).catch(() => {});
+725-}
+726-
+727-async function updateStats(agentKey: string, tokensUsed: number, success: boolean, durationMs: number, costUsd: number) {
+728-  try {
+729-    const [config] = await db.select().from(agentConfigsTable)
+730-      .where(eq(agentConfigsTable.agentKey, agentKey))
+731-      .limit(1);
+732-    if (!config) return;
+733-
+734-    const totalTasks = config.totalTasksCompleted + 1;
+735-    const totalErrors = config.totalErrors + (success ? 0 : 1);
+736-    const totalTokens = config.totalTokensUsed + tokensUsed;
+737-    const avgMs = Math.round(((config.avgExecutionMs * config.totalTasksCompleted) + durationMs) / totalTasks);
+738-    const totalCost = (parseFloat(config.totalCostUsd) + costUsd).toFixed(6);
+739-
+740-    await db.update(agentConfigsTable).set({
+741-      totalTasksCompleted: totalTasks,
+742-      totalErrors: totalErrors,
+743-      totalTokensUsed: totalTokens,
+744-      avgExecutionMs: avgMs,
+745-      totalCostUsd: totalCost,
+746-      updatedAt: new Date(),
+747-    }).where(eq(agentConfigsTable.agentKey, agentKey));
+748-  } catch (err) {
+749-    console.error(`[Strategic] Failed to update stats:`, err);
+750-  }
+751-}
+752-
+753-export async function addToMemory(
+754-  agentKey: string,
+755-  type: "short" | "long",
+756-  entry: { content: string; timestamp: string; context?: string }
+757-) {
+758-  const [config] = await db.select().from(agentConfigsTable)
+759-    .where(eq(agentConfigsTable.agentKey, agentKey))
+760-    .limit(1);
+761-  if (!config) return;
+762-
+763-  const memory = type === "short"
+764-    ? [...(config.shortTermMemory || []), entry]
+765-    : [...(config.longTermMemory || []), entry];
+766-
+767-  const MAX_MEMORY_ENTRIES = type === "short" ? 50 : 200;
+768-  const trimmed = memory.slice(-MAX_MEMORY_ENTRIES);
+769-
+770-  const field = type === "short" ? "shortTermMemory" : "longTermMemory";
+771-  await db.update(agentConfigsTable).set({
+772-    [field]: trimmed,
+773-    updatedAt: new Date(),
+774-  }).where(eq(agentConfigsTable.agentKey, agentKey));
+775-}
+776-
+777-export async function streamStrategicAgent(
+778-  projectId: string,
+779-  userMessage: string,
+780-  history: ConversationMessage[],
+781-  shortTermMemory: any[],
+782-  longTermMemory: any[],
+783-  onChunk: (text: string) => void,
+784-  attachments?: FileAttachment[]
+785-): Promise<{ tokensUsed: number; modelsUsed: string[]; cost: number; fullReply: string }> {
+786-  const [config] = await db.select().from(agentConfigsTable)
+787-    .where(eq(agentConfigsTable.agentKey, "strategic"))
+788-    .limit(1);
+789-
+790-  if (!config || !config.enabled) {
+791-    throw new Error("Strategic agent is not configured or disabled");
