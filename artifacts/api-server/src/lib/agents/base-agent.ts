@@ -40,6 +40,12 @@ export abstract class BaseAgent {
           if (typeof pm.timeoutSeconds === "number") this._overrideTimeoutSeconds = pm.timeoutSeconds;
           if (typeof pm.maxTokens === "number") this._overrideMaxTokens = pm.maxTokens;
         }
+        if (typeof config.creativity === "string" && parseFloat(config.creativity) >= 0) {
+          this._overrideCreativity = parseFloat(config.creativity);
+        }
+        if (typeof config.tokenLimit === "number" && config.tokenLimit > 0) {
+          this._overrideMaxTokens = config.tokenLimit;
+        }
         if (config.systemPrompt && config.systemPrompt.trim().length > 20) {
           this._overridePrompt = config.systemPrompt;
         }
@@ -112,11 +118,17 @@ export abstract class BaseAgent {
   ): Promise<{ content: string; tokensUsed: number }> {
     const cfg = modelCfg || this.getEffectiveModel();
     const client = await getOpenAIClient();
-    const response = await client.chat.completions.create({
+    const effectiveMax = this._overrideMaxTokens ? Math.min(maxCompletion, this._overrideMaxTokens) : maxCompletion;
+    const createParams: any = {
       model: cfg.model,
-      max_completion_tokens: maxCompletion,
+      max_completion_tokens: effectiveMax,
       messages,
-    });
+    };
+    const creativity = this.getEffectiveCreativity();
+    if (creativity !== undefined && creativity >= 0) {
+      createParams.temperature = Math.min(creativity, 2.0);
+    }
+    const response = await client.chat.completions.create(createParams);
 
     const content = response.choices[0]?.message?.content ?? "";
     const usage = response.usage;
@@ -145,12 +157,18 @@ export abstract class BaseAgent {
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       let streamedContent = "";
       try {
-        const stream = client.messages.stream({
+        const effectiveMax = this._overrideMaxTokens ? Math.min(maxCompletion, this._overrideMaxTokens) : maxCompletion;
+        const streamParams: any = {
           model: cfg.model,
-          max_tokens: Math.min(maxCompletion, 64000),
+          max_tokens: Math.min(effectiveMax, 64000),
           system: systemMessage?.content,
           messages: chatMessages,
-        });
+        };
+        const creativity = this.getEffectiveCreativity();
+        if (creativity !== undefined && creativity >= 0) {
+          streamParams.temperature = Math.min(creativity, 1.0);
+        }
+        const stream = client.messages.stream(streamParams);
 
         stream.on("text", (text: string) => { streamedContent += text; });
 
