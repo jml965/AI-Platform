@@ -2,8 +2,8 @@ import { Router, type IRouter } from "express";
 import { getUserId } from "../middlewares/permissions";
 import { runStrategicAgent, addToMemory, clearMemory } from "../lib/agents/strategic-agent";
 import { db } from "@workspace/db";
-import { agentConfigsTable, usersTable } from "@workspace/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { agentConfigsTable, usersTable, strategicThreadsTable, strategicMessagesTable } from "@workspace/db/schema";
+import { eq, sql, desc, and, gte } from "drizzle-orm";
 import { startSurgicalFix, checkBuildLimits } from "../lib/agents/execution-engine";
 
 const router: IRouter = Router();
@@ -566,6 +566,99 @@ Respond in the same language as the user.`;
     res.status(500).json({
       error: { code: "INTERNAL", message: error?.message || "Failed to process agent configuration" },
     });
+  }
+});
+
+router.get("/strategic/threads", async (_req, res) => {
+  try {
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+
+    const threads = await db.select().from(strategicThreadsTable)
+      .where(gte(strategicThreadsTable.createdAt, oneYearAgo))
+      .orderBy(desc(strategicThreadsTable.updatedAt));
+
+    res.json({ threads });
+  } catch (error: any) {
+    res.status(500).json({ error: { message: error?.message || "Failed to fetch threads" } });
+  }
+});
+
+router.post("/strategic/threads", async (req, res) => {
+  try {
+    const { title, projectId } = req.body;
+    const [thread] = await db.insert(strategicThreadsTable).values({
+      title: title || "New Thread",
+      projectId: projectId || null,
+    }).returning();
+    res.json({ thread });
+  } catch (error: any) {
+    res.status(500).json({ error: { message: error?.message || "Failed to create thread" } });
+  }
+});
+
+router.patch("/strategic/threads/:threadId", async (req, res) => {
+  try {
+    const { threadId } = req.params;
+    const { title, archived } = req.body;
+    const updates: any = { updatedAt: new Date() };
+    if (title !== undefined) updates.title = title;
+    if (archived !== undefined) updates.archived = archived;
+
+    const [thread] = await db.update(strategicThreadsTable)
+      .set(updates)
+      .where(eq(strategicThreadsTable.id, threadId))
+      .returning();
+    res.json({ thread });
+  } catch (error: any) {
+    res.status(500).json({ error: { message: error?.message || "Failed to update thread" } });
+  }
+});
+
+router.delete("/strategic/threads/:threadId", async (req, res) => {
+  try {
+    const { threadId } = req.params;
+    await db.delete(strategicThreadsTable).where(eq(strategicThreadsTable.id, threadId));
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: { message: error?.message || "Failed to delete thread" } });
+  }
+});
+
+router.get("/strategic/threads/:threadId/messages", async (req, res) => {
+  try {
+    const { threadId } = req.params;
+    const msgs = await db.select().from(strategicMessagesTable)
+      .where(eq(strategicMessagesTable.threadId, threadId))
+      .orderBy(strategicMessagesTable.createdAt);
+    res.json({ messages: msgs });
+  } catch (error: any) {
+    res.status(500).json({ error: { message: error?.message || "Failed to fetch messages" } });
+  }
+});
+
+router.post("/strategic/threads/:threadId/messages", async (req, res) => {
+  try {
+    const { threadId } = req.params;
+    const { role, content, thinking, tokensUsed, cost, model, attachments } = req.body;
+    const [msg] = await db.insert(strategicMessagesTable).values({
+      threadId,
+      role,
+      content,
+      thinking: thinking || null,
+      tokensUsed: tokensUsed ? String(tokensUsed) : null,
+      cost: cost ? String(cost) : null,
+      model: model || null,
+      attachments: attachments ? JSON.stringify(attachments) : null,
+    }).returning();
+
+    await db.update(strategicThreadsTable)
+      .set({ updatedAt: new Date() })
+      .where(eq(strategicThreadsTable.id, threadId));
+
+    res.json({ message: msg });
+  } catch (error: any) {
+    res.status(500).json({ error: { message: error?.message || "Failed to save message" } });
   }
 });
 

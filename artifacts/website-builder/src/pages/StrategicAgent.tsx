@@ -29,6 +29,11 @@ import {
   Minus,
   Plus,
   Copy,
+  MessageSquarePlus,
+  PanelLeftClose,
+  PanelLeft,
+  Pencil,
+  Archive,
 } from "lucide-react";
 import { useListProjects } from "@workspace/api-client-react";
 
@@ -182,6 +187,11 @@ export default function StrategicAgent() {
   const [showStrategicSettings, setShowStrategicSettings] = useState(false);
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [threads, setThreads] = useState<any[]>([]);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [editingThreadId, setEditingThreadId] = useState<string | null>(null);
+  const [editingThreadTitle, setEditingThreadTitle] = useState("");
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -252,6 +262,98 @@ export default function StrategicAgent() {
       await fetchStrategicInfo();
     } catch {}
     setEditingField(null);
+  };
+
+  const fetchThreads = useCallback(async () => {
+    try {
+      const res = await fetch("/api/strategic/threads", { credentials: "include" });
+      const data = await res.json();
+      if (data.threads) setThreads(data.threads);
+    } catch {}
+  }, []);
+
+  useEffect(() => { fetchThreads(); }, [fetchThreads]);
+
+  const createThread = async () => {
+    try {
+      const res = await fetch("/api/strategic/threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ title: lang === "ar" ? "موضوع جديد" : "New Thread", projectId: selectedProjectId || null }),
+      });
+      const data = await res.json();
+      if (data.thread) {
+        setActiveThreadId(data.thread.id);
+        setMessages([]);
+        await fetchThreads();
+      }
+    } catch {}
+  };
+
+  const loadThread = async (threadId: string) => {
+    setActiveThreadId(threadId);
+    try {
+      const res = await fetch(`/api/strategic/threads/${threadId}/messages`, { credentials: "include" });
+      const data = await res.json();
+      if (data.messages) {
+        setMessages(data.messages.map((m: any) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          timestamp: new Date(m.createdAt),
+          thinking: m.thinking || undefined,
+          tokensUsed: m.tokensUsed ? Number(m.tokensUsed) : undefined,
+          cost: m.cost ? Number(m.cost) : undefined,
+        })));
+      }
+    } catch {}
+  };
+
+  const saveMessageToThread = async (threadId: string, msg: ChatMessage) => {
+    try {
+      await fetch(`/api/strategic/threads/${threadId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          role: msg.role,
+          content: msg.content,
+          thinking: msg.thinking,
+          tokensUsed: msg.tokensUsed,
+          cost: msg.cost,
+        }),
+      });
+    } catch {}
+  };
+
+  const renameThread = async (threadId: string, title: string) => {
+    try {
+      await fetch(`/api/strategic/threads/${threadId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ title }),
+      });
+      await fetchThreads();
+    } catch {}
+    setEditingThreadId(null);
+  };
+
+  const deleteThread = async (threadId: string) => {
+    try {
+      await fetch(`/api/strategic/threads/${threadId}`, { method: "DELETE", credentials: "include" });
+      if (activeThreadId === threadId) {
+        setActiveThreadId(null);
+        setMessages([]);
+      }
+      await fetchThreads();
+    } catch {}
+  };
+
+  const autoTitleThread = async (threadId: string, firstMessage: string) => {
+    const title = firstMessage.slice(0, 50) + (firstMessage.length > 50 ? "..." : "");
+    await renameThread(threadId, title);
   };
 
   const selectedAgent = agents.find(a => a.agentKey === selectedAgentKey);
@@ -363,6 +465,28 @@ export default function StrategicAgent() {
     setAttachments([]);
     setLoading(true);
 
+    let threadId = activeThreadId;
+    if (!threadId && !agentMode) {
+      try {
+        const tRes = await fetch("/api/strategic/threads", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ title: (currentPrompt || "New Thread").slice(0, 50), projectId: selectedProjectId || null }),
+        });
+        const tData = await tRes.json();
+        if (tData.thread) {
+          threadId = tData.thread.id;
+          setActiveThreadId(threadId);
+          fetchThreads();
+        }
+      } catch {}
+    }
+
+    if (threadId && !agentMode) {
+      saveMessageToThread(threadId, userMsg);
+    }
+
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -396,6 +520,7 @@ export default function StrategicAgent() {
         };
 
         setMessages(prev => [...prev, assistantMsg]);
+        if (threadId) saveMessageToThread(threadId, assistantMsg);
         if (data.changesApplied) {
           await fetchAgents();
         }
@@ -434,6 +559,7 @@ export default function StrategicAgent() {
         };
 
         setMessages(prev => [...prev, assistantMsg]);
+        if (threadId) saveMessageToThread(threadId, assistantMsg);
       }
     } catch (err: any) {
       if (err.name === "AbortError") return;
@@ -463,10 +589,125 @@ export default function StrategicAgent() {
   const imageAttachmentCount = attachments.filter(a => a.type.startsWith("image/")).length;
   const fileAttachmentCount = attachments.filter(a => !a.type.startsWith("image/")).length;
 
+  const groupedThreads = React.useMemo(() => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+    const weekAgo = new Date(today); weekAgo.setDate(weekAgo.getDate() - 7);
+    const monthAgo = new Date(today); monthAgo.setMonth(monthAgo.getMonth() - 1);
+
+    const groups: { label: string; items: any[] }[] = [
+      { label: lang === "ar" ? "اليوم" : "Today", items: [] },
+      { label: lang === "ar" ? "أمس" : "Yesterday", items: [] },
+      { label: lang === "ar" ? "آخر 7 أيام" : "Last 7 Days", items: [] },
+      { label: lang === "ar" ? "آخر 30 يوم" : "Last 30 Days", items: [] },
+      { label: lang === "ar" ? "أقدم" : "Older", items: [] },
+    ];
+
+    threads.filter(t => !t.archived).forEach(t => {
+      const d = new Date(t.updatedAt);
+      if (d >= today) groups[0].items.push(t);
+      else if (d >= yesterday) groups[1].items.push(t);
+      else if (d >= weekAgo) groups[2].items.push(t);
+      else if (d >= monthAgo) groups[3].items.push(t);
+      else groups[4].items.push(t);
+    });
+
+    return groups.filter(g => g.items.length > 0);
+  }, [threads, lang]);
+
+  const archivedThreads = threads.filter(t => t.archived);
+
   return (
-    <div className="min-h-screen bg-[#0d1117] text-[#e1e4e8] flex flex-col" dir={lang === "ar" ? "rtl" : "ltr"}>
+    <div className="min-h-screen bg-[#0d1117] text-[#e1e4e8] flex" dir={lang === "ar" ? "rtl" : "ltr"}>
       {previewImage && <ImagePreviewModal src={previewImage} onClose={() => setPreviewImage(null)} />}
 
+      {sidebarOpen && (
+        <aside className="w-64 bg-[#161b22] border-e border-[#1c2333] flex flex-col h-screen flex-shrink-0">
+          <div className="p-3 flex items-center gap-2 border-b border-[#1c2333]">
+            <button
+              onClick={createThread}
+              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-400 text-xs font-medium hover:bg-amber-500/20 transition-colors"
+            >
+              <MessageSquarePlus className="w-3.5 h-3.5" />
+              {lang === "ar" ? "موضوع جديد" : "New Thread"}
+            </button>
+            <button onClick={() => setSidebarOpen(false)} className="p-1.5 text-[#484f58] hover:text-[#8b949e] transition-colors">
+              <PanelLeftClose className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto py-2">
+            {groupedThreads.map(group => (
+              <div key={group.label} className="mb-3">
+                <div className="px-3 py-1 text-[10px] font-medium text-[#484f58] uppercase tracking-wider">{group.label}</div>
+                {group.items.map(thread => (
+                  <div key={thread.id} className="group relative">
+                    {editingThreadId === thread.id ? (
+                      <div className="px-3 py-1.5">
+                        <input
+                          value={editingThreadTitle}
+                          onChange={e => setEditingThreadTitle(e.target.value)}
+                          onKeyDown={e => { if (e.key === "Enter") renameThread(thread.id, editingThreadTitle); if (e.key === "Escape") setEditingThreadId(null); }}
+                          className="w-full px-2 py-1 bg-[#0d1117] border border-amber-500/30 rounded text-[11px] text-[#e1e4e8] focus:outline-none"
+                          autoFocus
+                        />
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => loadThread(thread.id)}
+                        className={cn(
+                          "w-full text-start px-3 py-2 text-[12px] truncate transition-colors",
+                          activeThreadId === thread.id ? "bg-[#1c2333] text-[#e1e4e8]" : "text-[#8b949e] hover:bg-[#1c2333]/50 hover:text-[#c9d1d9]"
+                        )}
+                      >
+                        {thread.title}
+                      </button>
+                    )}
+                    {editingThreadId !== thread.id && (
+                      <div className="absolute end-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity">
+                        <button onClick={e => { e.stopPropagation(); setEditingThreadId(thread.id); setEditingThreadTitle(thread.title); }} className="p-0.5 text-[#484f58] hover:text-[#8b949e]"><Pencil className="w-3 h-3" /></button>
+                        <button onClick={e => { e.stopPropagation(); fetch(`/api/strategic/threads/${thread.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ archived: true }) }).then(() => fetchThreads()); }} className="p-0.5 text-[#484f58] hover:text-amber-400"><Archive className="w-3 h-3" /></button>
+                        <button onClick={e => { e.stopPropagation(); deleteThread(thread.id); }} className="p-0.5 text-[#484f58] hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+
+          {archivedThreads.length > 0 && (
+            <details className="border-t border-[#1c2333]">
+              <summary className="px-3 py-2 text-[10px] font-medium text-[#484f58] cursor-pointer hover:text-[#8b949e] flex items-center gap-1.5">
+                <Archive className="w-3 h-3" />
+                {lang === "ar" ? `الأرشيف (${archivedThreads.length})` : `Archive (${archivedThreads.length})`}
+              </summary>
+              <div className="max-h-40 overflow-y-auto pb-2">
+                {archivedThreads.map(thread => (
+                  <div key={thread.id} className="group relative">
+                    <button
+                      onClick={() => loadThread(thread.id)}
+                      className={cn(
+                        "w-full text-start px-3 py-1.5 text-[11px] truncate text-[#484f58] hover:text-[#8b949e] transition-colors",
+                        activeThreadId === thread.id && "bg-[#1c2333] text-[#8b949e]"
+                      )}
+                    >
+                      {thread.title}
+                    </button>
+                    <div className="absolute end-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity">
+                      <button onClick={e => { e.stopPropagation(); fetch(`/api/strategic/threads/${thread.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ archived: false }) }).then(() => fetchThreads()); }} className="p-0.5 text-[#484f58] hover:text-emerald-400"><RotateCcw className="w-3 h-3" /></button>
+                      <button onClick={e => { e.stopPropagation(); deleteThread(thread.id); }} className="p-0.5 text-[#484f58] hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+        </aside>
+      )}
+
+      <div className="flex-1 flex flex-col h-screen min-w-0">
       <input
         ref={fileInputRef}
         type="file"
@@ -485,6 +726,11 @@ export default function StrategicAgent() {
       />
 
       <header className="h-14 border-b border-[#1c2333] bg-[#161b22] flex items-center px-4 gap-3 flex-shrink-0">
+        {!sidebarOpen && (
+          <button onClick={() => setSidebarOpen(true)} className="p-1.5 text-[#484f58] hover:text-[#8b949e] transition-colors rounded hover:bg-[#1c2333]">
+            <PanelLeft className="w-4 h-4" />
+          </button>
+        )}
         <Link href="/dashboard" className="p-1.5 text-[#8b949e] hover:text-[#e1e4e8] transition-colors rounded hover:bg-[#1c2333]">
           <ArrowLeft className={cn("w-4 h-4", lang === "ar" && "rotate-180")} />
         </Link>
@@ -1019,6 +1265,7 @@ export default function StrategicAgent() {
             )}
           </div>
         </div>
+      </div>
       </div>
     </div>
   );
