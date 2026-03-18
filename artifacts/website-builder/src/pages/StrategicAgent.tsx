@@ -28,6 +28,7 @@ import {
   ToggleRight,
   Minus,
   Plus,
+  Copy,
 } from "lucide-react";
 import { useListProjects } from "@workspace/api-client-react";
 
@@ -99,6 +100,59 @@ function ImagePreviewModal({ src, onClose }: { src: string; onClose: () => void 
           <Download className="w-4 h-4" />
         </a>
       </div>
+    </div>
+  );
+}
+
+function MessageContent({ content, fontSize, lineSpacing, fontWeight }: { content: string; fontSize: number; lineSpacing: number; fontWeight: number }) {
+  const [copiedIdx, setCopiedIdx] = React.useState<number | null>(null);
+  const parts = content.split(/(```[\s\S]*?```)/g);
+
+  const handleCopy = (code: string, idx: number) => {
+    navigator.clipboard.writeText(code);
+    setCopiedIdx(idx);
+    setTimeout(() => setCopiedIdx(null), 2000);
+  };
+
+  return (
+    <div style={{ fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif", fontSize: `${fontSize}px`, lineHeight: lineSpacing, fontWeight }}>
+      {parts.map((part, i) => {
+        const codeMatch = part.match(/^```(\w*)\n?([\s\S]*?)```$/);
+        if (codeMatch) {
+          const lang = codeMatch[1] || "";
+          const code = codeMatch[2].trim();
+          return (
+            <div key={i} className="my-3 rounded-lg overflow-hidden border border-[#30363d]">
+              <div className="flex items-center justify-between px-3 py-1.5 bg-[#1c2333]">
+                <span className="text-[10px] text-[#8b949e] uppercase tracking-wide">{lang || "code"}</span>
+                <button
+                  onClick={() => handleCopy(code, i)}
+                  className="flex items-center gap-1 text-[10px] text-[#8b949e] hover:text-[#e1e4e8] transition-colors"
+                >
+                  {copiedIdx === i ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                  <span>{copiedIdx === i ? "Copied" : "Copy"}</span>
+                </button>
+              </div>
+              <pre className="p-3 bg-[#0d1117] text-[13px] leading-relaxed text-[#e1e4e8] overflow-x-auto" dir="ltr">
+                <code>{code}</code>
+              </pre>
+            </div>
+          );
+        }
+        if (!part.trim()) return null;
+        const inlineParts = part.split(/(`[^`]+`)/g);
+        return (
+          <p key={i} className="whitespace-pre-wrap">
+            {inlineParts.map((seg, j) => {
+              const inlineMatch = seg.match(/^`([^`]+)`$/);
+              if (inlineMatch) {
+                return <code key={j} className="px-1.5 py-0.5 bg-[#1c2333] rounded text-[13px] text-amber-300 border border-[#30363d]" dir="ltr">{inlineMatch[1]}</code>;
+              }
+              return <React.Fragment key={j}>{seg}</React.Fragment>;
+            })}
+          </p>
+        );
+      })}
     </div>
   );
 }
@@ -810,7 +864,7 @@ export default function StrategicAgent() {
                   </div>
                 )}
 
-                <p className="whitespace-pre-wrap" style={{ fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif", fontSize: `${fontSize}px`, lineHeight: lineSpacing, fontWeight }}>{msg.content}</p>
+                <MessageContent content={msg.content} fontSize={fontSize} lineSpacing={lineSpacing} fontWeight={fontWeight} />
 
                 {msg.images && msg.images.length > 0 && (
                   <div className="mt-2 grid grid-cols-2 gap-2">
