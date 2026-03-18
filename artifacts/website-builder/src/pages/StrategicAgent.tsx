@@ -625,10 +625,10 @@ export default function StrategicAgent() {
               {msg.role === "user" ? <User className="w-4 h-4" /> : <LightbulbIcon className="w-4 h-4" />}
             </div>
             <div className={cn(
-              "max-w-[80%] rounded-xl px-4 py-3 text-sm",
+              "max-w-[80%] px-2 py-1 text-sm",
               msg.role === "user"
-                ? "bg-[#1f6feb]/10 border border-[#1f6feb]/20 text-[#e1e4e8]"
-                : "bg-[#161b22] border border-[#30363d] text-[#c9d1d9]"
+                ? "text-[#e1e4e8]"
+                : "text-[#c9d1d9]"
             )}>
               {msg.attachments && msg.attachments.length > 0 && (
                 <div className="flex flex-wrap gap-2 mb-3">
