@@ -26,6 +26,8 @@ import {
   Zap,
   ToggleLeft,
   ToggleRight,
+  Minus,
+  Plus,
 } from "lucide-react";
 import { useListProjects } from "@workspace/api-client-react";
 
@@ -107,6 +109,8 @@ export default function StrategicAgent() {
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
   const [expandedMsgIds, setExpandedMsgIds] = useState<Set<string>>(new Set());
+  const [fontSize, setFontSize] = useState(16);
+  const [lineSpacing, setLineSpacing] = useState(1.75);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [showProjectDropdown, setShowProjectDropdown] = useState(false);
@@ -485,6 +489,24 @@ export default function StrategicAgent() {
               {resettingAgent ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
             </button>
           )}
+          <div className="flex items-center gap-0.5 bg-[#1c2333] rounded-lg px-1 py-0.5">
+            <button onClick={() => setFontSize(s => Math.max(12, s - 1))} className="p-1 text-[#8b949e] hover:text-[#e1e4e8] transition-colors" title={lang === "ar" ? "تصغير الخط" : "Decrease font"}>
+              <Minus className="w-3 h-3" />
+            </button>
+            <span className="text-[10px] text-[#8b949e] min-w-[20px] text-center">{fontSize}</span>
+            <button onClick={() => setFontSize(s => Math.min(24, s + 1))} className="p-1 text-[#8b949e] hover:text-[#e1e4e8] transition-colors" title={lang === "ar" ? "تكبير الخط" : "Increase font"}>
+              <Plus className="w-3 h-3" />
+            </button>
+          </div>
+          <div className="flex items-center gap-0.5 bg-[#1c2333] rounded-lg px-1 py-0.5">
+            <button onClick={() => setLineSpacing(s => Math.max(1, +(s - 0.25).toFixed(2)))} className="p-1 text-[#8b949e] hover:text-[#e1e4e8] transition-colors" title={lang === "ar" ? "تقليل التباعد" : "Decrease spacing"}>
+              <Minus className="w-3 h-3" />
+            </button>
+            <span className="text-[10px] text-[#8b949e] min-w-[24px] text-center">{lineSpacing}</span>
+            <button onClick={() => setLineSpacing(s => Math.min(3, +(s + 0.25).toFixed(2)))} className="p-1 text-[#8b949e] hover:text-[#e1e4e8] transition-colors" title={lang === "ar" ? "زيادة التباعد" : "Increase spacing"}>
+              <Plus className="w-3 h-3" />
+            </button>
+          </div>
           <button
             onClick={clearChat}
             className="p-1.5 text-[#8b949e] hover:text-red-400 transition-colors rounded hover:bg-[#1c2333]"
@@ -654,7 +676,7 @@ export default function StrategicAgent() {
                   </div>
                 )}
 
-                <p className="whitespace-pre-wrap text-base" style={{ fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif", lineHeight: 1.75 }}>{msg.content}</p>
+                <p className="whitespace-pre-wrap" style={{ fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif", fontSize: `${fontSize}px`, lineHeight: lineSpacing }}>{msg.content}</p>
 
                 {msg.images && msg.images.length > 0 && (
                   <div className="mt-2 grid grid-cols-2 gap-2">
