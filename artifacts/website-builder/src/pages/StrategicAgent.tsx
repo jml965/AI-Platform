@@ -1162,8 +1162,12 @@ export default function StrategicAgent() {
         {loading && (
           <div className="py-1">
             <div className="flex items-center gap-2">
-              <Loader2 className={cn("w-4 h-4 animate-spin", agentMode ? "text-purple-400" : "text-amber-400")} />
-              <span className="text-sm text-[#c9d1d9]">{agentMode ? t.strategic_configuring : t.strategic_thinking}</span>
+              <span className="flex gap-0.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce" style={{animationDelay: "0ms"}} />
+                <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce" style={{animationDelay: "150ms"}} />
+                <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce" style={{animationDelay: "300ms"}} />
+              </span>
+              <span className={cn("text-sm", agentMode ? "text-purple-400" : "text-amber-400")}>{agentMode ? t.strategic_configuring : t.strategic_thinking}</span>
             </div>
           </div>
         )}
