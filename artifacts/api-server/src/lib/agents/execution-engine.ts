@@ -393,6 +393,14 @@ async function executeBuildPipeline(
     const isSurgicalEdit = isModificationRequest(prompt, existingFiles.length > 0);
 
     if (isSurgicalEdit) {
+      if (!surgicalEditAgent.hasAnyPermission(["modify_code", "patch_files"])) {
+        console.log(`[Pipeline] surgical_edit lacks permissions, falling back to full codegen`);
+        logExecution(buildId, projectId, null, "system", "permission_denied_surgical", "in_progress", {
+          message: lang === "ar"
+            ? "المحرر الجراحي لا يملك الصلاحيات — أتحول للبناء الكامل"
+            : "Surgical editor lacks permissions — falling back to full codegen",
+        });
+      } else {
       const surgicalTaskId = await createTask(buildId, projectId, "surgical_edit", prompt);
       logExecution(buildId, projectId, surgicalTaskId, "surgical_edit", "analyzing_changes", "in_progress", {
         existingFileCount: existingFiles.length,
@@ -441,6 +449,18 @@ async function executeBuildPipeline(
       });
 
       context.tokensUsedSoFar = totalTokens;
+      }
+    }
+
+    if (!codegenAgent.hasAnyPermission(["generate_code", "create_files"])) {
+      logExecution(buildId, projectId, null, "system", "permission_denied", "failed", {
+        agent: "codegen",
+        message: lang === "ar"
+          ? "وكيل البرمجة لا يملك صلاحية توليد الكود — تحقق من إعدادات الصلاحيات"
+          : "Codegen agent lacks generate_code permission — check permission settings",
+      });
+      await finalizeBuild(buildId, projectId, "failed", totalTokens, totalCost);
+      return;
     }
 
     const codegenTaskId = await createTask(buildId, projectId, "codegen", prompt);
@@ -510,15 +530,19 @@ async function executeBuildPipeline(
     }
 
     const codegenSendsTo = codegenAgent.getSendsTo();
-    const skipReview = codegenSendsTo === "output";
-    const skipFixer = skipReview;
+    const reviewerHasPermission = reviewerAgent.hasAnyPermission(["read_code", "report_issues", "score_quality"]);
+    const fixerHasPermission = fixerAgent.hasAnyPermission(["fix_issues", "modify_code"]);
+    const skipReview = codegenSendsTo === "output" || !reviewerHasPermission;
+    const skipFixer = skipReview || !fixerHasPermission;
 
     if (skipReview) {
-      console.log(`[Pipeline] codegen sendsTo=output, skipping reviewer and fixer`);
+      const skipReason = !reviewerHasPermission ? "no_permission" : "sendsTo_output";
+      console.log(`[Pipeline] skipping reviewer (${skipReason}) and fixer`);
       logExecution(buildId, projectId, null, "system", "pipeline_skip_review", "completed", {
+        reason: skipReason,
         message: lang === "ar"
-          ? "تم تخطي المراجعة — الوكيل مُعدّ للتسليم المباشر"
-          : "Review skipped — agent configured for direct output",
+          ? (!reviewerHasPermission ? "تم تخطي المراجعة — المراجع لا يملك الصلاحيات المطلوبة" : "تم تخطي المراجعة — الوكيل مُعدّ للتسليم المباشر")
+          : (!reviewerHasPermission ? "Review skipped — reviewer lacks required permissions" : "Review skipped — agent configured for direct output"),
       });
     }
 
@@ -526,14 +550,22 @@ async function executeBuildPipeline(
     let errorIssues: CodeIssue[] = [];
 
     if (!skipReview) {
+    const reviewerReceivesFrom = reviewerAgent.getReceivesFrom();
+    const reviewContext = { ...context };
+    if (reviewerReceivesFrom === "user_input") {
+      reviewContext.existingFiles = existingFiles.map(f => ({ filePath: f.filePath, content: f.content }));
+      console.log(`[Pipeline] reviewer receivesFrom=user_input — reviewing original files instead of codegen output`);
+    }
+
     const reviewTaskId = await createTask(buildId, projectId, "reviewer");
     logExecution(buildId, projectId, reviewTaskId, "reviewer", "review_code", "in_progress", {
+      source: reviewerReceivesFrom || "codegen",
       message: lang === "ar"
         ? "أراجع الكود المُولَّد... أبحث عن أخطاء، مشاكل أمنية، وأفضل الممارسات"
         : "Reviewing generated code... checking for errors, security issues, and best practices",
     });
 
-    const reviewResult = await reviewerAgent.execute(context);
+    const reviewResult = await reviewerAgent.execute(reviewContext);
     totalTokens += reviewResult.tokensUsed;
     const reviewCost = estimateCost(reviewResult.tokensUsed, reviewerAgent.modelConfig.model);
     totalCost += reviewCost;
@@ -586,8 +618,14 @@ async function executeBuildPipeline(
         return;
       }
 
-      if (errorIssues.length === 0 || skipFixer) {
-        console.log(`Build ${buildId}: review had warnings/info only or fixer skipped, proceeding`);
+      const fixerReceivesFrom = fixerAgent.getReceivesFrom();
+      const fixerSkipReviewIssues = fixerReceivesFrom === "codegen";
+      if (fixerSkipReviewIssues) {
+        console.log(`[Pipeline] fixer receivesFrom=codegen — ignoring review issues, applying own analysis`);
+      }
+
+      if (errorIssues.length === 0 || skipFixer || fixerSkipReviewIssues) {
+        console.log(`Build ${buildId}: review had warnings/info only or fixer skipped/overridden, proceeding`);
       } else {
         const fixTaskId = await createTask(buildId, projectId, "fixer");
         logExecution(buildId, projectId, fixTaskId, "fixer", "fix_code", "in_progress", {
@@ -845,11 +883,23 @@ async function executeBatchedBuildPipeline(
 
   const codegenAgent = new CodeGenAgent(constitution);
   const fileManager = new FileManagerAgent(constitution);
+  await codegenAgent.loadConfigFromDB();
 
   let totalTokens = 0;
   let totalCost = 0;
 
   try {
+    if (!codegenAgent.hasAnyPermission(["generate_code", "create_files"])) {
+      logExecution(buildId, projectId, null, "system", "permission_denied", "failed", {
+        agent: "codegen",
+        message: lang === "ar"
+          ? "وكيل البرمجة لا يملك صلاحية توليد الكود — تحقق من إعدادات الصلاحيات"
+          : "Codegen agent lacks generate_code permission — check permission settings",
+      });
+      await finalizeBuild(buildId, projectId, "failed", totalTokens, totalCost);
+      return;
+    }
+
     logExecution(buildId, projectId, null, "system", "build_started", "in_progress", {
       prompt, mode: "module-parallel",
       message: lang === "ar"

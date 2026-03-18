@@ -358,7 +358,7 @@ export default function AgentManagement() {
               {activeTab === "instructions" && <InstructionsTab agent={currentAgent} onUpdate={(u) => updateAgent(currentAgent.agentKey, u)} isRTL={isRTL} />}
               {activeTab === "pipeline" && <PipelineTab agent={currentAgent} agents={agents} onUpdate={(u) => updateAgent(currentAgent.agentKey, u)} onSaveOrder={savePipelineOrder} isRTL={isRTL} />}
               {activeTab === "tokens" && <TokensTab agent={currentAgent} onUpdate={(u) => updateAgent(currentAgent.agentKey, u)} isRTL={isRTL} />}
-              {activeTab === "code" && <CodeTab agent={currentAgent} isRTL={isRTL} />}
+              {activeTab === "code" && <CodeTab agent={currentAgent} onUpdate={(u) => updateAgent(currentAgent.agentKey, u)} isRTL={isRTL} />}
               {activeTab === "stats" && <StatsTab agent={currentAgent} stats={stats[currentAgent.agentKey]} isRTL={isRTL} />}
             </div>
           </>
@@ -928,19 +928,69 @@ function TokensTab({ agent, onUpdate, isRTL }: { agent: AgentConfig; onUpdate: (
   );
 }
 
-function CodeTab({ agent, isRTL }: { agent: AgentConfig; isRTL: boolean }) {
+function CodeTab({ agent, onUpdate, isRTL }: { agent: AgentConfig; onUpdate: (u: Partial<AgentConfig>) => void; isRTL: boolean }) {
+  const [newFile, setNewFile] = useState("");
+
+  const addFile = () => {
+    const trimmed = newFile.trim();
+    if (!trimmed) return;
+    const current = agent.sourceFiles || [];
+    if (current.includes(trimmed)) return;
+    onUpdate({ sourceFiles: [...current, trimmed] });
+    setNewFile("");
+  };
+
+  const removeFile = (index: number) => {
+    const current = [...(agent.sourceFiles || [])];
+    current.splice(index, 1);
+    onUpdate({ sourceFiles: current });
+  };
+
   return (
     <div className="max-w-2xl">
       <h3 className="text-sm font-medium mb-3">{isRTL ? "ملفات الكود المصدري" : "Source Code Files"}</h3>
+      <p className="text-[11px] text-[#8b949e] mb-3">
+        {isRTL
+          ? "حدد المسارات التي يعمل عليها الوكيل — يُستخدم لتصفية الملفات أثناء التنفيذ"
+          : "Specify file paths this agent operates on — used to scope files during execution"}
+      </p>
+
+      <div className="flex gap-2 mb-3">
+        <input
+          type="text"
+          value={newFile}
+          onChange={(e) => setNewFile(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && addFile()}
+          placeholder={isRTL ? "مسار الملف مثل src/components/" : "File path e.g. src/components/"}
+          className="flex-1 bg-[#0d1117] border border-white/10 rounded-lg px-3 py-2 text-[12px] font-mono text-[#c9d1d9] placeholder:text-[#484f58] focus:outline-none focus:border-[#58a6ff]/50"
+          dir="ltr"
+        />
+        <button
+          onClick={addFile}
+          disabled={!newFile.trim()}
+          className="px-3 py-2 bg-[#238636] hover:bg-[#2ea043] disabled:opacity-40 disabled:cursor-not-allowed text-white text-[12px] rounded-lg transition-colors flex items-center gap-1.5"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          {isRTL ? "أضف" : "Add"}
+        </button>
+      </div>
+
       <div className="space-y-2">
         {(agent.sourceFiles || []).map((file, i) => (
-          <div key={i} className="flex items-center gap-2 bg-[#0d1117] border border-white/7 rounded-lg px-3 py-2.5">
+          <div key={i} className="flex items-center gap-2 bg-[#0d1117] border border-white/7 rounded-lg px-3 py-2.5 group">
             <Code className="w-4 h-4 text-[#8b949e] flex-shrink-0" />
-            <span className="text-[12px] font-mono text-[#58a6ff]">{file}</span>
+            <span className="text-[12px] font-mono text-[#58a6ff] flex-1">{file}</span>
+            <button
+              onClick={() => removeFile(i)}
+              className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/20 rounded transition-all"
+              title={isRTL ? "حذف" : "Remove"}
+            >
+              <Trash2 className="w-3.5 h-3.5 text-red-400" />
+            </button>
           </div>
         ))}
         {(!agent.sourceFiles || agent.sourceFiles.length === 0) && (
-          <p className="text-[12px] text-[#8b949e]">{isRTL ? "لا توجد ملفات مصدرية مرتبطة" : "No source files linked"}</p>
+          <p className="text-[12px] text-[#8b949e]">{isRTL ? "لا توجد ملفات مصدرية — الوكيل يعمل على جميع الملفات" : "No source files — agent operates on all files"}</p>
         )}
       </div>
     </div>

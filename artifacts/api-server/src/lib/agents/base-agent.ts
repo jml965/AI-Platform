@@ -153,8 +153,12 @@ export abstract class BaseAgent {
     return this._permissions;
   }
 
-  protected hasPermission(perm: string): boolean {
+  hasPermission(perm: string): boolean {
     return this._permissions.length === 0 || this._permissions.includes(perm);
+  }
+
+  hasAnyPermission(perms: string[]): boolean {
+    return this._permissions.length === 0 || perms.some(p => this._permissions.includes(p));
   }
 
   getBatchSize(): number {
