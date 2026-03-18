@@ -1,13 +1,13 @@
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
-import { getOpenAIClient, getAnthropicClient } from "./ai-clients";
+import { getOpenAIClient, getAnthropicClient, getGoogleClient } from "./ai-clients";
 import { AgentConstitution, checkTokenBudget } from "./constitution";
 import type { AgentResult, AgentType, BuildContext } from "./types";
 import { getAgentConfig, updateAgentStats } from "./governor";
 import { db } from "@workspace/db";
 import { agentLogsTable } from "@workspace/db/schema";
 
-export type AIProvider = "openai" | "anthropic";
+export type AIProvider = "openai" | "anthropic" | "google";
 
 export interface ModelConfig {
   provider: AIProvider;
@@ -227,6 +227,10 @@ export abstract class BaseAgent {
       return this.callAnthropic(messages, maxCompletion, effectiveModel);
     }
 
+    if (effectiveModel.provider === "google") {
+      return this.callGoogle(messages, maxCompletion, effectiveModel);
+    }
+
     return this.callOpenAI(messages, maxCompletion, effectiveModel);
   }
 
@@ -335,6 +339,46 @@ export abstract class BaseAgent {
     }
 
     throw new Error("Max retries exceeded for Anthropic API call");
+  }
+
+  private async callGoogle(
+    messages: { role: "system" | "user" | "assistant"; content: string }[],
+    maxCompletion: number,
+    modelCfg?: ModelConfig
+  ): Promise<{ content: string; tokensUsed: number }> {
+    const cfg = modelCfg || this.getEffectiveModel();
+    const client = await getGoogleClient();
+    const systemMessage = messages.find(m => m.role === "system");
+    const chatMessages = messages
+      .filter(m => m.role !== "system")
+      .map(m => ({
+        role: m.role === "assistant" ? "model" as const : "user" as const,
+        parts: [{ text: m.content }],
+      }));
+
+    const effectiveMax = this._overrideMaxTokens ? Math.min(maxCompletion, this._overrideMaxTokens) : maxCompletion;
+    const creativity = this.getEffectiveCreativity();
+    const timeoutMs = this.getEffectiveTimeoutMs();
+
+    const response = await Promise.race([
+      client.models.generateContent({
+        model: cfg.model,
+        contents: chatMessages,
+        config: {
+          systemInstruction: systemMessage?.content,
+          maxOutputTokens: effectiveMax,
+          temperature: creativity !== undefined && creativity >= 0 ? Math.min(creativity, 2.0) : undefined,
+        },
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`Google timeout after ${Math.round(timeoutMs / 1000)}s`)), timeoutMs)
+      ),
+    ]);
+
+    const content = response.text ?? "";
+    const tokensUsed = (response.usageMetadata?.promptTokenCount ?? 0) + (response.usageMetadata?.candidatesTokenCount ?? 0);
+
+    return { content, tokensUsed };
   }
 
   abstract execute(context: BuildContext): Promise<AgentResult>;

@@ -1,4 +1,4 @@
-import { getAnthropicClient, getOpenAIClient } from "./ai-clients";
+import { getAnthropicClient, getOpenAIClient, getGoogleClient } from "./ai-clients";
 import { db } from "@workspace/db";
 import { agentConfigsTable, projectFilesTable, agentLogsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
@@ -299,6 +299,29 @@ async function callModelDirect(
       ]);
       const content = response.choices[0]?.message?.content ?? "";
       const tokensUsed = (response.usage?.prompt_tokens ?? 0) + (response.usage?.completion_tokens ?? 0);
+      return { content, tokensUsed };
+    } else if (provider === "google") {
+      const client = await getGoogleClient();
+      const chatMessages = messages.map(m => ({
+        role: m.role === "assistant" ? "model" as const : "user" as const,
+        parts: [{ text: m.content }],
+      }));
+      const response = await Promise.race([
+        client.models.generateContent({
+          model,
+          contents: chatMessages,
+          config: {
+            systemInstruction: systemPrompt,
+            maxOutputTokens: maxTokens,
+            temperature: temperature !== undefined && temperature >= 0 ? Math.min(temperature, 2.0) : undefined,
+          },
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(`Timeout after ${timeoutSeconds}s`)), timeoutMs)
+        ),
+      ]);
+      const content = response.text ?? "";
+      const tokensUsed = (response.usageMetadata?.promptTokenCount ?? 0) + (response.usageMetadata?.candidatesTokenCount ?? 0);
       return { content, tokensUsed };
     }
     return null;

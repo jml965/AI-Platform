@@ -100,6 +100,10 @@ const MODEL_OPTIONS = [
   { provider: "anthropic", model: "claude-sonnet-4-20250514", label: "Claude Sonnet 4" },
   { provider: "anthropic", model: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
   { provider: "anthropic", model: "claude-haiku-3-5-20241022", label: "Claude Haiku 3.5" },
+  { provider: "google", model: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+  { provider: "google", model: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+  { provider: "google", model: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
+  { provider: "google", model: "gemini-2.0-flash-lite", label: "Gemini 2.0 Flash Lite" },
   { provider: "local", model: "none", label: "Local (No AI)" },
 ];
 
