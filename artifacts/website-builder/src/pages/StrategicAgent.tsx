@@ -182,18 +182,42 @@ function MessageContent({ content, fontSize, lineSpacing, fontWeight }: { conten
         if (seg.type === "code") {
           const code = seg.value.trim();
           const langLabel = seg.lang || "code";
+          const extMap: Record<string, string> = {
+            html: "html", css: "css", javascript: "js", js: "js", typescript: "ts", ts: "ts",
+            tsx: "tsx", jsx: "jsx", python: "py", json: "json", bash: "sh", shell: "sh",
+            sql: "sql", xml: "xml", yaml: "yml", php: "php", java: "java", cpp: "cpp",
+            c: "c", go: "go", rust: "rs", ruby: "rb", swift: "swift", kotlin: "kt",
+          };
+          const fileExt = extMap[langLabel.toLowerCase()] || "txt";
+          const handleDownload = () => {
+            const blob = new Blob([code], { type: "text/plain;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `code.${fileExt}`;
+            a.click();
+            URL.revokeObjectURL(url);
+          };
           return (
             <div key={i} className="my-3 rounded-lg overflow-hidden border border-[#30363d]">
               <div className="flex items-center justify-between px-3 py-1.5 bg-[#1c2333]">
                 <span className="text-[10px] text-[#8b949e] uppercase tracking-wide">{langLabel}</span>
                 {code.length > 0 && (
-                  <button
-                    onClick={() => handleCopy(code, i)}
-                    className="flex items-center gap-1 text-[10px] text-[#8b949e] hover:text-[#e1e4e8] transition-colors"
-                  >
-                    {copiedIdx === i ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                    <span>{copiedIdx === i ? "Copied" : "Copy"}</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleDownload}
+                      className="flex items-center gap-1 text-[10px] text-[#8b949e] hover:text-[#e1e4e8] transition-colors"
+                    >
+                      <Download className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={() => handleCopy(code, i)}
+                      className="flex items-center gap-1 text-[10px] text-[#8b949e] hover:text-[#e1e4e8] transition-colors"
+                    >
+                      {copiedIdx === i ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      <span>{copiedIdx === i ? "Copied" : "Copy"}</span>
+                    </button>
+                  </div>
                 )}
               </div>
               <pre className="p-3 bg-[#0d1117] text-[13px] leading-relaxed text-[#e1e4e8] overflow-x-auto" dir="ltr">
@@ -624,12 +648,34 @@ export default function StrategicAgent() {
           const tick = () => {
             if (typewriterStopped) { typewriterRunning = false; return; }
             if (displayedContent.length < streamedContent.length) {
-              displayedContent = streamedContent.slice(0, displayedContent.length + 1);
+              const remaining = streamedContent.slice(displayedContent.length);
+              const openTick = remaining.indexOf("```");
+              const alreadyInCode = (displayedContent.match(/```/g) || []).length % 2 === 1;
+
+              if (alreadyInCode) {
+                const closeIdx = remaining.indexOf("```");
+                if (closeIdx !== -1) {
+                  displayedContent = streamedContent.slice(0, displayedContent.length + closeIdx + 3);
+                } else {
+                  displayedContent = streamedContent.slice(0, streamedContent.length);
+                }
+              } else if (openTick === 0) {
+                const afterOpen = remaining.slice(3);
+                const closeIdx = afterOpen.indexOf("```");
+                if (closeIdx !== -1) {
+                  displayedContent = streamedContent.slice(0, displayedContent.length + 3 + closeIdx + 3);
+                } else {
+                  displayedContent = streamedContent.slice(0, streamedContent.length);
+                }
+              } else {
+                displayedContent = streamedContent.slice(0, displayedContent.length + 1);
+              }
+
               setMessages(prev => prev.map(m =>
                 m.id === streamMsgId ? { ...m, content: displayedContent } : m
               ));
               scrollToBottomIfNeeded();
-              setTimeout(tick, 22);
+              setTimeout(tick, alreadyInCode ? 0 : 22);
             } else {
               typewriterRunning = false;
             }
