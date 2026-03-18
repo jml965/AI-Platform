@@ -446,6 +446,17 @@ export async function addToMemory(
   }).where(eq(agentConfigsTable.agentKey, agentKey));
 }
 
+export async function callModelForConfig(
+  provider: string,
+  model: string,
+  systemPrompt: string,
+  messages: { role: "user" | "assistant"; content: string }[],
+  maxTokens: number,
+  timeoutSeconds: number
+): Promise<{ content: string; tokensUsed: number } | null> {
+  return callModelDirect(provider, model, systemPrompt, messages, maxTokens, timeoutSeconds);
+}
+
 export async function clearMemory(agentKey: string, type: "short" | "long" | "all") {
   const updates: any = { updatedAt: new Date() };
   if (type === "short" || type === "all") updates.shortTermMemory = [];
