@@ -214,54 +214,192 @@ function MessageContent({ content }: { content: string }) {
   );
 }
 
-const MODEL_OPTIONS = [
-  { provider: "anthropic", models: ["claude-sonnet-4-6", "claude-opus-4", "claude-haiku-3-5"] },
-  { provider: "google", models: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"] },
-  { provider: "openai", models: ["gpt-4o", "gpt-4o-mini", "o3-mini", "o1-mini"] },
+const INFRA_MODEL_OPTIONS = [
+  { provider: "openai", model: "gpt-5.4-pro", label: "GPT-5.4 Pro" },
+  { provider: "openai", model: "gpt-5.4", label: "GPT-5.4" },
+  { provider: "openai", model: "gpt-5.4-mini", label: "GPT-5.4 Mini" },
+  { provider: "openai", model: "gpt-5.4-nano", label: "GPT-5.4 Nano" },
+  { provider: "openai", model: "gpt-5.3-chat-latest", label: "GPT-5.3" },
+  { provider: "openai", model: "gpt-5.2-pro", label: "GPT-5.2 Pro" },
+  { provider: "openai", model: "gpt-5.2", label: "GPT-5.2" },
+  { provider: "openai", model: "gpt-5.1", label: "GPT-5.1" },
+  { provider: "openai", model: "gpt-5-pro", label: "GPT-5 Pro" },
+  { provider: "openai", model: "gpt-5", label: "GPT-5" },
+  { provider: "openai", model: "gpt-5-mini", label: "GPT-5 Mini" },
+  { provider: "openai", model: "gpt-5-nano", label: "GPT-5 Nano" },
+  { provider: "openai", model: "o3-pro", label: "OpenAI o3 Pro" },
+  { provider: "openai", model: "o3", label: "OpenAI o3" },
+  { provider: "openai", model: "o3-mini", label: "OpenAI o3 Mini" },
+  { provider: "openai", model: "o4-mini", label: "OpenAI o4-mini" },
+  { provider: "openai", model: "o1-pro", label: "OpenAI o1 Pro" },
+  { provider: "openai", model: "o1", label: "OpenAI o1" },
+  { provider: "openai", model: "gpt-4.1", label: "GPT-4.1" },
+  { provider: "openai", model: "gpt-4.1-mini", label: "GPT-4.1 Mini" },
+  { provider: "openai", model: "gpt-4.1-nano", label: "GPT-4.1 Nano" },
+  { provider: "openai", model: "gpt-4o", label: "GPT-4o" },
+  { provider: "openai", model: "gpt-4o-mini", label: "GPT-4o Mini" },
+  { provider: "anthropic", model: "claude-opus-4-6", label: "Claude Opus 4.6" },
+  { provider: "anthropic", model: "claude-opus-4-5-20251101", label: "Claude Opus 4.5" },
+  { provider: "anthropic", model: "claude-opus-4-1-20250805", label: "Claude Opus 4.1" },
+  { provider: "anthropic", model: "claude-opus-4-20250514", label: "Claude Opus 4" },
+  { provider: "anthropic", model: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
+  { provider: "anthropic", model: "claude-sonnet-4-5-20250929", label: "Claude Sonnet 4.5" },
+  { provider: "anthropic", model: "claude-sonnet-4-20250514", label: "Claude Sonnet 4" },
+  { provider: "anthropic", model: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
+  { provider: "anthropic", model: "claude-haiku-3-5-20241022", label: "Claude Haiku 3.5" },
+  { provider: "google", model: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+  { provider: "google", model: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+  { provider: "google", model: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
+  { provider: "google", model: "gemini-2.0-flash-lite", label: "Gemini 2.0 Flash Lite" },
 ];
 
-function ModelSlotEditor({ slot, label, onChange, lang }: { slot: ModelSlot | null; label: string; onChange: (s: ModelSlot | null) => void; lang: string }) {
-  if (!slot) return null;
+function getInfraModelLabel(provider: string, model: string) {
+  const found = INFRA_MODEL_OPTIONS.find(m => m.provider === provider && m.model === model);
+  return found?.label || `${provider}/${model}`;
+}
+
+function getCreativityLabel(value: number, isRTL: boolean): { label: string; color: string } {
+  if (value <= 0.3) return { label: isRTL ? "متزن" : "Balanced", color: "text-blue-400" };
+  if (value <= 0.6) return { label: isRTL ? "متوسط" : "Moderate", color: "text-cyan-400" };
+  if (value <= 1.0) return { label: isRTL ? "ذكي" : "Smart", color: "text-green-400" };
+  if (value <= 1.4) return { label: isRTL ? "مبدع" : "Creative", color: "text-yellow-400" };
+  return { label: isRTL ? "مبدع جداً" : "Very Creative", color: "text-orange-400" };
+}
+
+function formatTokens(val: number): string {
+  if (val >= 1000) return `${(val / 1000).toFixed(0)}K`;
+  return String(val);
+}
+
+function ModelSlotEditor({ slot, label, onChange, lang, showCustomInput }: { slot: ModelSlot | null; label: string; onChange: (s: ModelSlot) => void; lang: string; showCustomInput?: boolean }) {
+  const current = slot || { provider: "anthropic", model: "claude-sonnet-4-6", enabled: false, creativity: 0.7, timeoutSeconds: 240, maxTokens: 16000 };
+  const creativity = current.creativity ?? 0.7;
+  const timeoutSeconds = current.timeoutSeconds ?? 240;
+  const maxTokens = current.maxTokens ?? 16000;
+  const isRTL = lang === "ar";
+  const creativityInfo = getCreativityLabel(creativity, isRTL);
+  const [customModel, setCustomModel] = useState(false);
+
   return (
-    <div className="border border-[#1c2333] rounded-lg p-3 space-y-3">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-[#e1e4e8]">{label}</span>
-        <button onClick={() => onChange({ ...slot, enabled: !slot.enabled })} className="flex items-center gap-1">
-          {slot.enabled ? <ToggleRight className="w-5 h-5 text-cyan-400" /> : <ToggleLeft className="w-5 h-5 text-[#484f58]" />}
+    <div className="bg-[#0d1117] border border-white/10 rounded-lg p-3">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[12px] font-medium text-[#e1e4e8]">{label}</span>
+        <button
+          onClick={() => onChange({ ...current, enabled: !current.enabled })}
+          className={cn("text-[11px] px-2 py-0.5 rounded-full", current.enabled ? "bg-green-500/15 text-green-400" : "bg-white/5 text-[#8b949e]")}
+        >
+          {current.enabled ? (isRTL ? "مفعّل" : "Active") : (isRTL ? "معطّل" : "Off")}
         </button>
       </div>
-      {slot.enabled && (
-        <div className="grid grid-cols-2 gap-2">
+
+      <div className="flex items-center gap-2 mb-3">
+        <select
+          value={customModel ? "__custom__" : `${current.provider}::${current.model}`}
+          onChange={e => {
+            if (e.target.value === "__custom__") {
+              setCustomModel(true);
+            } else {
+              setCustomModel(false);
+              const [provider, model] = e.target.value.split("::");
+              onChange({ ...current, provider, model });
+            }
+          }}
+          className="flex-1 bg-[#161b22] border border-white/10 rounded-lg px-3 py-2 text-[12px] text-[#e2e8f0]"
+        >
+          {INFRA_MODEL_OPTIONS.map(m => (
+            <option key={`${m.provider}::${m.model}`} value={`${m.provider}::${m.model}`}>{m.label}</option>
+          ))}
+          <option value="__custom__">{isRTL ? "✏️ نموذج مخصص..." : "✏️ Custom model..."}</option>
+        </select>
+      </div>
+
+      {customModel && (
+        <div className="grid grid-cols-2 gap-2 mb-3">
           <div>
-            <label className="text-[10px] text-[#484f58]">{lang === "ar" ? "المزوّد" : "Provider"}</label>
-            <select value={slot.provider} onChange={e => {
-              const p = e.target.value;
-              const models = MODEL_OPTIONS.find(m => m.provider === p)?.models || [];
-              onChange({ ...slot, provider: p, model: models[0] || slot.model });
-            }} className="w-full bg-[#0d1117] border border-[#30363d] rounded px-2 py-1.5 text-xs text-[#e1e4e8]">
-              {MODEL_OPTIONS.map(o => <option key={o.provider} value={o.provider}>{o.provider}</option>)}
-            </select>
+            <label className="text-[10px] text-[#484f58] mb-1 block">{isRTL ? "المزوّد" : "Provider"}</label>
+            <input
+              value={current.provider}
+              onChange={e => onChange({ ...current, provider: e.target.value })}
+              placeholder="anthropic, openai, google..."
+              className="w-full bg-[#161b22] border border-white/10 rounded-lg px-3 py-1.5 text-[12px] text-[#e2e8f0]"
+            />
           </div>
           <div>
-            <label className="text-[10px] text-[#484f58]">{lang === "ar" ? "النموذج" : "Model"}</label>
-            <select value={slot.model} onChange={e => onChange({ ...slot, model: e.target.value })} className="w-full bg-[#0d1117] border border-[#30363d] rounded px-2 py-1.5 text-xs text-[#e1e4e8]">
-              {(MODEL_OPTIONS.find(m => m.provider === slot.provider)?.models || []).map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-[10px] text-[#484f58]">{lang === "ar" ? "الإبداعية" : "Creativity"}</label>
-            <input type="number" step="0.1" min="0" max="2" value={slot.creativity} onChange={e => onChange({ ...slot, creativity: parseFloat(e.target.value) || 0 })} className="w-full bg-[#0d1117] border border-[#30363d] rounded px-2 py-1.5 text-xs text-[#e1e4e8]" />
-          </div>
-          <div>
-            <label className="text-[10px] text-[#484f58]">{lang === "ar" ? "أقصى توكن" : "Max Tokens"}</label>
-            <input type="number" min="1000" max="200000" value={slot.maxTokens} onChange={e => onChange({ ...slot, maxTokens: parseInt(e.target.value) || 8000 })} className="w-full bg-[#0d1117] border border-[#30363d] rounded px-2 py-1.5 text-xs text-[#e1e4e8]" />
-          </div>
-          <div className="col-span-2">
-            <label className="text-[10px] text-[#484f58]">{lang === "ar" ? "المهلة (ثانية)" : "Timeout (sec)"}</label>
-            <input type="number" min="10" max="600" value={slot.timeoutSeconds} onChange={e => onChange({ ...slot, timeoutSeconds: parseInt(e.target.value) || 120 })} className="w-full bg-[#0d1117] border border-[#30363d] rounded px-2 py-1.5 text-xs text-[#e1e4e8]" />
+            <label className="text-[10px] text-[#484f58] mb-1 block">{isRTL ? "اسم النموذج" : "Model name"}</label>
+            <input
+              value={current.model}
+              onChange={e => onChange({ ...current, model: e.target.value })}
+              placeholder="claude-sonnet-4-6..."
+              className="w-full bg-[#161b22] border border-white/10 rounded-lg px-3 py-1.5 text-[12px] text-[#e2e8f0]"
+              dir="ltr"
+            />
           </div>
         </div>
       )}
+
+      <div className="space-y-2.5">
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-[10px] text-[#8b949e]">{isRTL ? "الإبداع" : "Creativity"}</label>
+            <span className={cn("text-[10px] font-medium", creativityInfo.color)}>{creativityInfo.label} ({creativity.toFixed(2)})</span>
+          </div>
+          <input
+            type="range"
+            min="0"
+            max="2"
+            step="0.05"
+            value={creativity}
+            onChange={e => onChange({ ...current, creativity: parseFloat(e.target.value) })}
+            className="w-full accent-[#7c3aed] h-1.5"
+          />
+          <div className="flex justify-between text-[9px] text-[#8b949e]/50 mt-0.5">
+            <span>{isRTL ? "متزن" : "Balanced"}</span>
+            <span>{isRTL ? "متوسط" : "Moderate"}</span>
+            <span>{isRTL ? "ذكي" : "Smart"}</span>
+            <span>{isRTL ? "مبدع" : "Creative"}</span>
+            <span>{isRTL ? "مبدع جداً" : "V.Creative"}</span>
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-[10px] text-[#8b949e]">{isRTL ? "التوكن" : "Tokens"}</label>
+            <span className="text-[10px] font-mono text-[#e2e8f0]">{formatTokens(maxTokens)}</span>
+          </div>
+          <input
+            type="range"
+            min="1000"
+            max="200000"
+            step="1000"
+            value={maxTokens}
+            onChange={e => onChange({ ...current, maxTokens: parseInt(e.target.value) })}
+            className="w-full accent-[#3b82f6] h-1.5"
+          />
+          <div className="flex justify-between text-[9px] text-[#8b949e]/50 mt-0.5">
+            <span>1K</span>
+            <span>50K</span>
+            <span>100K</span>
+            <span>150K</span>
+            <span>200K</span>
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-[10px] text-[#8b949e]">{isRTL ? "المهلة (ثانية)" : "Timeout (s)"}</label>
+            <span className="text-[10px] font-mono text-[#e2e8f0]">{timeoutSeconds}s</span>
+          </div>
+          <input
+            type="number"
+            min="10"
+            max="600"
+            step="10"
+            value={timeoutSeconds}
+            onChange={e => onChange({ ...current, timeoutSeconds: parseInt(e.target.value) || 240 })}
+            className="w-full bg-[#161b22] border border-white/10 rounded px-2 py-1 text-[11px] text-[#e2e8f0]"
+          />
+        </div>
+      </div>
     </div>
   );
 }
@@ -335,56 +473,175 @@ function AgentSettingsPanel({ config, onClose, onSave, lang }: { config: FullAge
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           {activeTab === "models" && (
-            <>
+            <div className="max-w-2xl space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] text-[#484f58]">{lang === "ar" ? "الاسم (EN)" : "Name (EN)"}</label>
-                  <input value={data.displayNameEn} onChange={e => setData({ ...data, displayNameEn: e.target.value })} className="w-full bg-[#161b22] border border-[#30363d] rounded px-3 py-2 text-sm text-[#e1e4e8]" />
+                  <label className="text-[10px] text-[#484f58] mb-1 block">{lang === "ar" ? "الاسم (EN)" : "Name (EN)"}</label>
+                  <input value={data.displayNameEn} onChange={e => setData({ ...data, displayNameEn: e.target.value })} className="w-full bg-[#161b22] border border-white/10 rounded-lg px-3 py-2 text-sm text-[#e1e4e8]" />
                 </div>
                 <div>
-                  <label className="text-[10px] text-[#484f58]">{lang === "ar" ? "الاسم (AR)" : "Name (AR)"}</label>
-                  <input value={data.displayNameAr} onChange={e => setData({ ...data, displayNameAr: e.target.value })} className="w-full bg-[#161b22] border border-[#30363d] rounded px-3 py-2 text-sm text-[#e1e4e8]" dir="rtl" />
+                  <label className="text-[10px] text-[#484f58] mb-1 block">{lang === "ar" ? "الاسم (AR)" : "Name (AR)"}</label>
+                  <input value={data.displayNameAr} onChange={e => setData({ ...data, displayNameAr: e.target.value })} className="w-full bg-[#161b22] border border-white/10 rounded-lg px-3 py-2 text-sm text-[#e1e4e8]" dir="rtl" />
                 </div>
               </div>
               <div>
-                <label className="text-[10px] text-[#484f58]">{lang === "ar" ? "الوصف" : "Description"}</label>
-                <textarea value={data.description || ""} onChange={e => setData({ ...data, description: e.target.value })} rows={2} className="w-full bg-[#161b22] border border-[#30363d] rounded px-3 py-2 text-sm text-[#e1e4e8]" />
+                <label className="text-[10px] text-[#484f58] mb-1 block">{lang === "ar" ? "الوصف" : "Description"}</label>
+                <textarea value={data.description || ""} onChange={e => setData({ ...data, description: e.target.value })} rows={2} className="w-full bg-[#161b22] border border-white/10 rounded-lg px-3 py-2 text-sm text-[#e1e4e8]" />
               </div>
-              <div className="flex items-center gap-3 p-3 border border-[#1c2333] rounded-lg">
-                <button onClick={() => setData({ ...data, governorEnabled: !data.governorEnabled })} className="flex items-center gap-2">
-                  {data.governorEnabled ? <ToggleRight className="w-5 h-5 text-cyan-400" /> : <ToggleLeft className="w-5 h-5 text-[#484f58]" />}
-                  <span className="text-xs text-[#e1e4e8]">{lang === "ar" ? "نظام الحاكم" : "Governor System"}</span>
-                </button>
-                {data.governorEnabled && (
-                  <button onClick={() => setData({ ...data, autoGovernor: !data.autoGovernor })} className="flex items-center gap-2 ms-auto">
-                    {data.autoGovernor ? <ToggleRight className="w-4 h-4 text-amber-400" /> : <ToggleLeft className="w-4 h-4 text-[#484f58]" />}
-                    <span className="text-[10px] text-[#8b949e]">{lang === "ar" ? "تلقائي" : "Auto"}</span>
-                  </button>
-                )}
-              </div>
-              <ModelSlotEditor slot={data.primaryModel} label={lang === "ar" ? "النموذج الأساسي" : "Primary Model"} onChange={s => s && setData({ ...data, primaryModel: s })} lang={lang} />
-              <ModelSlotEditor slot={data.secondaryModel || { provider: "google", model: "gemini-2.5-flash", enabled: false, creativity: 0.5, maxTokens: 32000, timeoutSeconds: 120 }} label={lang === "ar" ? "النموذج الثانوي" : "Secondary Model"} onChange={s => setData({ ...data, secondaryModel: s })} lang={lang} />
-              <ModelSlotEditor slot={data.tertiaryModel || { provider: "openai", model: "o3-mini", enabled: false, creativity: 0.5, maxTokens: 32000, timeoutSeconds: 180 }} label={lang === "ar" ? "النموذج الثالث" : "Tertiary Model"} onChange={s => setData({ ...data, tertiaryModel: s })} lang={lang} />
-              {data.governorEnabled && (
-                <div className="border border-yellow-500/20 rounded-lg p-3 space-y-3">
-                  <span className="text-xs font-medium text-yellow-400">{lang === "ar" ? "نموذج الحاكم" : "Governor Model"}</span>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-[10px] text-[#484f58]">{lang === "ar" ? "المزوّد" : "Provider"}</label>
-                      <select value={data.governorModel?.provider || "anthropic"} onChange={e => setData({ ...data, governorModel: { ...(data.governorModel || { model: "claude-sonnet-4-6", creativity: 0.3, timeoutSeconds: 300, maxTokens: 64000 }), provider: e.target.value } })} className="w-full bg-[#0d1117] border border-[#30363d] rounded px-2 py-1.5 text-xs text-[#e1e4e8]">
-                        {MODEL_OPTIONS.map(o => <option key={o.provider} value={o.provider}>{o.provider}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-[#484f58]">{lang === "ar" ? "النموذج" : "Model"}</label>
-                      <select value={data.governorModel?.model || "claude-sonnet-4-6"} onChange={e => setData({ ...data, governorModel: { ...(data.governorModel || { provider: "anthropic", creativity: 0.3, timeoutSeconds: 300, maxTokens: 64000 }), model: e.target.value } })} className="w-full bg-[#0d1117] border border-[#30363d] rounded px-2 py-1.5 text-xs text-[#e1e4e8]">
-                        {(MODEL_OPTIONS.find(m => m.provider === (data.governorModel?.provider || "anthropic"))?.models || []).map(m => <option key={m} value={m}>{m}</option>)}
-                      </select>
-                    </div>
+
+              <div className="bg-[#161b22] border border-white/7 rounded-xl p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-yellow-400" />
+                    <span className="font-medium text-sm text-[#e1e4e8]">{lang === "ar" ? "نظام الحاكم (Governor)" : "Governor System"}</span>
                   </div>
+                  <button
+                    onClick={() => {
+                      const updates: Partial<FullAgentConfig> = { governorEnabled: !data.governorEnabled };
+                      if (!data.governorEnabled) updates.autoGovernor = false;
+                      setData({ ...data, ...updates });
+                    }}
+                    className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] transition-colors", data.governorEnabled ? "bg-yellow-500/15 text-yellow-400 border border-yellow-500/30" : "bg-white/5 text-[#8b949e] border border-white/10")}
+                  >
+                    {data.governorEnabled ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
+                    {data.governorEnabled ? (lang === "ar" ? "دمج مفعّل" : "Merge Active") : (lang === "ar" ? "بدون دمج" : "No Merge")}
+                  </button>
                 </div>
-              )}
-            </>
+                <p className="text-[11px] text-[#8b949e] leading-relaxed mb-3">
+                  {lang === "ar"
+                    ? "عند تفعيل الحاكم: النماذج الثلاثة تفكّر بنفس المشكلة بشكل مستقل، ثم الحاكم يأخذ أفضل الأفكار من كل نموذج ويدمجها في حل نهائي متفوّق."
+                    : "When enabled: All 3 models think independently, then the Governor extracts the best ideas and merges them into a superior final solution."
+                  }
+                </p>
+
+                <div className="bg-[#0d1117] border border-white/7 rounded-lg p-3 mb-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Activity className="w-3.5 h-3.5 text-emerald-400" />
+                      <span className="text-[12px] font-medium text-emerald-400">{lang === "ar" ? "الحاكم التلقائي (Auto-Governor)" : "Auto-Governor"}</span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        const updates: Partial<FullAgentConfig> = { autoGovernor: !data.autoGovernor };
+                        if (!data.autoGovernor) updates.governorEnabled = false;
+                        setData({ ...data, ...updates });
+                      }}
+                      className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] transition-colors", data.autoGovernor ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30" : "bg-white/5 text-[#8b949e] border border-white/10")}
+                    >
+                      {data.autoGovernor ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
+                      {data.autoGovernor ? (lang === "ar" ? "مفعّل" : "Active") : (lang === "ar" ? "معطّل" : "Off")}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-[#8b949e] mt-2 leading-relaxed">
+                    {lang === "ar"
+                      ? "يقدّر تعقيد الرسالة تلقائياً (0-100) ويختار الوضع المناسب: بسيط → عادي → متقدم (3 نماذج + حاكم)."
+                      : "Auto-scores complexity (0-100) and picks the right mode: Simple → Standard → Advanced (3 models + judge)."
+                    }
+                  </p>
+                  {data.autoGovernor && (
+                    <div className="mt-2 grid grid-cols-3 gap-1.5">
+                      <div className="bg-[#161b22] rounded px-2 py-1.5 text-center">
+                        <div className="text-[10px] text-emerald-400 font-medium">{lang === "ar" ? "بسيط" : "Simple"}</div>
+                        <div className="text-[9px] text-[#8b949e]">{lang === "ar" ? "0-20 نقطة" : "0-20 pts"}</div>
+                      </div>
+                      <div className="bg-[#161b22] rounded px-2 py-1.5 text-center">
+                        <div className="text-[10px] text-blue-400 font-medium">{lang === "ar" ? "عادي" : "Standard"}</div>
+                        <div className="text-[9px] text-[#8b949e]">{lang === "ar" ? "21-55 نقطة" : "21-55 pts"}</div>
+                      </div>
+                      <div className="bg-[#161b22] rounded px-2 py-1.5 text-center">
+                        <div className="text-[10px] text-orange-400 font-medium">{lang === "ar" ? "متقدم" : "Advanced"}</div>
+                        <div className="text-[9px] text-[#8b949e]">{lang === "ar" ? "56-100 نقطة" : "56-100 pts"}</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {data.governorEnabled && (() => {
+                  const gov = data.governorModel || { provider: "anthropic", model: "claude-sonnet-4-6", creativity: 0.5, timeoutSeconds: 300, maxTokens: 16000 };
+                  const govCreativityInfo = getCreativityLabel(gov.creativity ?? 0.5, lang === "ar");
+                  return (
+                    <div className="bg-[#0d1117] border border-yellow-500/20 rounded-lg p-3 mt-2">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Activity className="w-3.5 h-3.5 text-yellow-400" />
+                        <span className="text-[12px] font-medium text-yellow-400">{lang === "ar" ? "نموذج الحاكم (من يدمج النتائج)" : "Governor Model (who merges results)"}</span>
+                      </div>
+                      <select
+                        value={gov.provider && gov.model ? `${gov.provider}::${gov.model}` : ""}
+                        onChange={e => {
+                          if (e.target.value === "") {
+                            setData({ ...data, governorModel: null });
+                          } else {
+                            const [provider, model] = e.target.value.split("::");
+                            setData({ ...data, governorModel: { provider, model, creativity: gov.creativity ?? 0.5, timeoutSeconds: gov.timeoutSeconds ?? 300, maxTokens: gov.maxTokens ?? 16000 } });
+                          }
+                        }}
+                        className="w-full bg-[#161b22] border border-yellow-500/20 rounded-lg px-3 py-2 text-[12px] text-[#e2e8f0] mb-3"
+                      >
+                        <option value="">{lang === "ar" ? "تلقائي (يستخدم النموذج الأساسي)" : "Auto (uses primary model)"}</option>
+                        {INFRA_MODEL_OPTIONS.map(m => (
+                          <option key={`${m.provider}::${m.model}`} value={`${m.provider}::${m.model}`}>{m.label}</option>
+                        ))}
+                      </select>
+
+                      {gov.provider && gov.model && (
+                        <div className="space-y-2.5">
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-[10px] text-yellow-400/70">{lang === "ar" ? "إبداع الحاكم" : "Governor Creativity"}</label>
+                              <span className={cn("text-[10px] font-medium", govCreativityInfo.color)}>{govCreativityInfo.label} ({(gov.creativity ?? 0.5).toFixed(2)})</span>
+                            </div>
+                            <input type="range" min="0" max="2" step="0.05" value={gov.creativity ?? 0.5} onChange={e => setData({ ...data, governorModel: { ...gov, creativity: parseFloat(e.target.value) } })} className="w-full accent-yellow-400 h-1.5" />
+                            <div className="flex justify-between text-[9px] text-yellow-400/30 mt-0.5">
+                              <span>{lang === "ar" ? "متزن" : "Balanced"}</span>
+                              <span>{lang === "ar" ? "متوسط" : "Moderate"}</span>
+                              <span>{lang === "ar" ? "ذكي" : "Smart"}</span>
+                              <span>{lang === "ar" ? "مبدع" : "Creative"}</span>
+                              <span>{lang === "ar" ? "مبدع جداً" : "V.Creative"}</span>
+                            </div>
+                          </div>
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-[10px] text-yellow-400/70">{lang === "ar" ? "توكن الحاكم" : "Governor Tokens"}</label>
+                              <span className="text-[10px] font-mono text-yellow-400">{formatTokens(gov.maxTokens ?? 16000)}</span>
+                            </div>
+                            <input type="range" min="1000" max="200000" step="1000" value={gov.maxTokens ?? 16000} onChange={e => setData({ ...data, governorModel: { ...gov, maxTokens: parseInt(e.target.value) } })} className="w-full accent-yellow-500 h-1.5" />
+                            <div className="flex justify-between text-[9px] text-yellow-400/30 mt-0.5">
+                              <span>1K</span>
+                              <span>50K</span>
+                              <span>100K</span>
+                              <span>150K</span>
+                              <span>200K</span>
+                            </div>
+                          </div>
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-[10px] text-yellow-400/70">{lang === "ar" ? "مهلة الحاكم (ثانية)" : "Governor Timeout (s)"}</label>
+                              <span className="text-[10px] font-mono text-yellow-400">{gov.timeoutSeconds ?? 300}s</span>
+                            </div>
+                            <input type="number" min="30" max="600" step="10" value={gov.timeoutSeconds ?? 300} onChange={e => setData({ ...data, governorModel: { ...gov, timeoutSeconds: parseInt(e.target.value) || 300 } })} className="w-full bg-[#161b22] border border-yellow-500/20 rounded px-2 py-1 text-[11px] text-yellow-400" />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <div className="grid gap-3">
+                <ModelSlotEditor slot={data.primaryModel} label={lang === "ar" ? "النموذج الأساسي" : "Primary Model"} onChange={s => setData({ ...data, primaryModel: s })} lang={lang} />
+                <ModelSlotEditor slot={data.secondaryModel} label={lang === "ar" ? "النموذج الثانوي" : "Secondary Model"} onChange={s => setData({ ...data, secondaryModel: s })} lang={lang} />
+                <ModelSlotEditor slot={data.tertiaryModel} label={lang === "ar" ? "النموذج الثالث" : "Tertiary Model"} onChange={s => setData({ ...data, tertiaryModel: s })} lang={lang} />
+              </div>
+
+              <div className="bg-[#161b22] border border-white/7 rounded-xl p-4">
+                <p className="text-[10px] text-[#8b949e]/60">
+                  {lang === "ar"
+                    ? "كل نموذج يمكن ضبط إبداعه وتوكنه ومهلته بشكل مستقل — غيّر القيم مباشرة في كل خانة نموذج. يمكنك أيضاً كتابة اسم نموذج مخصص عبر خيار \"نموذج مخصص\"."
+                    : "Each model has its own creativity, tokens, and timeout. You can also type any custom model name via the \"Custom model\" option."
+                  }
+                </p>
+              </div>
+            </div>
           )}
 
           {activeTab === "prompt" && (
