@@ -1,0 +1,80 @@
+  MrCode AI - Google Cloud Setup Script
+============================================
+
+Updated property [core/project].
+[1/5] Enabling required APIs...
+Operation "operations/acat.p2-983201845815-0d68eca1-6877-495a-84f4-c26597ee4be0" finished successfully.
+[2/5] Creating Artifact Registry...
+  -> Already exists, skipping.
+[3/5] Creating Service Account...
+  -> Already exists, skipping.
+[4/5] Assigning permissions...
+jamal@cloudshell:~ (oktamam-ai-platform)$ gcloud projects add-iam-policy-binding oktamam-ai-platform --member="serviceAccount:github-deploy@oktamam-ai-platform.iam.gserviceaccount.com" --role="roles/run.admin" --quiet
+ERROR: (gcloud.projects.add-iam-policy-binding) Adding a binding without specifying a condition to a policy containing conditions is prohibited in non-interactive mode. Run the command again with `--condition=None`
+jamal@cloudshell:~ (oktamam-ai-platform)$ gcloud projects add-iam-policy-binding oktamam-ai-platform --member="serviceAccount:github-deploy@oktamam-ai-platform.iam.gserviceaccount.com" --role="roles/run.admin" --condition=None
+Updated IAM policy for project [oktamam-ai-platform].
+bindings:
+- members:
+  - serviceAccount:service-983201845815@gcp-sa-artifactregistry.iam.gserviceaccount.com
+  role: roles/artifactregistry.serviceAgent
+- members:
+  - serviceAccount:983201845815-compute@developer.gserviceaccount.com
+  role: roles/artifactregistry.writer
+- members:
+  - serviceAccount:983201845815@cloudbuild.gserviceaccount.com
+  role: roles/cloudbuild.builds.builder
+- members:
+  - serviceAccount:service-983201845815@gcp-sa-cloudbuild.iam.gserviceaccount.com
+  role: roles/cloudbuild.serviceAgent
+- members:
+  - serviceAccount:983201845815@cloudservices.gserviceaccount.com
+  role: roles/compute.instanceGroupManagerServiceAgent
+- members:
+  - serviceAccount:service-983201845815@compute-system.iam.gserviceaccount.com
+  role: roles/compute.serviceAgent
+- members:
+  - serviceAccount:service-983201845815@container-analysis.iam.gserviceaccount.com
+  role: roles/containeranalysis.ServiceAgent
+- members:
+  - serviceAccount:service-983201845815@containerregistry.iam.gserviceaccount.com
+  role: roles/containerregistry.ServiceAgent
+- members:
+  - serviceAccount:983201845815-compute@developer.gserviceaccount.com
+  role: roles/developerconnect.readTokenAccessor
+- members:
+  - serviceAccount:service-983201845815@gcp-sa-devconnect.iam.gserviceaccount.com
+  role: roles/developerconnect.serviceAgent
+- members:
+  - serviceAccount:service-983201845815@gcp-sa-cloudbuild.iam.gserviceaccount.com
+  role: roles/developerconnect.tokenAccessor
+- members:
+  - serviceAccount:983201845815-compute@developer.gserviceaccount.com
+  role: roles/editor
+- members:
+  - serviceAccount:983201845815-compute@developer.gserviceaccount.com
+  role: roles/iam.serviceAccountUser
+- members:
+  - serviceAccount:983201845815-compute@developer.gserviceaccount.com
+  role: roles/logging.logWriter
+- members:
+  - user:jamal@oktamam.com
+  role: roles/owner
+- members:
+  - serviceAccount:service-983201845815@gcp-sa-pubsub.iam.gserviceaccount.com
+  role: roles/pubsub.serviceAgent
+- members:
+  - serviceAccount:983201845815-compute@developer.gserviceaccount.com
+  - serviceAccount:github-deploy@oktamam-ai-platform.iam.gserviceaccount.com
+  role: roles/run.admin
+- members:
+  - serviceAccount:service-983201845815@serverless-robot-prod.iam.gserviceaccount.com
+  role: roles/run.serviceAgent
+- condition:
+    expression: request.time < timestamp("2026-03-11T03:46:35.586Z")
+    title: developer-connect-connection-setup
+  members:
+  - serviceAccount:service-983201845815@gcp-sa-devconnect.iam.gserviceaccount.com
+  role: roles/secretmanager.admin
+etag: BwZNU2aKkEY=
+version: 3
+jamal@cloudshell:~ (oktamam-ai-platform)$ 
