@@ -8,10 +8,10 @@ COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY lib/ ./lib/
 COPY artifacts/api-server/ ./artifacts/api-server/
 COPY artifacts/website-builder/ ./artifacts/website-builder/
-COPY scripts/ ./scripts/ 2>/dev/null || true
+COPY scripts/ ./scripts/
 
 FROM base AS deps
-RUN pnpm install --frozen-lockfile --ignore-scripts
+RUN pnpm install --frozen-lockfile --ignore-scripts || pnpm install --no-frozen-lockfile --ignore-scripts
 
 FROM deps AS build-frontend
 WORKDIR /app
@@ -31,9 +31,9 @@ COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY lib/ ./lib/
 COPY artifacts/api-server/package.json ./artifacts/api-server/package.json
 COPY artifacts/website-builder/package.json ./artifacts/website-builder/package.json
-COPY scripts/package.json ./scripts/package.json 2>/dev/null || true
+COPY scripts/package.json ./scripts/package.json
 
-RUN pnpm install --frozen-lockfile --prod --ignore-scripts 2>/dev/null || pnpm install --no-frozen-lockfile --prod --ignore-scripts
+RUN pnpm install --frozen-lockfile --prod --ignore-scripts || pnpm install --no-frozen-lockfile --prod --ignore-scripts
 
 COPY --from=build-backend /app/artifacts/api-server/dist ./artifacts/api-server/dist
 COPY --from=build-frontend /app/artifacts/website-builder/dist ./artifacts/website-builder/dist
