@@ -18,7 +18,9 @@
     "@babel/preset-react": "^7.28.5",
     "@babel/preset-typescript": "^7.28.5",
     "@replit/connectors-sdk": "^0.2.0",
+    "libsodium-wrappers": "^0.8.2",
     "stripe": "^20.4.1",
-    "stripe-replit-sync": "^1.0.0"
+    "stripe-replit-sync": "^1.0.0",
+    "tweetnacl": "^1.0.3"
   }
 }
