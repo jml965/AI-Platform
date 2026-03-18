@@ -113,6 +113,7 @@ export default function StrategicAgent() {
   const [lineSpacing, setLineSpacing] = useState(1.75);
   const [fontWeight, setFontWeight] = useState(400);
   const [showTextSettings, setShowTextSettings] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [showProjectDropdown, setShowProjectDropdown] = useState(false);
@@ -247,10 +248,21 @@ export default function StrategicAgent() {
     setAttachments(prev => prev.filter(a => a.id !== id));
   };
 
+  const handleStop = () => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    setLoading(false);
+  };
+
   const handleSend = async () => {
     if (!prompt.trim() && attachments.length === 0) return;
-    if (loading) return;
     if (agentMode && !selectedAgentKey) return;
+
+    if (loading) {
+      handleStop();
+    }
 
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
@@ -267,12 +279,16 @@ export default function StrategicAgent() {
     setAttachments([]);
     setLoading(true);
 
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
       if (agentMode && selectedAgentKey) {
         const res = await fetch("/api/strategic/agent-chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
+          signal: controller.signal,
           body: JSON.stringify({
             targetAgentKey: selectedAgentKey,
             message: currentPrompt,
@@ -310,6 +326,7 @@ export default function StrategicAgent() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
+          signal: controller.signal,
           body: JSON.stringify({
             projectId: selectedProjectId,
             message: currentPrompt || `Analyze the attached ${currentAttachments.length > 1 ? "files" : "file"}: ${currentAttachments.map(a => a.name).join(", ")}`,
@@ -335,6 +352,7 @@ export default function StrategicAgent() {
         setMessages(prev => [...prev, assistantMsg]);
       }
     } catch (err: any) {
+      if (err.name === "AbortError") return;
       setMessages(prev => [
         ...prev,
         {
@@ -345,6 +363,7 @@ export default function StrategicAgent() {
         },
       ]);
     } finally {
+      abortRef.current = null;
       setLoading(false);
       setTimeout(() => textareaRef.current?.focus(), 50);
     }
@@ -796,12 +815,12 @@ export default function StrategicAgent() {
                 value={prompt}
                 onChange={e => setPrompt(e.target.value)}
                 placeholder={agentMode ? (selectedAgent ? `${lang === "ar" ? "اكتب أوامر الإعداد لـ" : "Write config commands for"} ${lang === "ar" ? selectedAgent.displayNameAr : selectedAgent.displayNameEn}...` : t.strategic_select_agent) : t.strategic_placeholder}
-                disabled={loading || (agentMode && !selectedAgentKey)}
+                disabled={agentMode && !selectedAgentKey}
                 rows={2}
                 className={cn(
                   "w-full bg-[#161b22] border border-[#30363d] rounded-xl p-3 pe-12 resize-none focus:outline-none transition-all text-sm text-[#e1e4e8] placeholder-[#484f58]",
                   agentMode ? "focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/30" : "focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/30",
-                  (loading || (agentMode && !selectedAgentKey)) && "opacity-50"
+                  (agentMode && !selectedAgentKey) && "opacity-50"
                 )}
                 onKeyDown={e => {
                   if (e.key === "Enter" && !e.shiftKey) {
@@ -810,16 +829,26 @@ export default function StrategicAgent() {
                   }
                 }}
               />
-              <button
-                onClick={handleSend}
-                disabled={loading || (!prompt.trim() && attachments.length === 0) || (agentMode && !selectedAgentKey)}
-                className={cn(
-                  "absolute end-2 bottom-2 p-2 text-black rounded-lg disabled:opacity-40 transition-colors",
-                  agentMode ? "bg-purple-500 hover:bg-purple-400 disabled:hover:bg-purple-500" : "bg-amber-500 hover:bg-amber-400 disabled:hover:bg-amber-500"
-                )}
-              >
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className={cn("w-4 h-4", lang === "ar" && "rotate-180")} />}
-              </button>
+              {loading ? (
+                <button
+                  onClick={handleStop}
+                  className="absolute end-2 bottom-2 p-2 bg-red-500 hover:bg-red-400 text-white rounded-lg transition-colors"
+                  title={lang === "ar" ? "إيقاف" : "Stop"}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              ) : (
+                <button
+                  onClick={handleSend}
+                  disabled={(!prompt.trim() && attachments.length === 0) || (agentMode && !selectedAgentKey)}
+                  className={cn(
+                    "absolute end-2 bottom-2 p-2 text-black rounded-lg disabled:opacity-40 transition-colors",
+                    agentMode ? "bg-purple-500 hover:bg-purple-400 disabled:hover:bg-purple-500" : "bg-amber-500 hover:bg-amber-400 disabled:hover:bg-amber-500"
+                  )}
+                >
+                  <Send className={cn("w-4 h-4", lang === "ar" && "rotate-180")} />
+                </button>
+              )}
             </div>
           </div>
           <div className="flex items-center justify-between mt-2">
