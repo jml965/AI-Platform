@@ -205,6 +205,7 @@ export default function StrategicAgent() {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const userScrolledUpRef = useRef(false);
+  const programmaticScrollRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -222,7 +223,12 @@ export default function StrategicAgent() {
 
   useEffect(() => {
     if (!userScrolledUpRef.current) {
-      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      const el = chatContainerRef.current;
+      if (el) {
+        programmaticScrollRef.current = true;
+        el.scrollTop = el.scrollHeight;
+        setTimeout(() => { programmaticScrollRef.current = false; }, 50);
+      }
     }
   }, [messages]);
 
@@ -1064,6 +1070,7 @@ export default function StrategicAgent() {
           dragOver && "ring-2 ring-amber-500/50 ring-inset bg-amber-500/5"
         )}
         onScroll={() => {
+          if (programmaticScrollRef.current) return;
           const el = chatContainerRef.current;
           if (!el) return;
           const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
