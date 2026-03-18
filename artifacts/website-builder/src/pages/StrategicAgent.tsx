@@ -124,6 +124,10 @@ export default function StrategicAgent() {
   const [showAgentDropdown, setShowAgentDropdown] = useState(false);
   const [agentMode, setAgentMode] = useState(false);
   const [resettingAgent, setResettingAgent] = useState(false);
+  const [strategicInfo, setStrategicInfo] = useState<any>(null);
+  const [showStrategicSettings, setShowStrategicSettings] = useState(false);
+  const [editingField, setEditingField] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -169,6 +173,32 @@ export default function StrategicAgent() {
   useEffect(() => {
     fetchAgents();
   }, [fetchAgents]);
+
+  const fetchStrategicInfo = useCallback(async () => {
+    try {
+      const res = await fetch("/api/strategic/agents", { credentials: "include" });
+      const data = await res.json();
+      if (data.agents) {
+        const s = data.agents.find((a: any) => a.agentKey === "strategic");
+        if (s) setStrategicInfo(s);
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => { fetchStrategicInfo(); }, [fetchStrategicInfo]);
+
+  const saveStrategicField = async (field: string, value: any) => {
+    try {
+      await fetch("/api/strategic/configure-agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ agentKey: "strategic", updates: { [field]: value } }),
+      });
+      await fetchStrategicInfo();
+    } catch {}
+    setEditingField(null);
+  };
 
   const selectedAgent = agents.find(a => a.agentKey === selectedAgentKey);
 
@@ -407,13 +437,77 @@ export default function StrategicAgent() {
         <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0", agentMode ? "bg-purple-500/20" : "bg-amber-500/20")}>
           {agentMode ? <Settings className="w-4 h-4 text-purple-400" /> : <LightbulbIcon className="w-4 h-4 text-amber-400" />}
         </div>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-sm font-semibold text-[#e1e4e8] truncate">
-            {agentMode ? t.strategic_agent_mode : t.strategic_page_title}
-          </h1>
+        <div className="flex-1 min-w-0 relative">
+          <div className="flex items-center gap-2">
+            <h1 className="text-sm font-semibold text-[#e1e4e8] truncate">
+              {agentMode ? t.strategic_agent_mode : t.strategic_page_title}
+            </h1>
+            {!agentMode && (
+              <button
+                onClick={() => setShowStrategicSettings(p => !p)}
+                className={cn("p-0.5 rounded transition-colors", showStrategicSettings ? "text-amber-400" : "text-[#484f58] hover:text-[#8b949e]")}
+                title={lang === "ar" ? "إعدادات الوكيل" : "Agent settings"}
+              >
+                <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", showStrategicSettings && "rotate-180")} />
+              </button>
+            )}
+          </div>
           <p className="text-[10px] text-[#8b949e] truncate">
-            {agentMode ? t.strategic_agent_config_subtitle : t.strategic_page_subtitle}
+            {agentMode ? t.strategic_agent_config_subtitle : (strategicInfo ? `${((strategicInfo.primaryModel as any)?.model || "claude-sonnet-4-20250514")} · ${lang === "ar" ? "توكنات" : "tokens"}: ${strategicInfo.tokenLimit?.toLocaleString() || "16000"}` : t.strategic_page_subtitle)}
           </p>
+          {showStrategicSettings && !agentMode && strategicInfo && (
+            <div className="absolute top-full start-0 mt-1 w-80 bg-[#161b22] border border-[#30363d] rounded-lg shadow-xl z-50 p-3 space-y-2.5">
+              {[
+                { key: "tokenLimit", label: lang === "ar" ? "حد التوكنات" : "Token Limit", value: strategicInfo.tokenLimit, type: "number" },
+                { key: "creativity", label: lang === "ar" ? "الإبداعية" : "Creativity", value: strategicInfo.creativity, type: "number" },
+                { key: "batchSize", label: lang === "ar" ? "حجم الدُفعة" : "Batch Size", value: strategicInfo.batchSize, type: "number" },
+              ].map(item => (
+                <div key={item.key} className="flex items-center justify-between">
+                  <span className="text-[11px] text-[#8b949e]">{item.label}</span>
+                  {editingField === item.key ? (
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        value={editValue}
+                        onChange={e => setEditValue(e.target.value)}
+                        className="w-20 px-1.5 py-0.5 bg-[#0d1117] border border-amber-500/30 rounded text-[11px] text-[#e1e4e8] focus:outline-none"
+                        autoFocus
+                        onKeyDown={e => { if (e.key === "Enter") saveStrategicField(item.key, Number(editValue)); if (e.key === "Escape") setEditingField(null); }}
+                      />
+                      <button onClick={() => saveStrategicField(item.key, Number(editValue))} className="text-emerald-400 hover:text-emerald-300"><Check className="w-3 h-3" /></button>
+                      <button onClick={() => setEditingField(null)} className="text-[#8b949e] hover:text-red-400"><X className="w-3 h-3" /></button>
+                    </div>
+                  ) : (
+                    <button onClick={() => { setEditingField(item.key); setEditValue(String(item.value ?? "")); }} className="text-[11px] text-[#c9d1d9] hover:text-amber-400 transition-colors">
+                      {item.value?.toLocaleString() ?? "—"}
+                    </button>
+                  )}
+                </div>
+              ))}
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-[#8b949e]">{lang === "ar" ? "النموذج الأساسي" : "Primary Model"}</span>
+                <span className="text-[11px] text-[#c9d1d9]">{(strategicInfo.primaryModel as any)?.model || "claude-sonnet-4-20250514"}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-[#8b949e]">{lang === "ar" ? "مفعّل" : "Enabled"}</span>
+                <span className={cn("text-[11px]", strategicInfo.enabled ? "text-emerald-400" : "text-red-400")}>{strategicInfo.enabled ? (lang === "ar" ? "نعم" : "Yes") : (lang === "ar" ? "لا" : "No")}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-[#8b949e]">{lang === "ar" ? "الحاكم" : "Governor"}</span>
+                <span className={cn("text-[11px]", strategicInfo.governorEnabled ? "text-emerald-400" : "text-[#484f58]")}>{strategicInfo.governorEnabled ? (lang === "ar" ? "مفعّل" : "On") : (lang === "ar" ? "معطّل" : "Off")}</span>
+              </div>
+              {strategicInfo.permissions && strategicInfo.permissions.length > 0 && (
+                <div>
+                  <span className="text-[11px] text-[#8b949e]">{lang === "ar" ? "الصلاحيات" : "Permissions"}</span>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {strategicInfo.permissions.map((p: string, i: number) => (
+                      <span key={i} className="px-1.5 py-0.5 bg-amber-500/10 rounded text-[9px] text-amber-300 border border-amber-500/20">{p}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <button
