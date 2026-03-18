@@ -578,9 +578,6 @@ export default function StrategicAgent() {
 
         controller.signal.addEventListener("abort", () => {
           typewriterStopped = true;
-          setMessages(prev => prev.map(m =>
-            m.id === streamMsgId ? { ...m, content: streamedContent || displayedContent } : m
-          ));
         });
 
         setMessages(prev => [...prev, {
