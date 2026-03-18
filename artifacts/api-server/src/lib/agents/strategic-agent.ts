@@ -154,12 +154,19 @@ function getEnabledSlots(config: AgentConfig): ModelSlot[] {
   return slots;
 }
 
+interface FileAttachment {
+  name: string;
+  type: string;
+  content: string;
+}
+
 export async function runStrategicAgent(
   projectId: string,
   userMessage: string,
   history: ConversationMessage[],
   shortTermMemory: any[],
-  longTermMemory: any[]
+  longTermMemory: any[],
+  attachments?: FileAttachment[]
 ): Promise<StrategicResult> {
   const [config] = await db.select().from(agentConfigsTable)
     .where(eq(agentConfigsTable.agentKey, "strategic"))
@@ -194,12 +201,47 @@ export async function runStrategicAgent(
     memoryBlock += `\n\nLong-term memory:\n${JSON.stringify(longTermMemory.slice(-20))}`;
   }
 
+  let attachmentBlock = "";
+  const imageAttachments: { name: string; data: string; mediaType: string }[] = [];
+  if (attachments && attachments.length > 0) {
+    for (const att of attachments) {
+      const isImage = att.type.startsWith("image/");
+      if (isImage) {
+        imageAttachments.push({
+          name: att.name,
+          data: att.content.replace(/^data:[^;]+;base64,/, ""),
+          mediaType: att.type,
+        });
+      } else {
+        const decoded = att.content.startsWith("data:")
+          ? Buffer.from(att.content.split(",")[1] || "", "base64").toString("utf-8")
+          : att.content;
+        attachmentBlock += `\n\n--- Attached file: ${att.name} (${att.type}) ---\n${decoded.slice(0, 50000)}`;
+      }
+    }
+  }
+
   const fullSystemPrompt = config.systemPrompt || STRATEGIC_SYSTEM_PROMPT;
-  const enrichedPrompt = fullSystemPrompt + contextBlock + memoryBlock;
+  const enrichedPrompt = fullSystemPrompt + contextBlock + memoryBlock + attachmentBlock;
+
+  let userContent: any = userMessage;
+  if (imageAttachments.length > 0) {
+    const parts: any[] = [];
+    for (const img of imageAttachments) {
+      parts.push({
+        type: "image",
+        source: { type: "base64", media_type: img.mediaType, data: img.data },
+      });
+    }
+    parts.push({ type: "text", text: userMessage + (attachmentBlock ? `\n\nAdditional attached files:${attachmentBlock}` : "") });
+    userContent = parts;
+  } else if (attachmentBlock) {
+    userContent = userMessage + `\n\nAttached files:${attachmentBlock}`;
+  }
 
   const conversationMessages: ConversationMessage[] = [
     ...history.slice(-20),
-    { role: "user", content: userMessage },
+    { role: "user", content: userContent },
   ];
 
   const slots = getEnabledSlots(config);

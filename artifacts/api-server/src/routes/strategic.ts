@@ -8,15 +8,22 @@ import { startSurgicalFix, checkBuildLimits } from "../lib/agents/execution-engi
 
 const router: IRouter = Router();
 
+export interface FileAttachment {
+  name: string;
+  type: string;
+  content: string;
+}
+
 const strategicSessions = new Map<string, { role: "user" | "assistant"; content: string }[]>();
 
 router.post("/strategic/chat", async (req, res) => {
   try {
     const userId = getUserId(req);
-    const { projectId, message, sessionId } = req.body as {
+    const { projectId, message, sessionId, attachments } = req.body as {
       projectId: string;
       message: string;
       sessionId?: string;
+      attachments?: FileAttachment[];
     };
 
     if (!message?.trim()) {
@@ -53,7 +60,8 @@ router.post("/strategic/chat", async (req, res) => {
       message,
       history,
       config.shortTermMemory || [],
-      config.longTermMemory || []
+      config.longTermMemory || [],
+      attachments
     );
 
     history.push({ role: "user", content: message });

@@ -1,0 +1,570 @@
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import { Link } from "wouter";
+import { useI18n } from "@/lib/i18n";
+import { LanguageToggle } from "@/components/LanguageToggle";
+import {
+  ArrowLeft,
+  Send,
+  Loader2,
+  Paperclip,
+  Image as ImageIcon,
+  X,
+  Download,
+  Maximize2,
+  Trash2,
+  RefreshCw,
+  ChevronDown,
+  FileCode,
+  File,
+  Check,
+  User,
+  Eye,
+} from "lucide-react";
+import { useListProjects } from "@workspace/api-client-react";
+
+interface Attachment {
+  id: string;
+  name: string;
+  type: string;
+  content: string;
+  preview?: string;
+}
+
+interface ThinkingInfo {
+  model: string;
+  summary: string;
+  durationMs: number;
+}
+
+interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: Date;
+  attachments?: Attachment[];
+  thinking?: ThinkingInfo[];
+  tokensUsed?: number;
+  cost?: number;
+  fixApplied?: boolean;
+  fixedFiles?: string[];
+  images?: string[];
+}
+
+function cn(...classes: (string | false | undefined | null)[]) {
+  return classes.filter(Boolean).join(" ");
+}
+
+function LightbulbIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.4V20a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-2.6c2.9-1.1 5-4 5-7.4a8 8 0 0 0-8-8z"/>
+      <line x1="9" y1="22" x2="15" y2="22"/>
+    </svg>
+  );
+}
+
+function ImagePreviewModal({ src, onClose }: { src: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="relative max-w-[90vw] max-h-[90vh]" onClick={e => e.stopPropagation()}>
+        <button onClick={onClose} className="absolute -top-10 end-0 text-white hover:text-gray-300 p-1">
+          <X className="w-6 h-6" />
+        </button>
+        <img src={src} alt="" className="max-w-full max-h-[85vh] rounded-lg" />
+        <a href={src} download className="absolute bottom-3 end-3 bg-white/20 backdrop-blur-sm text-white px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 hover:bg-white/30 transition-colors">
+          <Download className="w-4 h-4" />
+        </a>
+      </div>
+    </div>
+  );
+}
+
+export default function StrategicAgent() {
+  const { t, lang } = useI18n();
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [prompt, setPrompt] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  const [showProjectDropdown, setShowProjectDropdown] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const { data: projectsData } = useListProjects();
+  const projects: any[] = Array.isArray(projectsData) ? projectsData : (projectsData as any)?.projects ? (projectsData as any).projects : [];
+
+  useEffect(() => {
+    if (projects.length > 0 && !selectedProjectId) {
+      setSelectedProjectId(projects[0].id);
+    }
+  }, [projects, selectedProjectId]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowProjectDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const readFileAsDataUrl = (file: globalThis.File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleFiles = useCallback(async (files: FileList | globalThis.File[]) => {
+    const fileArray = Array.from(files);
+    const maxSize = 10 * 1024 * 1024;
+
+    for (const file of fileArray) {
+      if (file.size > maxSize) continue;
+
+      const dataUrl = await readFileAsDataUrl(file);
+      const isImage = file.type.startsWith("image/");
+
+      const attachment: Attachment = {
+        id: crypto.randomUUID(),
+        name: file.name,
+        type: file.type || "application/octet-stream",
+        content: dataUrl,
+        preview: isImage ? dataUrl : undefined,
+      };
+
+      setAttachments(prev => [...prev, attachment]);
+    }
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    if (e.dataTransfer.files.length > 0) {
+      handleFiles(e.dataTransfer.files);
+    }
+  }, [handleFiles]);
+
+  const removeAttachment = (id: string) => {
+    setAttachments(prev => prev.filter(a => a.id !== id));
+  };
+
+  const handleSend = async () => {
+    if ((!prompt.trim() && attachments.length === 0) || loading || !selectedProjectId) return;
+
+    const userMsg: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: prompt.trim(),
+      timestamp: new Date(),
+      attachments: attachments.length > 0 ? [...attachments] : undefined,
+    };
+
+    setMessages(prev => [...prev, userMsg]);
+    const currentPrompt = prompt;
+    const currentAttachments = [...attachments];
+    setPrompt("");
+    setAttachments([]);
+    setLoading(true);
+
+    try {
+      const apiAttachments = currentAttachments.map(a => ({
+        name: a.name,
+        type: a.type,
+        content: a.content,
+      }));
+
+      const res = await fetch("/api/strategic/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          projectId: selectedProjectId,
+          message: currentPrompt || `Analyze the attached ${currentAttachments.length > 1 ? "files" : "file"}: ${currentAttachments.map(a => a.name).join(", ")}`,
+          attachments: apiAttachments.length > 0 ? apiAttachments : undefined,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error?.message || "Request failed");
+      }
+
+      const assistantMsg: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: data.reply || "",
+        timestamp: new Date(),
+        thinking: data.thinking,
+        tokensUsed: data.tokensUsed,
+        cost: data.cost,
+        fixApplied: data.fixApplied,
+        fixedFiles: data.fixedFiles,
+      };
+
+      setMessages(prev => [...prev, assistantMsg]);
+    } catch (err: any) {
+      setMessages(prev => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: err.message || "Error",
+          timestamp: new Date(),
+        },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const clearChat = () => {
+    setMessages([]);
+    setAttachments([]);
+  };
+
+  const selectedProject = projects.find((p: any) => p.id === selectedProjectId);
+
+  const imageAttachmentCount = attachments.filter(a => a.type.startsWith("image/")).length;
+  const fileAttachmentCount = attachments.filter(a => !a.type.startsWith("image/")).length;
+
+  return (
+    <div className="min-h-screen bg-[#0d1117] text-[#e1e4e8] flex flex-col" dir={lang === "ar" ? "rtl" : "ltr"}>
+      {previewImage && <ImagePreviewModal src={previewImage} onClose={() => setPreviewImage(null)} />}
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        accept=".js,.jsx,.ts,.tsx,.py,.html,.css,.scss,.json,.xml,.yaml,.yml,.md,.txt,.sql,.sh,.bash,.go,.rs,.java,.c,.cpp,.h,.hpp,.swift,.kt,.rb,.php,.vue,.svelte,.astro,.toml,.env,.csv,.log,.gitignore,.dockerfile,.prisma,.graphql"
+        onChange={e => { if (e.target.files) handleFiles(e.target.files); e.target.value = ""; }}
+      />
+      <input
+        ref={imageInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        accept="image/*"
+        onChange={e => { if (e.target.files) handleFiles(e.target.files); e.target.value = ""; }}
+      />
+
+      <header className="h-14 border-b border-[#1c2333] bg-[#161b22] flex items-center px-4 gap-3 flex-shrink-0">
+        <Link href="/dashboard" className="p-1.5 text-[#8b949e] hover:text-[#e1e4e8] transition-colors rounded hover:bg-[#1c2333]">
+          <ArrowLeft className={cn("w-4 h-4", lang === "ar" && "rotate-180")} />
+        </Link>
+        <div className="w-8 h-8 bg-amber-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
+          <LightbulbIcon className="w-4 h-4 text-amber-400" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-sm font-semibold text-[#e1e4e8] truncate">{t.strategic_page_title}</h1>
+          <p className="text-[10px] text-[#8b949e] truncate">{t.strategic_page_subtitle}</p>
+        </div>
+
+        <div className="relative" ref={dropdownRef}>
+          <button
+            onClick={() => setShowProjectDropdown(!showProjectDropdown)}
+            className="flex items-center gap-2 px-3 py-1.5 bg-[#1c2333] border border-[#30363d] rounded-lg text-xs text-[#c9d1d9] hover:border-[#58a6ff] transition-colors max-w-[200px]"
+          >
+            <span className="truncate">{selectedProject?.name || t.strategic_select_project}</span>
+            <ChevronDown className="w-3 h-3 flex-shrink-0" />
+          </button>
+          {showProjectDropdown && (
+            <div className="absolute top-full mt-1 end-0 w-64 bg-[#161b22] border border-[#30363d] rounded-lg shadow-xl z-50 max-h-64 overflow-y-auto">
+              <div className="p-2 border-b border-[#1c2333] text-[10px] text-[#8b949e] font-medium uppercase tracking-wider px-3">
+                {t.strategic_all_projects}
+              </div>
+              {projects.map((p: any) => (
+                <button
+                  key={p.id}
+                  onClick={() => { setSelectedProjectId(p.id); setShowProjectDropdown(false); }}
+                  className={cn(
+                    "w-full text-start px-3 py-2 text-xs hover:bg-[#1c2333] transition-colors flex items-center gap-2",
+                    p.id === selectedProjectId ? "text-amber-400 bg-amber-500/5" : "text-[#c9d1d9]"
+                  )}
+                >
+                  <div className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" style={{ opacity: p.id === selectedProjectId ? 1 : 0 }} />
+                  <span className="truncate">{p.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={clearChat}
+            className="p-1.5 text-[#8b949e] hover:text-red-400 transition-colors rounded hover:bg-[#1c2333]"
+            title={t.strategic_clear_chat}
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+          <LanguageToggle className="!bg-[#1c2333] !text-[#8b949e] hover:!bg-[#30363d] !px-2 !py-1.5 !text-xs !rounded-lg" />
+        </div>
+      </header>
+
+      <div
+        className={cn(
+          "flex-1 overflow-y-auto p-4 space-y-4",
+          dragOver && "ring-2 ring-amber-500/50 ring-inset bg-amber-500/5"
+        )}
+        onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
+      >
+        {dragOver && (
+          <div className="flex items-center justify-center py-12 pointer-events-none">
+            <div className="text-center">
+              <Paperclip className="w-10 h-10 text-amber-400 mx-auto mb-2 animate-bounce" />
+              <p className="text-amber-400 text-sm font-medium">{t.strategic_drop_files}</p>
+              <p className="text-[#8b949e] text-xs mt-1">{t.strategic_supported_files}</p>
+            </div>
+          </div>
+        )}
+
+        {messages.length === 0 && !dragOver && (
+          <div className="flex items-center justify-center min-h-[60vh]">
+            <div className="text-center max-w-md">
+              <div className="w-16 h-16 mx-auto bg-amber-500/10 rounded-2xl flex items-center justify-center mb-4">
+                <LightbulbIcon className="w-8 h-8 text-amber-400" />
+              </div>
+              <h2 className="text-lg font-semibold text-[#e1e4e8] mb-2">{t.strategic_page_title}</h2>
+              <p className="text-sm text-[#8b949e] mb-6">{t.strategic_page_subtitle}</p>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex flex-col items-center gap-2 p-4 rounded-xl border border-[#30363d] bg-[#161b22] hover:border-amber-500/30 hover:bg-amber-500/5 transition-all"
+                >
+                  <FileCode className="w-6 h-6 text-[#58a6ff]" />
+                  <span className="text-xs text-[#c9d1d9]">{t.strategic_upload_files}</span>
+                </button>
+                <button
+                  onClick={() => imageInputRef.current?.click()}
+                  className="flex flex-col items-center gap-2 p-4 rounded-xl border border-[#30363d] bg-[#161b22] hover:border-amber-500/30 hover:bg-amber-500/5 transition-all"
+                >
+                  <ImageIcon className="w-6 h-6 text-purple-400" />
+                  <span className="text-xs text-[#c9d1d9]">{t.strategic_upload_images}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {messages.map(msg => (
+          <div key={msg.id} className={cn("flex gap-3", msg.role === "user" ? "flex-row-reverse" : "")}>
+            <div className={cn(
+              "w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1",
+              msg.role === "user" ? "bg-[#1f6feb]/20 text-[#58a6ff]" : "bg-amber-500/20 text-amber-400"
+            )}>
+              {msg.role === "user" ? <User className="w-4 h-4" /> : <LightbulbIcon className="w-4 h-4" />}
+            </div>
+            <div className={cn(
+              "max-w-[80%] rounded-xl px-4 py-3 text-sm",
+              msg.role === "user"
+                ? "bg-[#1f6feb]/10 border border-[#1f6feb]/20 text-[#e1e4e8]"
+                : "bg-[#161b22] border border-[#30363d] text-[#c9d1d9]"
+            )}>
+              {msg.attachments && msg.attachments.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {msg.attachments.map(att => (
+                    <div key={att.id} className="flex-shrink-0">
+                      {att.preview ? (
+                        <button onClick={() => setPreviewImage(att.preview!)} className="relative group">
+                          <img src={att.preview} alt={att.name} className="w-20 h-20 object-cover rounded-lg border border-[#30363d]" />
+                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
+                            <Eye className="w-4 h-4 text-white" />
+                          </div>
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-1.5 px-2 py-1 bg-[#1c2333] rounded-lg text-[10px] text-[#8b949e]">
+                          <FileCode className="w-3 h-3" />
+                          <span className="truncate max-w-[80px]">{att.name}</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">{msg.content}</pre>
+
+              {msg.images && msg.images.length > 0 && (
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {msg.images.map((img, i) => (
+                    <button key={i} onClick={() => setPreviewImage(img)} className="relative group">
+                      <img src={img} alt="" className="w-full rounded-lg border border-[#30363d]" />
+                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center gap-2">
+                        <Maximize2 className="w-4 h-4 text-white" />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {msg.thinking && msg.thinking.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-[#30363d]">
+                  <div className="text-[10px] text-[#8b949e] space-y-1">
+                    {msg.thinking.map((th, i) => (
+                      <div key={i} className="flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                        <span>{th.model}</span>
+                        <span className="text-[#484f58]">•</span>
+                        <span>{(th.durationMs / 1000).toFixed(1)}s</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {msg.fixApplied !== undefined && (
+                <div className={cn(
+                  "mt-2 pt-2 border-t border-[#30363d] text-[10px] flex items-center gap-1.5",
+                  msg.fixApplied ? "text-emerald-400" : "text-[#8b949e]"
+                )}>
+                  {msg.fixApplied ? <Check className="w-3 h-3" /> : null}
+                  <span>{msg.fixApplied ? t.strategic_fix_applied : ""}</span>
+                  {msg.fixedFiles && msg.fixedFiles.length > 0 && (
+                    <span className="text-[#484f58]">{msg.fixedFiles.join(", ")}</span>
+                  )}
+                </div>
+              )}
+
+              {msg.tokensUsed && (
+                <div className="mt-1 text-[10px] text-[#484f58] flex items-center gap-2">
+                  <span>{msg.tokensUsed.toLocaleString()} {t.strategic_tokens_used}</span>
+                  {msg.cost && <span>${msg.cost.toFixed(4)}</span>}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+
+        {loading && (
+          <div className="flex gap-3">
+            <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 bg-amber-500/20 text-amber-400">
+              <LightbulbIcon className="w-4 h-4 animate-pulse" />
+            </div>
+            <div className="flex items-center gap-2 px-4 py-3 bg-[#161b22] border border-[#30363d] rounded-xl">
+              <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
+              <span className="text-sm text-[#c9d1d9]">{t.strategic_thinking}</span>
+            </div>
+          </div>
+        )}
+
+        <div ref={chatEndRef} />
+      </div>
+
+      {attachments.length > 0 && (
+        <div className="border-t border-[#1c2333] bg-[#161b22] px-4 py-2">
+          <div className="flex items-center gap-1.5 mb-2">
+            <Paperclip className="w-3 h-3 text-[#8b949e]" />
+            <span className="text-[10px] text-[#8b949e] font-medium">
+              {t.strategic_attachments} ({attachments.length})
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {attachments.map(att => (
+              <div key={att.id} className="relative group flex items-center gap-1.5 px-2 py-1 bg-[#1c2333] border border-[#30363d] rounded-lg">
+                {att.preview ? (
+                  <img src={att.preview} alt={att.name} className="w-8 h-8 object-cover rounded" />
+                ) : (
+                  <FileCode className="w-4 h-4 text-[#58a6ff]" />
+                )}
+                <span className="text-[11px] text-[#c9d1d9] truncate max-w-[100px]">{att.name}</span>
+                <button
+                  onClick={() => removeAttachment(att.id)}
+                  className="p-0.5 text-[#8b949e] hover:text-red-400 transition-colors"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="border-t border-[#1c2333] bg-[#0d1117] p-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-end gap-2">
+            <div className="flex gap-1">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="p-2 text-[#8b949e] hover:text-[#58a6ff] hover:bg-[#1c2333] rounded-lg transition-colors"
+                title={t.strategic_upload_files}
+              >
+                <Paperclip className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => imageInputRef.current?.click()}
+                className="p-2 text-[#8b949e] hover:text-purple-400 hover:bg-[#1c2333] rounded-lg transition-colors"
+                title={t.strategic_upload_images}
+              >
+                <ImageIcon className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 relative">
+              <textarea
+                ref={textareaRef}
+                value={prompt}
+                onChange={e => setPrompt(e.target.value)}
+                placeholder={t.strategic_placeholder}
+                disabled={loading}
+                rows={2}
+                className={cn(
+                  "w-full bg-[#161b22] border border-[#30363d] rounded-xl p-3 pe-12 resize-none focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/30 transition-all text-sm text-[#e1e4e8] placeholder-[#484f58]",
+                  loading && "opacity-50"
+                )}
+                onKeyDown={e => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+              />
+              <button
+                onClick={handleSend}
+                disabled={loading || (!prompt.trim() && attachments.length === 0) || !selectedProjectId}
+                className="absolute end-2 bottom-2 p-2 bg-amber-500 text-black rounded-lg hover:bg-amber-400 disabled:opacity-40 disabled:hover:bg-amber-500 transition-colors"
+              >
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className={cn("w-4 h-4", lang === "ar" && "rotate-180")} />}
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center justify-between mt-2">
+            <p className="text-[10px] text-[#484f58]">{t.strategic_supported_files}</p>
+            {(imageAttachmentCount > 0 || fileAttachmentCount > 0) && (
+              <div className="flex items-center gap-2 text-[10px] text-[#8b949e]">
+                {imageAttachmentCount > 0 && (
+                  <span className="flex items-center gap-1">
+                    <ImageIcon className="w-3 h-3 text-purple-400" />
+                    {imageAttachmentCount} {imageAttachmentCount === 1 ? t.strategic_image_attached : t.strategic_images_attached}
+                  </span>
+                )}
+                {fileAttachmentCount > 0 && (
+                  <span className="flex items-center gap-1">
+                    <FileCode className="w-3 h-3 text-[#58a6ff]" />
+                    {fileAttachmentCount} {fileAttachmentCount === 1 ? t.strategic_file_attached : t.strategic_files_attached}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
