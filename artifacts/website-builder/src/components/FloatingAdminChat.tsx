@@ -492,7 +492,7 @@ function FloatingChatInner() {
     return createPortal(
       <div
         data-floating-chat="true"
-        className="fixed z-[9990] shadow-2xl rounded-xl overflow-hidden border border-[#30363d] bg-[#161b22] cursor-move select-none"
+        className="fixed z-[9990] shadow-2xl rounded-xl overflow-hidden border border-[#30363d] bg-[#161b22] cursor-move"
         style={{ left: pos.x, top: pos.y, width: size.w }}
         onMouseDown={handleDragStart}
       >
@@ -513,12 +513,12 @@ function FloatingChatInner() {
     <>
       <div
         data-floating-chat="true"
-        className="fixed z-[9990] shadow-2xl rounded-xl overflow-hidden border border-[#30363d] bg-[#0d1117] flex flex-col select-none"
+        className="fixed z-[9990] shadow-2xl rounded-xl overflow-hidden border border-[#30363d] bg-[#0d1117] flex flex-col"
         style={{ left: pos.x, top: pos.y, width: size.w, height: size.h }}
         dir={isRTL ? "rtl" : "ltr"}
       >
         <div
-          className="flex items-center gap-2 px-3 py-2 bg-[#161b22] border-b border-[#30363d] cursor-move flex-shrink-0"
+          className="flex items-center gap-2 px-3 py-2 bg-[#161b22] border-b border-[#30363d] cursor-move flex-shrink-0 select-none"
           onMouseDown={handleDragStart}
         >
           <GripHorizontal className="w-3.5 h-3.5 text-[#484f58] flex-shrink-0" />
