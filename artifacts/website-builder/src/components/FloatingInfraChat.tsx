@@ -331,6 +331,17 @@ export default function FloatingInfraChat() {
               setMessages(prev => [...prev, { id: crypto.randomUUID(), role: "status", content: event.message || event.messageEn, timestamp: new Date() }]);
               scrollToBottomIfNeeded();
             }
+            else if (event.type === "project_created") {
+              setMessages(prev => [...prev, {
+                id: crypto.randomUUID(), role: "status",
+                content: isRTL
+                  ? `🎉 تم إنشاء المشروع "${event.projectName}" — ${event.filesCount} ملفات`
+                  : `🎉 Project "${event.projectName}" created — ${event.filesCount} files`,
+                timestamp: new Date(),
+              }]);
+              scrollToBottomIfNeeded();
+              window.open(`${import.meta.env.BASE_URL}project/${event.projectId}`, "_blank");
+            }
             else if (event.type === "done") { streamMeta = { tokensUsed: event.tokensUsed, cost: event.cost, model: event.model, models: event.models }; }
             else if (event.type === "error") { streamedContent += event.message; typewriterFlush(); }
           } catch {}
