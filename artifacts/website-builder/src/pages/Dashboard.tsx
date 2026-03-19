@@ -386,41 +386,38 @@ function InfraInlineChat({ agent, lang, onClose }: { agent: SidebarInfraAgent; l
 
   const extractCodeFromMessage = (content: string): { name: string; files: { path: string; content: string }[] } => {
     const files: { path: string; content: string }[] = [];
+    const isRealCode = (code: string) => code.length > 200 && (code.includes("<") && code.includes(">") || code.includes("function") || code.includes("const ") || code.includes("{") && code.includes("}"));
 
     const artifactRegex = /<artifact[^>]*?language="(\w+)"[^>]*?title="([^"]*)"[^>]*?>([\s\S]*?)<\/artifact>/g;
     let match;
     while ((match = artifactRegex.exec(content)) !== null) {
       const lang = match[1] || "html";
-      const title = match[2] || "";
       const code = match[3].trim();
-      if (code.length > 50) {
+      if (isRealCode(code)) {
         const ext = lang === "css" ? "css" : lang === "javascript" || lang === "js" ? "js" : lang === "typescript" || lang === "ts" ? "ts" : lang === "json" ? "json" : "html";
         files.push({ path: `index.${ext}`, content: code });
       }
     }
 
     if (files.length === 0) {
-      const codeBlockRegex = /```(\w*)\n([\s\S]*?)```/g;
+      const codeBlockRegex = /```(html|css|javascript|js|typescript|ts)\n([\s\S]*?)```/g;
       while ((match = codeBlockRegex.exec(content)) !== null) {
-        const lang = match[1] || "html";
+        const lang = match[1];
         const code = match[2].trim();
-        if (code.length > 50) {
-          const ext = lang === "css" ? "css" : lang === "javascript" || lang === "js" ? "js" : lang === "typescript" || lang === "ts" ? "ts" : lang === "json" ? "json" : "html";
+        if (isRealCode(code)) {
+          const ext = lang === "css" ? "css" : lang === "javascript" || lang === "js" ? "js" : lang === "typescript" || lang === "ts" ? "ts" : "html";
           files.push({ path: `index.${ext}`, content: code });
         }
       }
     }
 
     if (files.length === 0) {
-      const htmlMatch = content.match(/(<!DOCTYPE[\s\S]*<\/html>)/i);
-      if (htmlMatch) files.push({ path: "index.html", content: htmlMatch[1] });
+      const htmlMatch = content.match(/(<!DOCTYPE\s+html[\s\S]*<\/html>)/i);
+      if (htmlMatch && htmlMatch[1].length > 300) files.push({ path: "index.html", content: htmlMatch[1] });
     }
 
-    const titleMatch = content.match(/title="([^"]*)"/) || content.match(/(?:##?\s*(.+))/) || content.match(/(?:المشروع|مشروع|Project)[:\s]*(.+)/i);
-    let name = "";
-    if (titleMatch) {
-      name = (titleMatch[1] || titleMatch[2] || "").replace(/[#🍽️*]/g, "").trim();
-    }
+    const titleMatch = content.match(/title="([^"]*)"/) || content.match(/##?\s+([^\n#*]{3,40})/) || content.match(/(?:المشروع|مشروع|Project)[:\s]+([^\n]{3,40})/i);
+    let name = titleMatch ? (titleMatch[1] || "").replace(/[#*`🍽️]/g, "").trim() : "";
     if (!name || name.length < 2) name = isRTL ? "مشروع جديد" : "New Project";
     return { name, files };
   };
