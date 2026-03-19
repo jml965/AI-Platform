@@ -16,6 +16,7 @@ import AdminDashboard from "@/pages/AdminDashboard";
 import AgentManagement from "@/pages/AgentManagement";
 import AIControlCenter from "@/pages/AIControlCenter";
 import StrategicAgent from "@/pages/StrategicAgent";
+import InfraPanel from "@/pages/InfraPanel";
 import NotFound from "@/pages/not-found";
 import FloatingInfraChat from "@/components/FloatingInfraChat";
 import { useGetMe } from "@workspace/api-client-react";
@@ -121,6 +122,9 @@ function Router() {
       </Route>
       <Route path="/strategic">
         <AuthGuard><StrategicAgent /></AuthGuard>
+      </Route>
+      <Route path="/infra">
+        <AdminGuard><InfraPanel /></AdminGuard>
       </Route>
       <Route component={NotFound} />
     </Switch>
