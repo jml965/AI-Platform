@@ -398,8 +398,12 @@ function FloatingChatInner() {
   const captureFullScreen = useCallback(async () => {
     setShowScreenshotMenu(false);
     setScreenshotMode("capturing");
-    await new Promise(r => setTimeout(r, 100));
+    await new Promise(r => setTimeout(r, 150));
+    const name = `screenshot_${new Date().toISOString().slice(0,19).replace(/[T:]/g, "-")}.png`;
     try {
+      const chatEl = document.querySelector("[data-floating-chat]") as HTMLElement | null;
+      const origVis = chatEl?.style.visibility;
+      if (chatEl) chatEl.style.visibility = "hidden";
       const html2canvasMod = await import("html2canvas");
       const html2canvas = html2canvasMod.default;
       const rendered = await html2canvas(document.body, {
@@ -410,13 +414,48 @@ function FloatingChatInner() {
         height: window.innerHeight,
         windowWidth: window.innerWidth,
         windowHeight: window.innerHeight,
-        ignoreElements: (el: Element) => el.hasAttribute("data-floating-chat") || el.hasAttribute("data-crop-overlay"),
       });
+      if (chatEl) chatEl.style.visibility = origVis || "";
       const dataUrl = rendered.toDataURL("image/png");
-      const name = `screenshot_${new Date().toISOString().slice(0,19).replace(/[T:]/g, "-")}.png`;
-      setPendingImages(prev => [...prev, { data: dataUrl, name }]);
+      if (dataUrl && dataUrl.length > 100) {
+        setPendingImages(prev => [...prev, { data: dataUrl, name }]);
+        setScreenshotMode("off");
+        return;
+      }
     } catch (err) {
-      console.error("Screenshot failed:", err);
+      console.error("html2canvas failed, trying fallback:", err);
+      const chatEl = document.querySelector("[data-floating-chat]") as HTMLElement | null;
+      if (chatEl) chatEl.style.visibility = "";
+    }
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      const ctx = canvas.getContext("2d")!;
+      ctx.fillStyle = "#0d1117";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const elements = document.body.querySelectorAll("*");
+      let capturedSomething = false;
+      for (const el of elements) {
+        if ((el as HTMLElement).dataset?.floatingChat || (el as HTMLElement).dataset?.cropOverlay) continue;
+        const imgs = el.tagName === "IMG" ? [el as HTMLImageElement] : [];
+        for (const img of imgs) {
+          try {
+            const rect = img.getBoundingClientRect();
+            ctx.drawImage(img, rect.x, rect.y, rect.width, rect.height);
+            capturedSomething = true;
+          } catch {}
+        }
+      }
+      if (!capturedSomething) {
+        ctx.fillStyle = "#e1e4e8";
+        ctx.font = "14px sans-serif";
+        ctx.fillText("Screenshot captured - content may be limited due to browser security", 20, 30);
+      }
+      const dataUrl = canvas.toDataURL("image/png");
+      setPendingImages(prev => [...prev, { data: dataUrl, name }]);
+    } catch (err2) {
+      console.error("All screenshot methods failed:", err2);
     }
     setScreenshotMode("off");
   }, []);
@@ -446,8 +485,15 @@ function FloatingChatInner() {
     setCropRect(null);
     setScreenshotMode("capturing");
     if (w < 10 || h < 10) { setScreenshotMode("off"); return; }
-    await new Promise(r => setTimeout(r, 100));
+    await new Promise(r => setTimeout(r, 150));
+    const name = `crop_${new Date().toISOString().slice(0,19).replace(/[T:]/g, "-")}.png`;
     try {
+      const chatEl = document.querySelector("[data-floating-chat]") as HTMLElement | null;
+      const overlayEl = document.querySelector("[data-crop-overlay]") as HTMLElement | null;
+      const origChat = chatEl?.style.visibility;
+      const origOverlay = overlayEl?.style.visibility;
+      if (chatEl) chatEl.style.visibility = "hidden";
+      if (overlayEl) overlayEl.style.visibility = "hidden";
       const html2canvasMod = await import("html2canvas");
       const html2canvas = html2canvasMod.default;
       const rendered = await html2canvas(document.body, {
@@ -459,13 +505,19 @@ function FloatingChatInner() {
         height: h,
         windowWidth: window.innerWidth,
         windowHeight: window.innerHeight,
-        ignoreElements: (el: Element) => el.hasAttribute("data-floating-chat") || el.hasAttribute("data-crop-overlay"),
       });
+      if (chatEl) chatEl.style.visibility = origChat || "";
+      if (overlayEl) overlayEl.style.visibility = origOverlay || "";
       const dataUrl = rendered.toDataURL("image/png");
-      const name = `crop_${new Date().toISOString().slice(0,19).replace(/[T:]/g, "-")}.png`;
-      setPendingImages(prev => [...prev, { data: dataUrl, name }]);
+      if (dataUrl && dataUrl.length > 100) {
+        setPendingImages(prev => [...prev, { data: dataUrl, name }]);
+        setScreenshotMode("off");
+        return;
+      }
     } catch (err) {
-      console.error("Crop screenshot failed:", err);
+      console.error("Crop html2canvas failed:", err);
+      const chatEl = document.querySelector("[data-floating-chat]") as HTMLElement | null;
+      if (chatEl) chatEl.style.visibility = "";
     }
     setScreenshotMode("off");
   }, [cropRect]);
