@@ -101,7 +101,15 @@ Rules:
 - Keep file paths SHORT (src/pages/X.tsx, src/components/X.tsx)
 - Modules are built by independent developers in parallel — no cross-module dependencies except core
 - For 500-file projects: create 12-15 modules with 30-40 files each
-- JSON only, no comments, no descriptions longer than 5 words`;
+- JSON only, no comments, no descriptions longer than 5 words
+
+QUALITY & ASSETS PLANNING:
+- Always plan an src/assets/ directory for images referenced via Unsplash URLs
+- Plan dedicated component files for visual sections: Hero, Gallery, Testimonials, Features
+- Every module with UI pages MUST include visual components (cards with images, icon sections, hero banners)
+- Plan small, focused components (max 150 lines each) for fast rendering and code-splitting
+- Include a src/data/ directory for mock data files (products, services, team members) with image URLs
+- Ensure each UI module has at least 2-3 reusable visual components (cards, badges, rating stars)`;
 
   async execute(context: BuildContext): Promise<AgentResult> {
     const startTime = Date.now();
