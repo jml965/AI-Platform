@@ -578,10 +578,10 @@ export default function Builder() {
   const isBuilding = buildStatus?.status === "pending" || buildStatus?.status === "in_progress" || startBuildMut.isPending || (!!activeBuildId && !buildStatus);
 
   const actionCount = logs.length;
+  const files = projectFiles?.data || [];
   const isDeploying = deployMut.isPending || redeployMut.isPending || deploymentStatus?.status === "deploying";
   const isDeployed = deploymentStatus?.status === "active";
-  const canDeploy = project?.status === "ready" && !isBuilding;
-  const files = projectFiles?.data || [];
+  const canDeploy = (project?.status === "ready" || files.length > 0) && !isBuilding;
 
   const handleSaveCSS = useCallback(async () => {
     if (!id || cssEditor.changeCount === 0) return;
