@@ -22,17 +22,27 @@ function generateRepoName(projectName: string, projectId: string): string {
 }
 
 async function githubApi(path: string, options: { method?: string; body?: any } = {}) {
-  const res = await connectors.proxy("github", path, {
-    method: options.method || "GET",
-    headers: { "Content-Type": "application/json" },
-    body: options.body ? JSON.stringify(options.body) : undefined,
-  });
-  const text = await res.text();
-  if (!res.ok && res.status !== 404 && res.status !== 422) {
-    throw new Error(`GitHub API error ${res.status}: ${text}`);
+  const maxRetries = 3;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const res = await connectors.proxy("github", path, {
+      method: options.method || "GET",
+      headers: { "Content-Type": "application/json" },
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    });
+    const text = await res.text();
+    if (res.status === 429) {
+      const wait = Math.pow(2, attempt + 1) * 1000;
+      console.warn(`[GitHub] Rate limited on ${path}, retrying in ${wait}ms (attempt ${attempt + 1}/${maxRetries})`);
+      await new Promise(r => setTimeout(r, wait));
+      continue;
+    }
+    if (!res.ok && res.status !== 404 && res.status !== 422) {
+      throw new Error(`GitHub API error ${res.status}: ${text}`);
+    }
+    try { return { status: res.status, data: JSON.parse(text) }; }
+    catch { return { status: res.status, data: text }; }
   }
-  try { return { status: res.status, data: JSON.parse(text) }; }
-  catch { return { status: res.status, data: text }; }
+  throw new Error(`GitHub API rate limited after ${maxRetries} retries on ${path}`);
 }
 
 async function getGitHubUsername(): Promise<string> {
@@ -147,14 +157,21 @@ async function buildProjectInSandbox(
     console.log(`[Deploy] Installing dependencies...`);
     const installResult = await executeCommand(sandboxId, "npm install --legacy-peer-deps 2>&1");
     if (installResult.exitCode !== 0) {
-      console.warn(`[Deploy] npm install warning (code ${installResult.exitCode}): ${installResult.output.slice(-200)}`);
+      console.warn(`[Deploy] npm install warning (code ${installResult.exitCode}): ${installResult.output.slice(-300)}`);
     }
 
     console.log(`[Deploy] Running vite build with base /${repoName}/...`);
-    const buildResult = await executeCommand(sandboxId, `npx vite build --base=/${repoName}/ 2>&1`);
+    const buildResult = await executeCommand(
+      sandboxId,
+      `./node_modules/.bin/vite build --base=/${repoName}/ 2>&1`
+    );
     if (buildResult.exitCode !== 0) {
-      console.error(`[Deploy] Build failed: ${buildResult.output.slice(-500)}`);
-      throw new Error(`Build failed: ${buildResult.output.slice(-200)}`);
+      const output = buildResult.output || "";
+      const errorLines = output.split("\n").filter(
+        (l: string) => l.includes("error") || l.includes("Error") || l.includes("✘") || l.includes("SyntaxError") || l.includes("Transform failed")
+      ).join("\n");
+      console.error(`[Deploy] Build errors:\n${errorLines || output.slice(0, 2000)}`);
+      throw new Error(`Build failed: ${errorLines.slice(0, 500) || output.slice(-300)}`);
     }
 
     console.log(`[Deploy] Build succeeded, collecting dist files...`);
@@ -219,7 +236,7 @@ async function pushFilesToGitHub(
 
   console.log(`[Deploy] Uploading ${files.length} files as individual blobs...`);
 
-  const BATCH_SIZE = 5;
+  const BATCH_SIZE = 3;
   const treeItems: any[] = [];
 
   for (let i = 0; i < files.length; i += BATCH_SIZE) {
@@ -245,6 +262,7 @@ async function pushFilesToGitHub(
     treeItems.push(...batchResults);
     if (i + BATCH_SIZE < files.length) {
       console.log(`[Deploy] Uploaded ${Math.min(i + BATCH_SIZE, files.length)}/${files.length} blobs...`);
+      await new Promise(r => setTimeout(r, 300));
     }
   }
 

@@ -129,6 +129,8 @@ function buildSafeEnv(sandbox: SandboxProcess): Record<string, string> {
 
   env.npm_config_cache = join(sandbox.workDir, ".tmp", ".npm");
   env.npm_config_prefix = sandbox.workDir;
+  env.XDG_CONFIG_HOME = join(sandbox.workDir, ".tmp", ".config");
+  env.XDG_CACHE_HOME = join(sandbox.workDir, ".tmp", ".cache");
 
   if (sandbox.runtime === "node") {
     env.NODE_OPTIONS = `--max-old-space-size=${sandbox.memoryLimitMb}`;
