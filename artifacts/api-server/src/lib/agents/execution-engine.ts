@@ -826,15 +826,19 @@ const BATCHED_BUILD_THRESHOLD = 15;
 const MAX_FILES_PER_MODULE = 12;
 
 const BUILD_TIMEOUT_MS: Record<string, number> = {
-  small: 10 * 60 * 1000,
-  medium: 15 * 60 * 1000,
+  tiny: 7 * 60 * 1000,
+  small: 9 * 60 * 1000,
+  medium: 12 * 60 * 1000,
   large: 20 * 60 * 1000,
+  xlarge: 30 * 60 * 1000,
 };
 
 function getBuildTimeoutMs(totalFiles: number): number {
-  if (totalFiles < 250) return BUILD_TIMEOUT_MS.small;
-  if (totalFiles < 400) return BUILD_TIMEOUT_MS.medium;
-  return BUILD_TIMEOUT_MS.large;
+  if (totalFiles < 100) return BUILD_TIMEOUT_MS.tiny;
+  if (totalFiles < 150) return BUILD_TIMEOUT_MS.small;
+  if (totalFiles < 250) return BUILD_TIMEOUT_MS.medium;
+  if (totalFiles < 400) return BUILD_TIMEOUT_MS.large;
+  return BUILD_TIMEOUT_MS.xlarge;
 }
 
 function shouldUseBatchedBuild(prompt: string, existingFileCount: number): boolean {
