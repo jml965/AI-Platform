@@ -2114,35 +2114,14 @@ export default function Builder() {
                 {(() => {
                   try {
                     const html = buildPreviewHtml();
-                    const isReact = files.some(f =>
-                      f.content &&
-                      (f.filePath?.endsWith('.tsx') || f.filePath?.endsWith('.jsx')) &&
-                      (f.content.includes('React') || f.content.includes('useState') || f.content.includes('react'))
-                    );
-                    if (!html || isReact) {
-                      return (
-                        <div className="w-full h-full flex items-center justify-center bg-[#0d1117] text-[#8b949e]">
-                          <div className="text-center max-w-sm">
-                            <Loader2 className="w-10 h-10 mx-auto mb-3 text-[#58a6ff] animate-spin" />
-                            <p className="text-sm font-medium text-[#c9d1d9] mb-1">{lang === "ar" ? "جارٍ تحميل المعاينة..." : "Loading preview..."}</p>
-                            <p className="text-xs text-[#484f58] mb-4">{lang === "ar" ? "يتم تشغيل بيئة المعاينة" : "Starting preview sandbox"}</p>
-                            <button
-                              onClick={() => {
-                                setSandboxRunning(false);
-                                setProxyFailed(false);
-                                setProxyVerified(false);
-                                setPreviewKey(k => k + 1);
-                                const baseUrl = import.meta.env.VITE_API_URL || "";
-                                fetch(`${baseUrl}/api/sandbox/proxy/${id}/`, { method: "HEAD", credentials: "include" }).catch(() => {});
-                              }}
-                              className="px-4 py-1.5 text-xs bg-[#1f6feb]/20 text-[#58a6ff] rounded-md hover:bg-[#1f6feb]/30 transition-colors"
-                            >
-                              {lang === "ar" ? "إعادة المحاولة" : "Retry"}
-                            </button>
-                          </div>
+                    if (!html) return (
+                      <div className="w-full h-full flex items-center justify-center bg-[#0d1117] text-[#484f58]">
+                        <div className="text-center">
+                          <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                          <p className="text-xs">{t.preview_error_render}</p>
                         </div>
-                      );
-                    }
+                      </div>
+                    );
                     return (
                       <iframe
                         key={`doc-${previewKey}`}
