@@ -616,8 +616,6 @@ export default function Builder() {
     }
   }, [id, cssEditor, files, updateFileMut]);
 
-  const hasPreview = sandboxRunning || !!sandboxProxyUrl || files.some(f => f.filePath === "package.json");
-
   const currentPhase = inferPhase(buildStatus?.status, logs);
   const phaseFailed = buildStatus?.status === "failed";
 
@@ -708,6 +706,8 @@ export default function Builder() {
     }
     return null;
   }, [id, logs, sandboxRunning, files]);
+
+  const hasPreview = sandboxRunning || !!sandboxProxyUrl || files.some(f => f.filePath === "package.json");
 
   useEffect(() => {
     if (!sandboxProxyUrl) {
