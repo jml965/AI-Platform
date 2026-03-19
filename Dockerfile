@@ -36,7 +36,7 @@ COPY scripts/package.json ./scripts/package.json
 RUN pnpm install --frozen-lockfile --prod --ignore-scripts || pnpm install --no-frozen-lockfile --prod --ignore-scripts
 
 COPY --from=build-backend /app/artifacts/api-server/dist ./artifacts/api-server/dist
-COPY --from=build-frontend /app/artifacts/website-builder/dist ./artifacts/website-builder/dist
+COPY --from=build-frontend /app/artifacts/website-builder/dist/public ./artifacts/website-builder/dist
 
 ENV NODE_ENV=production
 ENV PORT=8080
