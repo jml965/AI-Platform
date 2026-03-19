@@ -277,6 +277,7 @@ function InfraInlineChat({ agent, lang, onClose }: { agent: SidebarInfraAgent; l
   const [wandHighlight, setWandHighlight] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [wandInfo, setWandInfo] = useState<WandTarget | null>(null);
   const [wandInfoExpanded, setWandInfoExpanded] = useState(false);
+  const [creatingProjectFromMsg, setCreatingProjectFromMsg] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -381,6 +382,56 @@ function InfraInlineChat({ agent, lang, onClose }: { agent: SidebarInfraAgent; l
   const handleStop = () => {
     if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
     setLoading(false);
+  };
+
+  const extractCodeFromMessage = (content: string): { name: string; files: { path: string; content: string }[] } => {
+    const files: { path: string; content: string }[] = [];
+    const codeBlockRegex = /```(\w*)\n([\s\S]*?)```/g;
+    let match;
+    while ((match = codeBlockRegex.exec(content)) !== null) {
+      const lang = match[1] || "html";
+      const code = match[2].trim();
+      if (code.length > 50) {
+        const ext = lang === "html" ? "html" : lang === "css" ? "css" : lang === "javascript" || lang === "js" ? "js" : lang === "typescript" || lang === "ts" ? "ts" : lang === "json" ? "json" : "html";
+        files.push({ path: `index.${ext}`, content: code });
+      }
+    }
+    if (files.length === 0 && content.includes("<!DOCTYPE") || content.includes("<html")) {
+      const htmlMatch = content.match(/(<!DOCTYPE[\s\S]*<\/html>)/i);
+      if (htmlMatch) files.push({ path: "index.html", content: htmlMatch[1] });
+    }
+    const titleMatch = content.match(/(?:##?\s*(?:المشروع|مشروع|Project)[:\s]*(.+))/i);
+    const name = titleMatch?.[1]?.trim() || (isRTL ? "مشروع تجريبي" : "Test Project");
+    return { name, files };
+  };
+
+  const handleCreateProjectFromMsg = async (msgId: string, content: string) => {
+    setCreatingProjectFromMsg(msgId);
+    try {
+      const { name, files } = extractCodeFromMessage(content);
+      const res = await fetch(`${import.meta.env.BASE_URL}api/infra/create-project`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name, description: isRTL ? "مشروع تم إنشاؤه بواسطة وكيل البنية التحتية" : "Project created by infra agent", files }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMessages(prev => [...prev, {
+          id: crypto.randomUUID(),
+          role: "status",
+          content: isRTL ? `تم إنشاء مشروع "${data.name}" بنجاح (${data.filesCount} ملفات)` : `Project "${data.name}" created (${data.filesCount} files)`,
+          timestamp: new Date(),
+        }]);
+        window.open(`${import.meta.env.BASE_URL}project/${data.id}`, "_blank");
+      } else {
+        const err = await res.json();
+        setMessages(prev => [...prev, { id: crypto.randomUUID(), role: "status", content: `Error: ${err?.error?.message}`, timestamp: new Date() }]);
+      }
+    } catch (err: any) {
+      setMessages(prev => [...prev, { id: crypto.randomUUID(), role: "status", content: `Error: ${err.message}`, timestamp: new Date() }]);
+    }
+    setCreatingProjectFromMsg(null);
   };
 
   const handleSend = async () => {
