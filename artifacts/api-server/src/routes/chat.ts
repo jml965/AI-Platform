@@ -73,13 +73,13 @@ router.post("/chat/message", async (req, res) => {
       : [null];
 
     const [user] = await db
-      .select({ creditBalanceUsd: usersTable.creditBalanceUsd })
+      .select({ creditBalanceUsd: usersTable.creditBalanceUsd, role: usersTable.role })
       .from(usersTable)
       .where(eq(usersTable.id, userId))
       .limit(1);
 
     const credits = parseFloat(user?.creditBalanceUsd ?? "0");
-    if (credits <= 0) {
+    if (user?.role !== "admin" && credits <= 0) {
       res.status(402).json({
         error: {
           code: "INSUFFICIENT_CREDITS",

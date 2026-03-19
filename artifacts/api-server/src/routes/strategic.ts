@@ -152,10 +152,10 @@ router.post("/strategic/chat-stream", async (req, res) => {
 
     const effectiveProjectId = projectId || "general";
 
-    const [user] = await db.select({ creditBalanceUsd: usersTable.creditBalanceUsd })
+    const [user] = await db.select({ creditBalanceUsd: usersTable.creditBalanceUsd, role: usersTable.role })
       .from(usersTable).where(eq(usersTable.id, userId)).limit(1);
     const credits = parseFloat(user?.creditBalanceUsd ?? "0");
-    if (credits <= 0) {
+    if (user?.role !== "admin" && credits <= 0) {
       res.status(402).json({ error: { code: "INSUFFICIENT_CREDITS", message: "Insufficient credits." } });
       return;
     }
@@ -235,10 +235,10 @@ router.post("/strategic/chat", async (req, res) => {
 
     const effectiveProjectId = projectId || "general";
 
-    const [user] = await db.select({ creditBalanceUsd: usersTable.creditBalanceUsd })
+    const [user] = await db.select({ creditBalanceUsd: usersTable.creditBalanceUsd, role: usersTable.role })
       .from(usersTable).where(eq(usersTable.id, userId)).limit(1);
     const credits = parseFloat(user?.creditBalanceUsd ?? "0");
-    if (credits <= 0) {
+    if (user?.role !== "admin" && credits <= 0) {
       res.status(402).json({ error: { code: "INSUFFICIENT_CREDITS", message: "Insufficient credits.", message_ar: "رصيد غير كافٍ." } });
       return;
     }
@@ -514,10 +514,10 @@ router.post("/strategic/agent-chat", async (req, res) => {
       return;
     }
 
-    const [user] = await db.select({ creditBalanceUsd: usersTable.creditBalanceUsd })
+    const [user] = await db.select({ creditBalanceUsd: usersTable.creditBalanceUsd, role: usersTable.role })
       .from(usersTable).where(eq(usersTable.id, userId)).limit(1);
     const credits = parseFloat(user?.creditBalanceUsd ?? "0");
-    if (credits <= 0) {
+    if (user?.role !== "admin" && credits <= 0) {
       res.status(402).json({ error: { code: "INSUFFICIENT_CREDITS", message: "Insufficient credits." } });
       return;
     }
