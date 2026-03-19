@@ -1,0 +1,15 @@
+Run google-github-actions/deploy-cloudrun@v2
+/usr/bin/tar xz --warning=no-unknown-keyword --overwrite -C /home/runner/work/_temp/e9027519-df5d-4b83-b2f7-dfc8fec79403 -f /home/runner/work/_temp/e88978fc-2a8e-4218-9f70-05a82770ff6b
+Successfully authenticated
+Running: gcloud run deploy mrcodeai --image ***-docker.pkg.dev/***/mrcodeai/mrcodeai-app:37f85512cf5f698e33b4bc17e53481491f8d9141 --update-env-vars ^,^NODE_ENV=production,DATABASE_URL=***,CUSTOM_ANTHROPIC_API_KEY= --update-labels ^,^managed-by=github-actions,commit-sha=37f85512cf5f698e33b4bc17e53481491f8d9141 --format json --region *** --allow-unauthenticated --port 8080 --memory 512Mi --cpu 1 --min-instances 0 --max-instances 3
+Error: google-github-actions/deploy-cloudrun failed with: failed to deploy: Deploying container to Cloud Run service [mrcodeai] in project [***] region [***]
+Deploying...
+Setting IAM Policy............................done
+Creating Revision.............................................................................................................................................failed
+Deployment failed
+ERROR: (gcloud.run.deploy) The user-provided container failed to start and listen on the port defined provided by the PORT=8080 environment variable within the allocated timeout. This can happen when the container port is misconfigured or if the timeout is too short. The health check timeout can be extended. Logs for this revision might contain more information.
+
+Logs URL: https://console.cloud.google.com/logs/viewer?project=***&resource=cloud_run_revision/service_name/mrcodeai/revision_name/mrcodeai-00004-zcr&advancedFilter=resource.type%3D%22cloud_run_revision%22%0Aresource.labels.service_name%3D%22mrcodeai%22%0Aresource.labels.revision_name%3D%22mrcodeai-00004-zcr%22 
+For more troubleshooting guidance, see https://cloud.google.com/run/docs/troubleshooting#container-failed-to-start
+, full command:
+	gcloud run deploy mrcodeai --image ***-docker.pkg.dev/***/mrcodeai/mrcodeai-app:37f85512cf5f698e33b4bc17e53481491f8d9141 --update-env-vars ^,^NODE_ENV=production,DATABASE_URL=***,CUSTOM_ANTHROPIC_API_KEY= --update-labels ^,^managed-by=github-actions,commit-sha=37f85512cf5f698e33b4bc17e53481491f8d9141 --format json --region *** --allow-unauthenticated --port 8080 --memory 512Mi --cpu 1 --min-instances 0 --max-instances 3
