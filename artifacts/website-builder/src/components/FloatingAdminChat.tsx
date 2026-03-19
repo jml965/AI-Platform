@@ -5,7 +5,7 @@ import {
   FlaskConical, Bot, Wand2, Trash2, X, Send, Minimize2, Maximize2,
   ChevronDown, GripHorizontal, MessageSquare, Terminal, FileText, HardDrive,
   Settings, FolderOpen, Shield, PanelLeftOpen, PanelLeftClose, Plus, MoreHorizontal,
-  Pencil, Check, Camera, Crop, Image as ImageIcon, Scissors,
+  Pencil, Check, Camera, Crop, Image as ImageIcon, Scissors, Copy, Download, CheckCheck,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { useGetMe } from "@workspace/api-client-react";
@@ -676,6 +676,34 @@ function FloatingChatInner() {
     }
   };
 
+  const LANG_EXT: Record<string, string> = {
+    javascript: "js", js: "js", typescript: "ts", ts: "ts", tsx: "tsx", jsx: "jsx",
+    python: "py", py: "py", html: "html", css: "css", scss: "scss",
+    json: "json", yaml: "yaml", yml: "yml", sql: "sql", bash: "sh", sh: "sh",
+    shell: "sh", dockerfile: "Dockerfile", xml: "xml", markdown: "md", md: "md",
+    rust: "rs", go: "go", java: "java", cpp: "cpp", c: "c", ruby: "rb",
+  };
+
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const copyCode = (code: string, blockId: string) => {
+    navigator.clipboard.writeText(code).then(() => {
+      setCopiedId(blockId);
+      setTimeout(() => setCopiedId(null), 2000);
+    });
+  };
+
+  const downloadCode = (code: string, lang?: string) => {
+    const ext = lang ? (LANG_EXT[lang.toLowerCase()] || lang) : "txt";
+    const blob = new Blob([code], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `code.${ext}`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const renderMessageContent = (content: string) => {
     const segments: Array<{ type: "text" | "code"; lang?: string; value: string }> = [];
     let remaining = content;
@@ -695,10 +723,33 @@ function FloatingChatInner() {
       <div className="text-[13px] leading-relaxed break-words">
         {segments.map((seg, i) => {
           if (seg.type === "code") {
+            const blockId = `code-${i}-${seg.value.length}`;
+            const trimmed = seg.value.trim();
+            const ext = seg.lang ? (LANG_EXT[seg.lang.toLowerCase()] || seg.lang) : "txt";
             return (
-              <div key={i} className="my-2 rounded border border-[#30363d] overflow-hidden">
-                <div className="px-2 py-1 bg-[#1c2333] text-[9px] text-[#8b949e] uppercase">{seg.lang || "code"}</div>
-                <pre className="p-2 bg-[#0d1117] text-[12px] text-[#e1e4e8] overflow-x-auto" dir="ltr"><code>{seg.value.trim()}</code></pre>
+              <div key={i} className="my-2 rounded-lg border border-[#30363d] overflow-hidden bg-[#0d1117]">
+                <div className="flex items-center justify-between px-3 py-1.5 bg-[#161b22] border-b border-[#30363d]">
+                  <span className="text-[10px] text-[#8b949e] font-medium">{seg.lang || "code"}{ext !== "txt" ? `.${ext}` : ""}</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => copyCode(trimmed, blockId)}
+                      className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-[#8b949e] hover:text-[#e1e4e8] hover:bg-white/5 transition-colors"
+                      title={isRTL ? "نسخ" : "Copy"}
+                    >
+                      {copiedId === blockId ? <CheckCheck className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
+                      {copiedId === blockId ? (isRTL ? "تم" : "Copied") : (isRTL ? "نسخ" : "Copy")}
+                    </button>
+                    <button
+                      onClick={() => downloadCode(trimmed, seg.lang)}
+                      className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-[#8b949e] hover:text-[#e1e4e8] hover:bg-white/5 transition-colors"
+                      title={isRTL ? "تحميل" : "Download"}
+                    >
+                      <Download className="w-3 h-3" />
+                      {isRTL ? "تحميل" : "Download"}
+                    </button>
+                  </div>
+                </div>
+                <pre className="p-3 text-[12px] text-[#e1e4e8] overflow-x-auto max-h-[300px] overflow-y-auto" dir="ltr"><code>{trimmed}</code></pre>
               </div>
             );
           }
@@ -1060,7 +1111,7 @@ function FloatingChatInner() {
                       <Camera className="w-4 h-4" />
                     </button>
                     {showScreenshotMenu && (
-                      <div className={`absolute bottom-full ${isRTL ? "end-0" : "start-0"} mb-1 w-44 bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl z-50 py-1`}>
+                      <div className="absolute bottom-full left-0 mb-1 w-48 bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl z-50 py-1">
                         <button
                           onClick={captureFullScreen}
                           className="w-full flex items-center gap-2 px-3 py-2 text-start text-[12px] text-[#c9d1d9] hover:bg-white/5 transition-colors"
