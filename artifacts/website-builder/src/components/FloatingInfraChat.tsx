@@ -609,9 +609,6 @@ ${sandboxInfo}`;
 
   if (agents.length === 0) return null;
 
-  const panelWidth = isExpanded ? "w-[700px]" : "w-[420px]";
-  const panelHeight = isExpanded ? "h-[85vh]" : "h-[550px]";
-
   return (
     <>
       {!isOpen && (
@@ -636,9 +633,9 @@ ${sandboxInfo}`;
       {isOpen && (
         <div
           className={cn(
-            "fixed z-50 bottom-6 flex flex-col rounded-2xl overflow-hidden shadow-2xl border border-[#1c2333] bg-[#0a0e14] transition-all duration-300",
-            panelWidth, panelHeight,
-            isRTL ? "left-6" : "right-6"
+            "fixed z-50 top-0 bottom-0 flex flex-col overflow-hidden shadow-2xl border-s border-[#1c2333] bg-[#0a0e14] transition-all duration-300",
+            isExpanded ? "w-[600px]" : "w-[380px]",
+            isRTL ? "left-0" : "right-0"
           )}
           dir={isRTL ? "rtl" : "ltr"}
         >
