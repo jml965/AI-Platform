@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { agentConfigsTable, projectsTable, projectFilesTable } from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { agentConfigsTable, projectsTable, projectFilesTable, buildTasksTable, executionLogsTable, sandboxInstancesTable } from "@workspace/db/schema";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { getSystemBlueprint } from "../lib/system-blueprint";
 const router = Router();
 
@@ -56,8 +56,23 @@ const DEFAULT_INFRA_AGENTS = [
 
 ### قدرة إنشاء المشاريع:
 يمكنك إنشاء مشروع موقع فعلي لمتابعة المشاكل وحلها.
-عندما يطلب المالك إنشاء موقع أو مشروع، أخبره أنه يمكنك إنشاؤه فوراً وأعطه الكود الكامل.
-المالك يستطيع الضغط على زر "إنشاء مشروع" في نافذة المحادثة لإنشاء المشروع مباشرة.`,
+المالك يستطيع الضغط على زر "إنشاء مشروع" في نافذة المحادثة لإنشاء المشروع مباشرة.
+
+### أدوات التشخيص والإصلاح المتاحة لك:
+**للتشخيص:**
+- GET /api/infra/diagnostics/project/:projectId — تقرير شامل عن مشروع (سجلات البناء، الأخطاء، حالة المعاينة، الملفات)
+- GET /api/infra/diagnostics/recent-failures — آخر الأخطاء في كل المشاريع (مهام فاشلة، مشاريع عالقة)
+
+**للإصلاح:**
+- POST /api/infra/repair/retry-build/:projectId — إعادة محاولة البناء للمهام الفاشلة
+- POST /api/infra/repair/fix-file — إصلاح أو إنشاء ملف في مشروع (body: {projectId, filePath, content})
+- POST /api/infra/repair/reset-project-status — تغيير حالة مشروع (body: {projectId, status})
+
+عندما يبلغ المالك عن مشكلة في مشروع:
+1. اطلب رقم المشروع (projectId) أو اسمه
+2. استخدم endpoint التشخيص لفحص الأخطاء
+3. حلل الأخطاء واقترح الإصلاحات
+4. نفّذ الإصلاح مباشرة (إعادة بناء، إصلاح ملف، تغيير حالة)`,
     permissions: ["manage_agents", "read_all_files", "write_files", "restart_services", "database_read", "database_write", "deploy", "security_scan", "full_system_access"],
     pipelineOrder: 1,
     receivesFrom: "owner_input",
@@ -148,8 +163,25 @@ const DEFAULT_INFRA_AGENTS = [
 - لا axios (استخدم fetch)
 - لا framer-motion في ملفات جديدة
 - لا radix-ui/shadcn/mui
-- استخدم Tailwind CSS`,
-    permissions: ["read_all_files", "write_files", "fix_bugs", "patch_code", "analyze_errors"],
+- استخدم Tailwind CSS
+
+### أدوات التشخيص والإصلاح:
+**للتشخيص:**
+- GET /api/infra/diagnostics/project/:projectId — فحص مشروع (أخطاء بناء، سجلات، sandbox)
+- GET /api/infra/diagnostics/recent-failures — آخر الأخطاء في كل المشاريع
+
+**للإصلاح:**
+- POST /api/infra/repair/fix-file — إصلاح ملف مباشرة (body: {projectId, filePath, content})
+- POST /api/infra/repair/retry-build/:projectId — إعادة بناء المهام الفاشلة
+- POST /api/infra/repair/reset-project-status — تغيير حالة مشروع
+
+**أسلوب التشخيص:**
+1. افحص المشروع بـ diagnostics/project/:id
+2. حلل failedTasks و recentErrors لفهم السبب
+3. إذا الخطأ في ملف معين: أصلحه بـ repair/fix-file
+4. إذا البناء فشل: أعد المحاولة بـ repair/retry-build
+5. إذا المشروع عالق: غيّر حالته بـ repair/reset-project-status`,
+    permissions: ["read_all_files", "write_files", "fix_bugs", "patch_code", "analyze_errors", "diagnose_projects", "repair_projects"],
     pipelineOrder: 3,
     receivesFrom: "infra_sysadmin",
     sendsTo: "infra_sysadmin",
@@ -486,8 +518,26 @@ const DEFAULT_INFRA_AGENTS = [
 - [ ] هل النماذج ترسل البيانات صحيحياً؟
 - [ ] هل RTL يعمل في العربية؟
 - [ ] هل التصميم متجاوب مع الجوال؟
-- [ ] هل رسائل الخطأ واضحة ومفيدة؟`,
-    permissions: ["read_all_files", "test_endpoints", "check_ui", "validate_forms", "test_responsive", "check_accessibility"],
+- [ ] هل رسائل الخطأ واضحة ومفيدة؟
+
+### أدوات التشخيص المتقدمة:
+**لفحص مشاكل المشاريع:**
+- GET /api/infra/diagnostics/project/:projectId — تقرير شامل عن مشروع (أخطاء البناء، سجلات التنفيذ، حالة Sandbox، الملفات)
+- GET /api/infra/diagnostics/recent-failures — كل الأخطاء الحديثة عبر كل المشاريع
+
+**لإصلاح المشاكل:**
+- POST /api/infra/repair/retry-build/:projectId — إعادة بناء المهام الفاشلة
+- POST /api/infra/repair/fix-file — إصلاح ملف معين {projectId, filePath, content}
+- POST /api/infra/repair/reset-project-status — إعادة تعيين حالة مشروع {projectId, status}
+
+**عملية فحص مشكلة معاينة:**
+1. اجمع الـ projectId من المالك
+2. افحص بـ diagnostics/project/:id
+3. تحقق من حالة sandbox (هل تعمل؟ هل البورت موجود؟)
+4. تحقق من الملفات (هل index.html موجود؟ هل هناك أخطاء JavaScript؟)
+5. تحقق من أخطاء البناء في failedTasks
+6. إذا وجدت مشكلة: استخدم أدوات الإصلاح لحلها مباشرة`,
+    permissions: ["read_all_files", "test_endpoints", "check_ui", "validate_forms", "test_responsive", "check_accessibility", "diagnose_projects", "repair_projects"],
     pipelineOrder: 9,
     receivesFrom: "infra_sysadmin",
     sendsTo: "infra_sysadmin",
@@ -1195,6 +1245,238 @@ router.post("/infra/create-project", requireInfraAdmin, async (req, res) => {
     });
   } catch (err: any) {
     console.error("[Infra Create Project Error]", err.message);
+    res.status(500).json({ error: { message: err.message } });
+  }
+});
+
+router.get("/infra/diagnostics/project/:projectId", requireInfraAdmin, async (req, res) => {
+  try {
+    const { projectId } = req.params;
+
+    const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
+    if (!project) {
+      res.status(404).json({ error: { message: "Project not found" } });
+      return;
+    }
+
+    const buildTasks = await db.select().from(buildTasksTable)
+      .where(eq(buildTasksTable.projectId, projectId))
+      .orderBy(desc(buildTasksTable.createdAt))
+      .limit(20);
+
+    const execLogs = await db.select().from(executionLogsTable)
+      .where(eq(executionLogsTable.projectId, projectId))
+      .orderBy(desc(executionLogsTable.createdAt))
+      .limit(30);
+
+    const sandboxes = await db.select().from(sandboxInstancesTable)
+      .where(eq(sandboxInstancesTable.projectId, projectId))
+      .orderBy(desc(sandboxInstancesTable.createdAt))
+      .limit(5);
+
+    const files = await db.select({
+      id: projectFilesTable.id,
+      filePath: projectFilesTable.filePath,
+      fileType: projectFilesTable.fileType,
+      version: projectFilesTable.version,
+    }).from(projectFilesTable)
+      .where(eq(projectFilesTable.projectId, projectId));
+
+    const failedTasks = buildTasks.filter(t => t.status === "failed" || t.status === "error");
+    const failedLogs = execLogs.filter(l => l.status === "error" || l.status === "failed");
+    const stoppedSandboxes = sandboxes.filter(s => s.status === "stopped" || s.status === "error");
+
+    const issues: string[] = [];
+    if (failedTasks.length > 0) issues.push(`${failedTasks.length} failed build tasks`);
+    if (failedLogs.length > 0) issues.push(`${failedLogs.length} error logs`);
+    if (stoppedSandboxes.length > 0) issues.push(`${stoppedSandboxes.length} stopped/error sandboxes`);
+    if (files.length === 0) issues.push("No files generated");
+
+    res.json({
+      project: { id: project.id, name: project.name, status: project.status, createdAt: project.createdAt },
+      summary: {
+        totalBuildTasks: buildTasks.length,
+        failedBuildTasks: failedTasks.length,
+        totalExecLogs: execLogs.length,
+        errorLogs: failedLogs.length,
+        totalFiles: files.length,
+        activeSandboxes: sandboxes.filter(s => s.status === "running").length,
+        issues,
+      },
+      failedTasks: failedTasks.map(t => ({
+        id: t.id,
+        agentType: t.agentType,
+        status: t.status,
+        errorMessage: t.errorMessage,
+        targetFile: t.targetFile,
+        createdAt: t.createdAt,
+      })),
+      recentErrors: failedLogs.map(l => ({
+        id: l.id,
+        agentType: l.agentType,
+        action: l.action,
+        status: l.status,
+        details: l.details,
+        createdAt: l.createdAt,
+      })),
+      sandboxes: sandboxes.map(s => ({
+        id: s.id,
+        status: s.status,
+        port: s.port,
+        runtime: s.runtime,
+        startedAt: s.startedAt,
+        stoppedAt: s.stoppedAt,
+      })),
+      files: files.map(f => ({ path: f.filePath, type: f.fileType, version: f.version })),
+    });
+  } catch (err: any) {
+    console.error("[Infra Diagnostics Error]", err.message);
+    res.status(500).json({ error: { message: err.message } });
+  }
+});
+
+router.get("/infra/diagnostics/recent-failures", requireInfraAdmin, async (_req, res) => {
+  try {
+    const recentFailedTasks = await db.select({
+      id: buildTasksTable.id,
+      projectId: buildTasksTable.projectId,
+      agentType: buildTasksTable.agentType,
+      status: buildTasksTable.status,
+      errorMessage: buildTasksTable.errorMessage,
+      targetFile: buildTasksTable.targetFile,
+      createdAt: buildTasksTable.createdAt,
+    }).from(buildTasksTable)
+      .where(sql`${buildTasksTable.status} IN ('failed', 'error')`)
+      .orderBy(desc(buildTasksTable.createdAt))
+      .limit(20);
+
+    const recentErrors = await db.select({
+      id: executionLogsTable.id,
+      projectId: executionLogsTable.projectId,
+      agentType: executionLogsTable.agentType,
+      action: executionLogsTable.action,
+      status: executionLogsTable.status,
+      details: executionLogsTable.details,
+      createdAt: executionLogsTable.createdAt,
+    }).from(executionLogsTable)
+      .where(sql`${executionLogsTable.status} IN ('error', 'failed')`)
+      .orderBy(desc(executionLogsTable.createdAt))
+      .limit(20);
+
+    const stuckProjects = await db.select({
+      id: projectsTable.id,
+      name: projectsTable.name,
+      status: projectsTable.status,
+      createdAt: projectsTable.createdAt,
+    }).from(projectsTable)
+      .where(sql`${projectsTable.status} IN ('building', 'pending', 'error')`)
+      .orderBy(desc(projectsTable.createdAt))
+      .limit(10);
+
+    res.json({
+      failedBuildTasks: recentFailedTasks,
+      errorLogs: recentErrors,
+      stuckProjects,
+      totalIssues: recentFailedTasks.length + recentErrors.length + stuckProjects.length,
+    });
+  } catch (err: any) {
+    console.error("[Infra Recent Failures Error]", err.message);
+    res.status(500).json({ error: { message: err.message } });
+  }
+});
+
+router.post("/infra/repair/retry-build/:projectId", requireInfraAdmin, async (req, res) => {
+  try {
+    const { projectId } = req.params;
+
+    const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
+    if (!project) {
+      res.status(404).json({ error: { message: "Project not found" } });
+      return;
+    }
+
+    await db.update(buildTasksTable)
+      .set({ status: "pending", errorMessage: null, retryCount: sql`${buildTasksTable.retryCount} + 1` })
+      .where(and(
+        eq(buildTasksTable.projectId, projectId),
+        sql`${buildTasksTable.status} IN ('failed', 'error')`
+      ));
+
+    await db.update(projectsTable)
+      .set({ status: "building", updatedAt: new Date() })
+      .where(eq(projectsTable.id, projectId));
+
+    res.json({ success: true, message: "Failed tasks reset to pending, project status set to building" });
+  } catch (err: any) {
+    console.error("[Infra Retry Build Error]", err.message);
+    res.status(500).json({ error: { message: err.message } });
+  }
+});
+
+router.post("/infra/repair/fix-file", requireInfraAdmin, async (req, res) => {
+  try {
+    const { projectId, filePath, content, fileType } = req.body as {
+      projectId: string;
+      filePath: string;
+      content: string;
+      fileType?: string;
+    };
+
+    if (!projectId || !filePath || !content) {
+      res.status(400).json({ error: { message: "projectId, filePath, and content are required" } });
+      return;
+    }
+
+    const existing = await db.select().from(projectFilesTable)
+      .where(and(
+        eq(projectFilesTable.projectId, projectId),
+        eq(projectFilesTable.filePath, filePath),
+      ));
+
+    if (existing.length > 0) {
+      await db.update(projectFilesTable)
+        .set({
+          content,
+          version: sql`${projectFilesTable.version} + 1`,
+          updatedAt: new Date(),
+        })
+        .where(eq(projectFilesTable.id, existing[0].id));
+      res.json({ action: "updated", filePath, version: (existing[0].version || 1) + 1 });
+    } else {
+      const ext = filePath.split(".").pop() || "txt";
+      const typeMap: Record<string, string> = { html: "html", css: "css", js: "javascript", ts: "typescript", tsx: "tsx", jsx: "jsx", json: "json", md: "markdown" };
+      await db.insert(projectFilesTable).values({
+        projectId,
+        filePath,
+        content,
+        fileType: fileType || typeMap[ext] || ext,
+      });
+      res.json({ action: "created", filePath, version: 1 });
+    }
+  } catch (err: any) {
+    console.error("[Infra Fix File Error]", err.message);
+    res.status(500).json({ error: { message: err.message } });
+  }
+});
+
+router.post("/infra/repair/reset-project-status", requireInfraAdmin, async (req, res) => {
+  try {
+    const { projectId, status } = req.body as { projectId: string; status?: string };
+    if (!projectId) {
+      res.status(400).json({ error: { message: "projectId is required" } });
+      return;
+    }
+
+    const validStatuses = ["draft", "building", "ready", "published", "error"];
+    const newStatus = status && validStatuses.includes(status) ? status : "draft";
+
+    await db.update(projectsTable)
+      .set({ status: newStatus, updatedAt: new Date() })
+      .where(eq(projectsTable.id, projectId));
+
+    res.json({ success: true, projectId, status: newStatus });
+  } catch (err: any) {
+    console.error("[Infra Reset Status Error]", err.message);
     res.status(500).json({ error: { message: err.message } });
   }
 });
