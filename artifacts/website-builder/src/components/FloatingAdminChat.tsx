@@ -475,7 +475,9 @@ function FloatingChatInner() {
     setCropRect(prev => prev ? { ...prev, endX: e.clientX, endY: e.clientY } : null);
   }, []);
 
-  const handleCropMouseUp = useCallback(async () => {
+  const pendingCropRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+
+  const handleCropMouseUp = useCallback(() => {
     if (!cropStartRef.current || !cropRect) { cropStartRef.current = null; setCropRect(null); setScreenshotMode("off"); return; }
     const x = Math.min(cropRect.startX, cropRect.endX);
     const y = Math.min(cropRect.startY, cropRect.endY);
@@ -483,44 +485,45 @@ function FloatingChatInner() {
     const h = Math.abs(cropRect.endY - cropRect.startY);
     cropStartRef.current = null;
     setCropRect(null);
-    setScreenshotMode("capturing");
     if (w < 10 || h < 10) { setScreenshotMode("off"); return; }
-    await new Promise(r => setTimeout(r, 150));
-    const name = `crop_${new Date().toISOString().slice(0,19).replace(/[T:]/g, "-")}.png`;
-    try {
-      const chatEl = document.querySelector("[data-floating-chat]") as HTMLElement | null;
-      const overlayEl = document.querySelector("[data-crop-overlay]") as HTMLElement | null;
-      const origChat = chatEl?.style.visibility;
-      const origOverlay = overlayEl?.style.visibility;
-      if (chatEl) chatEl.style.visibility = "hidden";
-      if (overlayEl) overlayEl.style.visibility = "hidden";
-      const html2canvasMod = await import("html2canvas");
-      const html2canvas = html2canvasMod.default;
-      const rendered = await html2canvas(document.body, {
-        useCORS: true,
-        allowTaint: true,
-        scale: 1,
-        x, y,
-        width: w,
-        height: h,
-        windowWidth: window.innerWidth,
-        windowHeight: window.innerHeight,
-      });
-      if (chatEl) chatEl.style.visibility = origChat || "";
-      if (overlayEl) overlayEl.style.visibility = origOverlay || "";
-      const dataUrl = rendered.toDataURL("image/png");
-      if (dataUrl && dataUrl.length > 100) {
-        setPendingImages(prev => [...prev, { data: dataUrl, name }]);
-        setScreenshotMode("off");
-        return;
-      }
-    } catch (err) {
-      console.error("Crop html2canvas failed:", err);
-      const chatEl = document.querySelector("[data-floating-chat]") as HTMLElement | null;
-      if (chatEl) chatEl.style.visibility = "";
-    }
-    setScreenshotMode("off");
+    pendingCropRef.current = { x, y, w, h };
+    setScreenshotMode("capturing");
   }, [cropRect]);
+
+  useEffect(() => {
+    if (screenshotMode !== "capturing" || !pendingCropRef.current) return;
+    const { x, y, w, h } = pendingCropRef.current;
+    pendingCropRef.current = null;
+    const name = `crop_${new Date().toISOString().slice(0,19).replace(/[T:]/g, "-")}.png`;
+    (async () => {
+      await new Promise(r => setTimeout(r, 150));
+      try {
+        const chatEl = document.querySelector("[data-floating-chat]") as HTMLElement | null;
+        const origChat = chatEl?.style.visibility;
+        if (chatEl) chatEl.style.visibility = "hidden";
+        const html2canvasMod = await import("html2canvas");
+        const html2canvas = html2canvasMod.default;
+        const rendered = await html2canvas(document.body, {
+          useCORS: true,
+          allowTaint: true,
+          scale: 1,
+          x, y, width: w, height: h,
+          windowWidth: window.innerWidth,
+          windowHeight: window.innerHeight,
+        });
+        if (chatEl) chatEl.style.visibility = origChat || "";
+        const dataUrl = rendered.toDataURL("image/png");
+        if (dataUrl && dataUrl.length > 100) {
+          setPendingImages(prev => [...prev, { data: dataUrl, name }]);
+        }
+      } catch (err) {
+        console.error("Crop screenshot failed:", err);
+        const chatEl = document.querySelector("[data-floating-chat]") as HTMLElement | null;
+        if (chatEl) chatEl.style.visibility = "";
+      }
+      setScreenshotMode("off");
+    })();
+  }, [screenshotMode]);
 
   const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
