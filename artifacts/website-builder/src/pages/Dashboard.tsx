@@ -443,7 +443,7 @@ function InfraInlineChat({ agent, lang, onClose }: { agent: SidebarInfraAgent; l
           content: isRTL ? `تم إنشاء مشروع "${data.name}" بنجاح (${data.filesCount} ملفات)` : `Project "${data.name}" created (${data.filesCount} files)`,
           timestamp: new Date(),
         }]);
-        window.open(`${import.meta.env.BASE_URL}project/${data.id}`, "_blank");
+        setTimeout(() => { window.location.href = `${import.meta.env.BASE_URL}project/${data.id}`; }, 1500);
       } else {
         const err = await res.json();
         setMessages(prev => [...prev, { id: crypto.randomUUID(), role: "status", content: `Error: ${err?.error?.message}`, timestamp: new Date() }]);
@@ -550,6 +550,17 @@ function InfraInlineChat({ agent, lang, onClose }: { agent: SidebarInfraAgent; l
               setMessages(prev => [...prev, { id: crypto.randomUUID(), role: "status", content: event.message || event.messageEn, timestamp: new Date() }]);
               scrollToBottom();
             }
+            else if (event.type === "agent_activity") {
+              const stepIcon = event.step === "thinking" ? "🔄" : event.step === "done" ? "✅" : event.step === "failed" ? "❌" : event.step === "merging" ? "🏛️" : "⚡";
+              let actMsg = `${stepIcon} ${event.message}`;
+              if (event.preview) actMsg += `\n> "${event.preview.slice(0, 100)}..."`;
+              setMessages(prev => [...prev, { id: crypto.randomUUID(), role: "status", content: actMsg, timestamp: new Date() }]);
+              scrollToBottom();
+            }
+            else if (event.type === "agent_proposal") {
+              setMessages(prev => [...prev, { id: crypto.randomUUID(), role: "status", content: `💡 ${event.agent} اقترح (${(event.durationMs/1000).toFixed(1)}ث):\n> "${event.summary.slice(0, 150)}..."`, timestamp: new Date() }]);
+              scrollToBottom();
+            }
             else if (event.type === "done") { streamMeta = { tokensUsed: event.tokensUsed, cost: event.cost, model: event.model, models: event.models }; }
             else if (event.type === "error") { streamedContent += event.message; typewriterFlush(); }
           } catch {}
@@ -581,7 +592,9 @@ function InfraInlineChat({ agent, lang, onClose }: { agent: SidebarInfraAgent; l
             });
             if (createRes.ok) {
               const projData = await createRes.json();
-              setMessages(prev => [...prev, { id: crypto.randomUUID(), role: "status", content: isRTL ? `تم إنشاء مشروع "${projData.name}" بنجاح (${projData.filesCount} ملفات) — افتحه من مشاريعك` : `Project "${projData.name}" created (${projData.filesCount} files)`, timestamp: new Date() }]);
+              setMessages(prev => [...prev, { id: crypto.randomUUID(), role: "status", content: isRTL ? `✅ تم إنشاء مشروع "${projData.name}" (${projData.filesCount} ملفات) — جاري الانتقال لمساحة العمل...` : `Project "${projData.name}" created (${projData.filesCount} files) — opening workspace...`, timestamp: new Date() }]);
+              scrollToBottom();
+              setTimeout(() => { window.location.href = `${import.meta.env.BASE_URL}project/${projData.id}`; }, 1500);
             }
           } catch {}
         }

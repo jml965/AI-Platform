@@ -874,8 +874,12 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
 
     res.write(`data: ${JSON.stringify({ type: "status", message: `🧠 تشغيل ${slots.length} نموذج ذكاء اصطناعي بالتوازي...`, messageEn: `Running ${slots.length} AI models in parallel...` })}\n\n`);
 
+    const agentNames: Record<string, string> = { "claude-sonnet-4-6": "وكيل Claude", "gemini-2.5-flash": "وكيل Gemini", "o3-mini": "وكيل OpenAI", "gpt-4o": "وكيل GPT-4" };
+
     const callModel = async (provider: string, model: string, maxTokens: number, timeoutSec: number): Promise<{ content: string; tokensUsed: number; model: string; durationMs: number } | null> => {
+      const aName = agentNames[model] || model;
       const start = Date.now();
+      res.write(`data: ${JSON.stringify({ type: "agent_activity", agent: aName, model, step: "thinking", message: `${aName} يحلل الطلب...` })}\n\n`);
       try {
         if (provider === "anthropic") {
           const { getAnthropicClient } = await import("../lib/agents/ai-clients");
@@ -891,7 +895,10 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
           const response = await stream.finalMessage();
           const text = response.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
           const tokens = (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0);
-          return { content: text, tokensUsed: tokens, model, durationMs: Date.now() - start };
+          const dur = Date.now() - start;
+          const preview = text.slice(0, 120).replace(/\n/g, " ");
+          res.write(`data: ${JSON.stringify({ type: "agent_activity", agent: aName, model, step: "done", durationMs: dur, message: `${aName} أنهى التحليل (${(dur/1000).toFixed(1)}ث)`, preview })}\n\n`);
+          return { content: text, tokensUsed: tokens, model, durationMs: dur };
         } else if (provider === "google") {
           const { getGoogleClient } = await import("../lib/agents/ai-clients");
           const client = await getGoogleClient();
@@ -904,7 +911,10 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
             config: { systemInstruction: directorPrompt, maxOutputTokens: maxTokens, temperature: parseFloat(String(config.creativity)) || 0.3 },
           });
           const text = response.text || "";
-          return { content: text, tokensUsed: Math.ceil(text.length / 3), model, durationMs: Date.now() - start };
+          const dur = Date.now() - start;
+          const preview = text.slice(0, 120).replace(/\n/g, " ");
+          res.write(`data: ${JSON.stringify({ type: "agent_activity", agent: aName, model, step: "done", durationMs: dur, message: `${aName} أنهى التحليل (${(dur/1000).toFixed(1)}ث)`, preview })}\n\n`);
+          return { content: text, tokensUsed: Math.ceil(text.length / 3), model, durationMs: dur };
         } else if (provider === "openai") {
           const { getOpenAIClient } = await import("../lib/agents/ai-clients");
           const client = await getOpenAIClient();
@@ -919,20 +929,21 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
           });
           const text = response.choices[0]?.message?.content || "";
           const tokens = (response.usage?.total_tokens ?? 0) || Math.ceil(text.length / 3);
-          return { content: text, tokensUsed: tokens, model, durationMs: Date.now() - start };
+          const dur = Date.now() - start;
+          const preview = text.slice(0, 120).replace(/\n/g, " ");
+          res.write(`data: ${JSON.stringify({ type: "agent_activity", agent: aName, model, step: "done", durationMs: dur, message: `${aName} أنهى التحليل (${(dur/1000).toFixed(1)}ث)`, preview })}\n\n`);
+          return { content: text, tokensUsed: tokens, model, durationMs: dur };
         }
         return null;
       } catch (err: any) {
         console.error(`[Director] Model ${model} failed:`, err.message);
+        res.write(`data: ${JSON.stringify({ type: "agent_activity", agent: aName, model, step: "failed", message: `${aName} فشل: ${err.message.slice(0, 80)}` })}\n\n`);
         return null;
       }
     };
 
     const thinkResults = await Promise.allSettled(
-      slots.map(slot => {
-        res.write(`data: ${JSON.stringify({ type: "status", message: `⚡ ${slot.model} يحلل...`, messageEn: `${slot.model} analyzing...` })}\n\n`);
-        return callModel(slot.provider, slot.model, slot.maxTokens, slot.timeoutSeconds);
-      })
+      slots.map(slot => callModel(slot.provider, slot.model, slot.maxTokens, slot.timeoutSeconds))
     );
 
     const successResults: Array<{ content: string; tokensUsed: number; model: string; durationMs: number }> = [];
@@ -952,9 +963,14 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
 
     if (successResults.length === 1) {
       finalContent = successResults[0].content;
-      res.write(`data: ${JSON.stringify({ type: "status", message: `✅ نموذج واحد أجاب: ${successResults[0].model}`, messageEn: `Single model responded: ${successResults[0].model}` })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: "agent_activity", agent: "مدير النظام", model: successResults[0].model, step: "single_response", message: `نموذج واحد أجاب — يعرض النتيجة مباشرة` })}\n\n`);
     } else {
-      res.write(`data: ${JSON.stringify({ type: "status", message: `🏛️ الحاكم يدمج ${successResults.length} تحليلات...`, messageEn: `Governor merging ${successResults.length} analyses...` })}\n\n`);
+      for (const r of successResults) {
+        const aName = agentNames[r.model] || r.model;
+        const summary = r.content.slice(0, 200).replace(/\n/g, " ").replace(/[#*`]/g, "");
+        res.write(`data: ${JSON.stringify({ type: "agent_proposal", agent: aName, model: r.model, durationMs: r.durationMs, summary })}\n\n`);
+      }
+      res.write(`data: ${JSON.stringify({ type: "agent_activity", agent: "الحاكم (Governor)", model: "governor", step: "merging", message: `الحاكم يقارن ${successResults.length} تحليلات ويدمج أفضل النتائج...` })}\n\n`);
 
       const proposalsText = successResults.map((r, i) =>
         `=== تحليل ${i + 1} (من ${r.model}, ${r.durationMs}ms) ===\n${r.content}`
