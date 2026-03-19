@@ -18,6 +18,7 @@ import AIControlCenter from "@/pages/AIControlCenter";
 import StrategicAgent from "@/pages/StrategicAgent";
 import InfraPanel from "@/pages/InfraPanel";
 import NotFound from "@/pages/not-found";
+import FloatingInfraChat from "@/components/FloatingInfraChat";
 import { useGetMe } from "@workspace/api-client-react";
 import { Loader2 } from "lucide-react";
 
@@ -130,12 +131,23 @@ function Router() {
   );
 }
 
+function AdminFloatingChat() {
+  const { data: user, isLoading, isError } = useGetMe({
+    query: { queryKey: ["getMe"], retry: false, refetchOnWindowFocus: false }
+  });
+
+  if (isLoading || isError || !user || (user as any).role !== "admin") return null;
+
+  return <FloatingInfraChat />;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <I18nProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <Router />
+          <AdminFloatingChat />
         </WouterRouter>
       </I18nProvider>
     </QueryClientProvider>
