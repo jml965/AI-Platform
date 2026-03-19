@@ -22,6 +22,9 @@ import {
   Maximize2,
   ChevronDown,
   MessageSquare,
+  FolderPlus,
+  ExternalLink,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -174,6 +177,10 @@ export default function FloatingInfraChat() {
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [creatingProject, setCreatingProject] = useState(false);
+  const [showProjectForm, setShowProjectForm] = useState(false);
+  const [projectName, setProjectName] = useState("");
+  const [projectDesc, setProjectDesc] = useState("");
   const abortRef = useRef<AbortController | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -358,6 +365,48 @@ export default function FloatingInfraChat() {
     setMessages([]);
   };
 
+  const handleCreateProject = async () => {
+    if (!projectName.trim()) return;
+    setCreatingProject(true);
+    try {
+      const res = await fetch(`${import.meta.env.BASE_URL}api/infra/create-project`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name: projectName.trim(), description: projectDesc.trim() }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMessages(prev => [...prev, {
+          id: crypto.randomUUID(),
+          role: "status",
+          content: isRTL ? `تم إنشاء مشروع "${data.name}" بنجاح` : `Project "${data.name}" created successfully`,
+          timestamp: new Date(),
+        }]);
+        setShowProjectForm(false);
+        setProjectName("");
+        setProjectDesc("");
+        window.open(`${import.meta.env.BASE_URL}project/${data.id}`, "_blank");
+      } else {
+        const err = await res.json();
+        setMessages(prev => [...prev, {
+          id: crypto.randomUUID(),
+          role: "status",
+          content: `${isRTL ? "خطأ" : "Error"}: ${err?.error?.message || "Failed"}`,
+          timestamp: new Date(),
+        }]);
+      }
+    } catch (err: any) {
+      setMessages(prev => [...prev, {
+        id: crypto.randomUUID(),
+        role: "status",
+        content: `${isRTL ? "خطأ" : "Error"}: ${err.message}`,
+        timestamp: new Date(),
+      }]);
+    }
+    setCreatingProject(false);
+  };
+
   const handleOpen = () => {
     setIsOpen(true);
     setUnreadCount(0);
@@ -451,6 +500,9 @@ export default function FloatingInfraChat() {
             </div>
 
             <div className="flex items-center gap-1">
+              <button onClick={() => setShowProjectForm(!showProjectForm)} className="p-1.5 text-[#484f58] hover:text-green-400 hover:bg-[#1c2333] rounded-lg transition-colors" title={isRTL ? "إنشاء مشروع" : "Create Project"}>
+                <FolderPlus className="w-3.5 h-3.5" />
+              </button>
               <button onClick={clearSession} className="p-1.5 text-[#484f58] hover:text-red-400 hover:bg-[#1c2333] rounded-lg transition-colors" title={isRTL ? "مسح المحادثة" : "Clear"}>
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
@@ -536,6 +588,43 @@ export default function FloatingInfraChat() {
             })}
             <div ref={chatEndRef} />
           </div>
+
+          {showProjectForm && (
+            <div className="border-t border-[#1c2333] bg-[#161b22] p-3 space-y-2">
+              <div className="flex items-center gap-2 mb-1">
+                <FolderPlus className="w-4 h-4 text-green-400" />
+                <span className="text-xs font-medium text-[#e1e4e8]">{isRTL ? "إنشاء مشروع جديد" : "Create New Project"}</span>
+              </div>
+              <input
+                value={projectName}
+                onChange={e => setProjectName(e.target.value)}
+                placeholder={isRTL ? "اسم المشروع..." : "Project name..."}
+                className="w-full bg-[#0d1117] border border-[#30363d] rounded-lg px-3 py-2 text-sm text-[#e1e4e8] placeholder-[#484f58] focus:outline-none focus:border-green-500/50"
+              />
+              <input
+                value={projectDesc}
+                onChange={e => setProjectDesc(e.target.value)}
+                placeholder={isRTL ? "وصف المشروع (اختياري)..." : "Description (optional)..."}
+                className="w-full bg-[#0d1117] border border-[#30363d] rounded-lg px-3 py-2 text-sm text-[#e1e4e8] placeholder-[#484f58] focus:outline-none focus:border-green-500/50"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={handleCreateProject}
+                  disabled={!projectName.trim() || creatingProject}
+                  className="flex-1 flex items-center justify-center gap-2 bg-green-600 hover:bg-green-500 text-white rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-40 transition-colors"
+                >
+                  {creatingProject ? <Loader2 className="w-4 h-4 animate-spin" /> : <FolderPlus className="w-4 h-4" />}
+                  {isRTL ? "إنشاء" : "Create"}
+                </button>
+                <button
+                  onClick={() => setShowProjectForm(false)}
+                  className="px-3 py-2 text-sm text-[#8b949e] hover:text-[#e1e4e8] border border-[#30363d] rounded-lg hover:bg-[#1c2333] transition-colors"
+                >
+                  {isRTL ? "إلغاء" : "Cancel"}
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="border-t border-[#1c2333] bg-[#0d1117] p-3">
             <div className="relative">

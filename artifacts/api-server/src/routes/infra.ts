@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { agentConfigsTable } from "@workspace/db/schema";
+import { agentConfigsTable, projectsTable, projectFilesTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { getSystemBlueprint } from "../lib/system-blueprint";
 const router = Router();
@@ -52,7 +52,12 @@ const DEFAULT_INFRA_AGENTS = [
 - وكيل التصميم (infra_ui): تحسين الواجهات
 - وكيل قاعدة البيانات (infra_db): إدارة البيانات والجداول
 - وكيل الأمان (infra_security): فحص وتعزيز الأمان
-- وكيل النشر (infra_deploy): النشر والتحديثات`,
+- وكيل النشر (infra_deploy): النشر والتحديثات
+
+### قدرة إنشاء المشاريع:
+يمكنك إنشاء مشروع موقع فعلي لمتابعة المشاكل وحلها.
+عندما يطلب المالك إنشاء موقع أو مشروع، أخبره أنه يمكنك إنشاؤه فوراً وأعطه الكود الكامل.
+المالك يستطيع الضغط على زر "إنشاء مشروع" في نافذة المحادثة لإنشاء المشروع مباشرة.`,
     permissions: ["manage_agents", "read_all_files", "write_files", "restart_services", "database_read", "database_write", "deploy", "security_scan", "full_system_access"],
     pipelineOrder: 1,
     receivesFrom: "owner_input",
@@ -1144,6 +1149,54 @@ router.get("/infra/defaults/:agentKey", requireInfraAdmin, (req, res) => {
     return;
   }
   res.json(defaultAgent);
+});
+
+router.post("/infra/create-project", requireInfraAdmin, async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { name, description, files } = req.body as {
+      name: string;
+      description?: string;
+      files?: { path: string; content: string }[];
+    };
+
+    if (!name?.trim()) {
+      res.status(400).json({ error: { message: "Project name is required" } });
+      return;
+    }
+
+    const [project] = await db.insert(projectsTable).values({
+      userId,
+      name: name.trim(),
+      description: description || "",
+    }).returning();
+
+    if (files && Array.isArray(files) && files.length > 0) {
+      for (const file of files) {
+        if (file.path && file.content) {
+          const ext = file.path.split(".").pop() || "txt";
+          const typeMap: Record<string, string> = { html: "html", css: "css", js: "javascript", ts: "typescript", tsx: "tsx", jsx: "jsx", json: "json", md: "markdown" };
+          await db.insert(projectFilesTable).values({
+            projectId: project.id,
+            filePath: file.path,
+            content: file.content,
+            fileType: typeMap[ext] || ext,
+          });
+        }
+      }
+    }
+
+    res.status(201).json({
+      id: project.id,
+      name: project.name,
+      description: project.description,
+      url: `/project/${project.id}`,
+      filesCount: files?.length || 0,
+    });
+  } catch (err: any) {
+    console.error("[Infra Create Project Error]", err.message);
+    res.status(500).json({ error: { message: err.message } });
+  }
 });
 
 export default router;
