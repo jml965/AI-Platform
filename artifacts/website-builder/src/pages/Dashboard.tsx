@@ -296,7 +296,9 @@ function InfraAgentsSection({ t, lang, onSelectAgent }: { t: any; lang: string; 
                   </div>
                   <div className="text-[9px] text-yellow-500/60 truncate">models + governor</div>
                 </div>
-                <Settings className="w-3 h-3 text-yellow-500/30 flex-shrink-0" />
+                <Link href="/control-center" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+                <Settings className="w-3 h-3 text-yellow-500/30 hover:text-yellow-400 flex-shrink-0 transition-colors cursor-pointer" />
+              </Link>
               </button>
               <div className="border-t border-white/5 my-0.5" />
             </>
@@ -319,9 +321,19 @@ function InfraAgentsSection({ t, lang, onSelectAgent }: { t: any; lang: string; 
                   {agent.primaryModel?.model?.split("-").slice(0, 2).join("-") || ""}
                 </div>
               </div>
-              <Settings className="w-3 h-3 text-[#484f58]/0 group-hover/agent:text-[#484f58] flex-shrink-0 transition-colors" />
+              <Link href="/control-center" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+                <Settings className="w-3 h-3 text-[#484f58]/0 group-hover/agent:text-[#484f58] hover:text-blue-400 flex-shrink-0 transition-colors cursor-pointer" />
+              </Link>
             </button>
           ))}
+
+          <Link
+            href="/control-center"
+            className="flex items-center gap-2 px-2.5 py-1.5 mt-1 rounded-md text-[10.5px] text-cyan-400/70 hover:text-cyan-400 hover:bg-cyan-500/10 transition-all border border-cyan-500/10 hover:border-cyan-500/20"
+          >
+            <Cpu className="w-3.5 h-3.5" />
+            <span>{isRTL ? "إعدادات الذكاء الاصطناعي" : "AI Settings"}</span>
+          </Link>
         </div>
       </div>
     </div>
