@@ -296,7 +296,7 @@ function InfraAgentsSection({ t, lang, onSelectAgent }: { t: any; lang: string; 
                   </div>
                   <div className="text-[9px] text-yellow-500/60 truncate">models + governor</div>
                 </div>
-                <Link href="/control-center" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+                <Link href="/agents" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
                 <Settings className="w-3 h-3 text-yellow-500/30 hover:text-yellow-400 flex-shrink-0 transition-colors cursor-pointer" />
               </Link>
               </button>
@@ -321,7 +321,7 @@ function InfraAgentsSection({ t, lang, onSelectAgent }: { t: any; lang: string; 
                   {agent.primaryModel?.model?.split("-").slice(0, 2).join("-") || ""}
                 </div>
               </div>
-              <Link href="/control-center" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+              <Link href="/agents" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
                 <Settings className="w-3 h-3 text-[#484f58]/0 group-hover/agent:text-[#484f58] hover:text-blue-400 flex-shrink-0 transition-colors cursor-pointer" />
               </Link>
             </button>
