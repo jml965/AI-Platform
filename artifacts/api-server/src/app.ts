@@ -72,28 +72,10 @@ app.use(authSession);
 app.use("/api", router);
 
 if (process.env.NODE_ENV === "production") {
-  const fs = require("fs");
-  const possiblePaths = [
-    path.resolve(process.cwd(), "artifacts/website-builder/dist"),
-    path.resolve("/app/artifacts/website-builder/dist"),
-  ];
-  let frontendDist = possiblePaths[0];
-  for (const p of possiblePaths) {
-    if (fs.existsSync(path.join(p, "index.html"))) {
-      frontendDist = p;
-      break;
-    }
-  }
-  console.log("[Production] Serving frontend from:", frontendDist);
-  console.log("[Production] index.html exists:", fs.existsSync(path.join(frontendDist, "index.html")));
+  const frontendDist = path.resolve(process.cwd(), "artifacts/website-builder/dist");
   app.use(express.static(frontendDist));
   app.get("/{*splat}", (req, res) => {
-    const indexPath = path.join(frontendDist, "index.html");
-    if (fs.existsSync(indexPath)) {
-      res.sendFile(indexPath);
-    } else {
-      res.status(503).json({ error: "Frontend not built", tried: possiblePaths.map(p => ({ path: p, exists: fs.existsSync(path.join(p, "index.html")) })) });
-    }
+    res.sendFile(path.join(frontendDist, "index.html"));
   });
 }
 
