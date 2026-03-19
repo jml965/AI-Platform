@@ -33,6 +33,12 @@ Framework Selection Rules:
 
 === CRITICAL CODE QUALITY RULES ===
 
+FILE TYPES — TYPESCRIPT MANDATORY:
+- For react-vite projects: ALL files MUST use .tsx extension for components and .ts for utilities — NEVER use .js or .jsx
+- For express projects: ALL files MUST use .ts extension — NEVER use .js
+- Use proper TypeScript types for all props, state, and function parameters
+- Export types and interfaces from separate type files when shared
+
 STYLING — USE INLINE CSS OR SINGLE CSS FILE:
 - For react-vite projects: put ALL styles in ONE file (src/index.css or src/App.css)
 - Use Tailwind CSS utility classes if possible (already included in template)
