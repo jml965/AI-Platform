@@ -1,6 +1,7 @@
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { I18nProvider } from "@/lib/i18n";
+import FloatingAdminChat from "@/components/FloatingAdminChat";
 
 import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
@@ -136,6 +137,7 @@ function App() {
       <I18nProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <Router />
+          <FloatingAdminChat />
         </WouterRouter>
       </I18nProvider>
     </QueryClientProvider>
