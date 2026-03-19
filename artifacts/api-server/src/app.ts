@@ -72,7 +72,8 @@ app.use(authSession);
 app.use("/api", router);
 
 if (process.env.NODE_ENV === "production") {
-  const frontendDist = path.resolve(appDir, "../../website-builder/dist");
+  const frontendDist = path.resolve(process.cwd(), "artifacts/website-builder/dist");
+  console.log("[Production] Serving frontend from:", frontendDist);
   app.use(express.static(frontendDist));
   app.get("/{*splat}", (req, res) => {
     res.sendFile(path.join(frontendDist, "index.html"));
