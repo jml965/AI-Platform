@@ -2,6 +2,7 @@ import { spawn, execSync, type ChildProcess } from "child_process";
 import { mkdirSync, rmSync, existsSync, writeFileSync, chmodSync, readFileSync } from "fs";
 import { join, resolve, normalize } from "path";
 import { tmpdir } from "os";
+import http from "http";
 import { db } from "@workspace/db";
 import { sandboxInstancesTable, projectFilesTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
@@ -590,6 +591,25 @@ export function getProjectSandboxAny(projectId: string): string | null {
 
 const recoveryInProgress = new Set<string>();
 
+async function waitForServerReady(port: number, timeoutMs: number = 30000): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const ok = await new Promise<boolean>((resolve) => {
+        const req = http.request({ hostname: "127.0.0.1", port, path: "/", method: "HEAD", timeout: 2000 }, (res) => {
+          resolve(res.statusCode !== undefined && res.statusCode < 500);
+        });
+        req.on("error", () => resolve(false));
+        req.on("timeout", () => { req.destroy(); resolve(false); });
+        req.end();
+      });
+      if (ok) return true;
+    } catch {}
+    await new Promise(resolve => setTimeout(resolve, 1500));
+  }
+  return false;
+}
+
 export async function recoverSandboxForProject(projectId: string): Promise<string | null> {
   if (recoveryInProgress.has(projectId)) {
     console.log(`[Sandbox Recovery] Already recovering project ${projectId}, waiting...`);
@@ -614,7 +634,7 @@ export async function recoverSandboxForProject(projectId: string): Promise<strin
   recoveryInProgress.add(projectId);
   console.log(`[Sandbox Recovery] Recreating sandbox for project ${projectId} (${files.length} files)`);
   try {
-    const { id } = await createSandbox(projectId, "node", 256, 600);
+    const { id, port } = await createSandbox(projectId, "node", 256, 600);
 
     const hasPackageJson = files.some(f => f.filePath === "package.json");
     if (hasPackageJson) {
@@ -626,8 +646,12 @@ export async function recoverSandboxForProject(projectId: string): Promise<strin
       const devCmd = "npx vite --port $PORT --host 0.0.0.0 --strictPort";
       await startServer(id, devCmd);
 
-      await new Promise(resolve => setTimeout(resolve, 5000));
-      console.log(`[Sandbox Recovery] Recovery complete for ${projectId}`);
+      const ready = await waitForServerReady(port, 30000);
+      if (ready) {
+        console.log(`[Sandbox Recovery] Server confirmed ready for ${projectId} on port ${port}`);
+      } else {
+        console.warn(`[Sandbox Recovery] Server did not respond in 30s for ${projectId}, sandbox may still be starting`);
+      }
     }
 
     return id;

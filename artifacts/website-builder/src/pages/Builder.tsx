@@ -624,10 +624,16 @@ export default function Builder() {
 
   const [sandboxRunning, setSandboxRunning] = useState(false);
 
+  const recoveryTriggeredRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!id) return;
+    if (recoveryTriggeredRef.current !== id) {
+      recoveryTriggeredRef.current = null;
+    }
     const baseUrl = import.meta.env.VITE_API_URL || "";
     let stopped = false;
+    let recoveryTriggered = recoveryTriggeredRef.current === id;
     const check = () => {
       if (stopped) return;
       fetch(`${baseUrl}/api/sandbox/project/${id}`, { credentials: "include" })
@@ -636,25 +642,30 @@ export default function Builder() {
           if (stopped) return;
           if (d && d.status === "running") {
             setSandboxRunning(true);
+            recoveryTriggered = false;
+            recoveryTriggeredRef.current = null;
           } else {
             setSandboxRunning(false);
+            if (!recoveryTriggered && !isBuilding) {
+              recoveryTriggered = true;
+              recoveryTriggeredRef.current = id || null;
+              fetch(`${baseUrl}/api/sandbox/proxy/${id}/`, { method: "HEAD", credentials: "include" })
+                .then(() => setTimeout(check, 3000))
+                .catch(() => {});
+            }
           }
         })
         .catch(() => {
           if (!stopped) setSandboxRunning(false);
         });
     };
-    const triggerRecovery = () => {
-      if (stopped) return;
-      fetch(`${baseUrl}/api/sandbox/proxy/${id}/`, { method: "HEAD", credentials: "include" })
-        .then(() => {
-          setTimeout(check, 2000);
-        })
-        .catch(() => {});
-    };
     check();
-    triggerRecovery();
-    const pollInterval = isBuilding ? 2000 : 5000;
+    if (!recoveryTriggered) {
+      fetch(`${baseUrl}/api/sandbox/proxy/${id}/`, { method: "HEAD", credentials: "include" })
+        .then(() => setTimeout(check, 3000))
+        .catch(() => {});
+    }
+    const pollInterval = isBuilding ? 2000 : 4000;
     const iv = setInterval(check, pollInterval);
     return () => { stopped = true; clearInterval(iv); };
   }, [id, isBuilding]);
@@ -690,12 +701,14 @@ export default function Builder() {
       "serverStarted" in l.details &&
       (l.details as Record<string, unknown>).serverStarted === true
     );
-    if (runnerLog || sandboxRunning) {
+    const hasFiles = files.length > 0;
+    const hasPackageJson = files.some(f => f.filePath === "package.json");
+    if (runnerLog || sandboxRunning || (hasFiles && hasPackageJson)) {
       const baseUrl = import.meta.env.VITE_API_URL || "";
       return `${baseUrl}/api/sandbox/proxy/${id}/`;
     }
     return null;
-  }, [id, logs, sandboxRunning]);
+  }, [id, logs, sandboxRunning, files]);
 
   useEffect(() => {
     if (!sandboxProxyUrl) {
@@ -704,21 +717,21 @@ export default function Builder() {
       return;
     }
     let cancelled = false;
-    let attempt = 0;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
-    const maxAttempts = 6;
-    const baseDelay = 1000;
-    const verify = () => {
+    const verify = (attempt: number) => {
       if (cancelled) return;
-      attempt++;
       fetch(sandboxProxyUrl, { method: "HEAD", credentials: "include" })
         .then(r => {
           if (cancelled) return;
-          if (r.ok || (r.status >= 200 && r.status < 400)) {
+          if (r.status === 202) {
+            const delay = Math.min(2000 + attempt * 500, 5000);
+            retryTimer = setTimeout(() => verify(attempt + 1), delay);
+          } else if (r.status >= 200 && r.status < 300) {
             setProxyVerified(true);
             setProxyFailed(false);
-          } else if (attempt < maxAttempts) {
-            retryTimer = setTimeout(verify, baseDelay * Math.min(attempt, 4));
+          } else if (attempt < 30) {
+            const delay = Math.min(1500 + attempt * 300, 5000);
+            retryTimer = setTimeout(() => verify(attempt + 1), delay);
           } else {
             setProxyVerified(false);
             setProxyFailed(true);
@@ -726,15 +739,16 @@ export default function Builder() {
         })
         .catch(() => {
           if (cancelled) return;
-          if (attempt < maxAttempts) {
-            retryTimer = setTimeout(verify, baseDelay * Math.min(attempt, 4));
+          if (attempt < 30) {
+            const delay = Math.min(2000 + attempt * 500, 5000);
+            retryTimer = setTimeout(() => verify(attempt + 1), delay);
           } else {
             setProxyVerified(false);
             setProxyFailed(true);
           }
         });
     };
-    verify();
+    verify(0);
     return () => {
       cancelled = true;
       if (retryTimer) clearTimeout(retryTimer);
@@ -2112,6 +2126,32 @@ export default function Builder() {
             ) : hasPreview ? (
               <DevicePreviewFrame device={currentDevice} previewKey={previewKey}>
                 {(() => {
+                  const isReactProject = files.some(f =>
+                    f.filePath === "package.json" || f.filePath?.endsWith('.tsx') || f.filePath?.endsWith('.jsx')
+                  );
+                  if (isReactProject && !proxyVerified && sandboxProxyUrl) {
+                    return (
+                      <div className="w-full h-full flex items-center justify-center bg-[#0d1117]">
+                        <div className="text-center">
+                          <Loader2 className="w-8 h-8 mx-auto mb-3 text-[#58a6ff] animate-spin" />
+                          <p className="text-sm text-[#c9d1d9]">Starting development server...</p>
+                          <p className="text-xs text-[#484f58] mt-1">React projects need a running dev server for preview</p>
+                          <button
+                            onClick={() => {
+                              setProxyFailed(false);
+                              setProxyVerified(false);
+                              setPreviewKey(k => k + 1);
+                              const baseUrl = import.meta.env.VITE_API_URL || "";
+                              fetch(`${baseUrl}/api/sandbox/proxy/${id}/`, { method: "HEAD", credentials: "include" }).catch(() => {});
+                            }}
+                            className="mt-3 px-4 py-1.5 text-xs bg-[#1f6feb]/20 text-[#58a6ff] rounded-md hover:bg-[#1f6feb]/30 transition-colors"
+                          >
+                            {t.preview_retry}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  }
                   try {
                     const html = buildPreviewHtml();
                     if (!html) return (
@@ -2163,13 +2203,16 @@ export default function Builder() {
             ) : sandboxProxyUrl && proxyFailed ? (
               <div className="h-full flex items-center justify-center text-[#484f58]">
                 <div className="text-center">
-                  <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-red-400 opacity-60" />
-                  <p className="text-sm text-red-400">{t.preview_sandbox_failed}</p>
+                  <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-amber-400 opacity-60" />
+                  <p className="text-sm text-amber-400">{t.preview_sandbox_failed}</p>
+                  <p className="text-xs text-[#484f58] mt-1">The sandbox may need more time to start</p>
                   <button
                     onClick={() => {
                       setProxyFailed(false);
                       setProxyVerified(false);
                       setPreviewKey(k => k + 1);
+                      const baseUrl = import.meta.env.VITE_API_URL || "";
+                      fetch(`${baseUrl}/api/sandbox/proxy/${id}/`, { method: "HEAD", credentials: "include" }).catch(() => {});
                     }}
                     className="mt-3 px-4 py-1.5 text-xs bg-[#1f6feb]/20 text-[#58a6ff] rounded-md hover:bg-[#1f6feb]/30 transition-colors"
                   >
