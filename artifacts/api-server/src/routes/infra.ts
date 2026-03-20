@@ -818,7 +818,7 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
 
     if (slots.length === 0) slots.push({ provider: "anthropic", model: "claude-sonnet-4-6", maxTokens: 64000, timeoutSeconds: 300 });
 
-    res.write(`data: ${JSON.stringify({ type: "status", message: `🧠 تشغيل ${slots.length} نموذج ذكاء اصطناعي بالتوازي...`, messageEn: `Running ${slots.length} AI models in parallel...` })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: "status", message: `تشغيل ${slots.length} نموذج ذكاء اصطناعي بالتوازي...`, messageEn: `Running ${slots.length} AI models in parallel...` })}\n\n`);
 
     const callModel = async (provider: string, model: string, maxTokens: number, timeoutSec: number): Promise<{ content: string; tokensUsed: number; model: string; durationMs: number } | null> => {
       const start = Date.now();
@@ -876,7 +876,7 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
 
     const thinkResults = await Promise.allSettled(
       slots.map(slot => {
-        res.write(`data: ${JSON.stringify({ type: "status", message: `⚡ ${slot.model} يحلل...`, messageEn: `${slot.model} analyzing...` })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: "status", message: `${slot.model} يحلل...`, messageEn: `${slot.model} analyzing...` })}\n\n`);
         return callModel(slot.provider, slot.model, slot.maxTokens, slot.timeoutSeconds);
       })
     );
@@ -898,9 +898,9 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
 
     if (successResults.length === 1) {
       finalContent = successResults[0].content;
-      res.write(`data: ${JSON.stringify({ type: "status", message: `✅ نموذج واحد أجاب: ${successResults[0].model}`, messageEn: `Single model responded: ${successResults[0].model}` })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: "status", message: `نموذج واحد أجاب: ${successResults[0].model}`, messageEn: `Single model responded: ${successResults[0].model}` })}\n\n`);
     } else {
-      res.write(`data: ${JSON.stringify({ type: "status", message: `🏛️ الحاكم يدمج ${successResults.length} تحليلات...`, messageEn: `Governor merging ${successResults.length} analyses...` })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: "status", message: `الحاكم يدمج ${successResults.length} تحليلات...`, messageEn: `Governor merging ${successResults.length} analyses...` })}\n\n`);
 
       const proposalsText = successResults.map((r, i) =>
         `=== تحليل ${i + 1} (من ${r.model}, ${r.durationMs}ms) ===\n${r.content}`

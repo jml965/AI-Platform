@@ -1403,8 +1403,8 @@ export async function streamStrategicAgent(
 
       const toolResults: any[] = [];
       for (const tool of toolUseBlocks) {
-        onChunk(`\n\n⚡ *${tool.name}*...\n`);
-        fullReply += `\n\n⚡ *${tool.name}*...\n`;
+        onChunk(`\n\n*${tool.name}*...\n`);
+        fullReply += `\n\n*${tool.name}*...\n`;
         const result = await executeInfraTool(tool.name, tool.input);
         toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: result });
       }
