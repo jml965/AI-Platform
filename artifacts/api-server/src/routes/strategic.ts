@@ -211,7 +211,15 @@ router.post("/strategic/chat-stream", async (req, res) => {
     res.write(`data: ${JSON.stringify({ type: "done", tokensUsed: result.tokensUsed, cost: costUsd, modelsUsed: result.modelsUsed })}\n\n`);
     res.end();
   } catch (error: any) {
-    const reason = error?.reason || error?.message || "Unknown error";
+    let reason = error?.reason || error?.message || "Unknown error";
+    const rawStr = String(error?.message || error || "");
+    if (rawStr.includes("credit balance is too low") || rawStr.includes("insufficient_quota") || rawStr.includes("billing")) {
+      reason = "⚠️ رصيد مفتاح API المستخدم (Anthropic) منتهي. يرجى تحديث المفتاح أو شحن الرصيد من console.anthropic.com\n\nThe API key credit balance is too low. Please update the key or add credits at console.anthropic.com";
+    } else if (rawStr.includes("401") || rawStr.includes("authentication") || rawStr.includes("invalid.*key")) {
+      reason = "⚠️ مفتاح API غير صالح. يرجى التحقق من المفتاح في الإعدادات.\n\nInvalid API key. Please check the key in settings.";
+    } else if (rawStr.includes("rate_limit") || rawStr.includes("429")) {
+      reason = "⚠️ تم تجاوز حد الاستخدام. يرجى المحاولة بعد قليل.\n\nRate limit exceeded. Please try again shortly.";
+    }
     if (!res.headersSent) {
       res.status(500).json({ error: { code: "INTERNAL", message: reason } });
     } else {
