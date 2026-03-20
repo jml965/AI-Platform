@@ -1015,6 +1015,28 @@ export const INFRA_TOOLS = [
       required: ["method", "endpoint"],
     },
   },
+  {
+    name: "browse_page",
+    description: "Fetch a live page from the running website and return its visible text content, links, buttons, inputs, and structure. Use this to 'see' what the user sees on any page. Returns a structured text representation of the rendered page.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        path: { type: "string", description: "URL path to browse, e.g. / or /billing or /agents. Relative to the running site." },
+      },
+      required: ["path"],
+    },
+  },
+  {
+    name: "site_health",
+    description: "Check the health and accessibility of the live website. Returns HTTP status, response time, page title, and basic diagnostics.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        url: { type: "string", description: "Full URL or path to check. If path, uses the dev domain. Examples: / or https://mrcodeai.com" },
+      },
+      required: ["url"],
+    },
+  },
 ];
 
 const PROJECT_ROOT = process.cwd();
@@ -1226,6 +1248,138 @@ export async function executeInfraTool(toolName: string, input: any): Promise<st
         let body;
         try { body = JSON.parse(text); } catch { body = text; }
         return JSON.stringify({ status: res.status, body: typeof body === "object" ? JSON.stringify(body).slice(0, 50000) : (body as string).slice(0, 50000) });
+      }
+      case "browse_page": {
+        const devDomain = process.env.REPLIT_DEV_DOMAIN || process.env.REPLIT_DOMAINS || "localhost:5173";
+        const pagePath = (input.path || "/").startsWith("/") ? input.path : `/${input.path}`;
+        const pageUrl = `https://${devDomain}${pagePath}`;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
+        try {
+          const res = await fetch(pageUrl, {
+            signal: controller.signal,
+            headers: { "User-Agent": "MrCodeAI-Agent/1.0", Accept: "text/html,*/*" },
+          });
+          clearTimeout(timeout);
+          const html = await res.text();
+
+          const title = html.match(/<title[^>]*>(.*?)<\/title>/si)?.[1]?.trim() || "(no title)";
+
+          const stripped = html
+            .replace(/<script[\s\S]*?<\/script>/gi, "")
+            .replace(/<style[\s\S]*?<\/style>/gi, "")
+            .replace(/<noscript[\s\S]*?<\/noscript>/gi, "")
+            .replace(/<!--[\s\S]*?-->/g, "");
+
+          const links: string[] = [];
+          const linkRe = /<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+          let m: RegExpExecArray | null;
+          while ((m = linkRe.exec(stripped)) !== null) {
+            const linkText = m[2].replace(/<[^>]+>/g, "").trim();
+            if (linkText) links.push(`[${linkText}](${m[1]})`);
+          }
+
+          const buttons: string[] = [];
+          const btnRe = /<button[^>]*>([\s\S]*?)<\/button>/gi;
+          while ((m = btnRe.exec(stripped)) !== null) {
+            const btnText = m[1].replace(/<[^>]+>/g, "").trim();
+            if (btnText) buttons.push(btnText);
+          }
+
+          const inputs: string[] = [];
+          const inputRe = /<input[^>]*>/gi;
+          while ((m = inputRe.exec(stripped)) !== null) {
+            const typeMatch = m[0].match(/type=["']([^"']+)["']/i);
+            const nameMatch = m[0].match(/name=["']([^"']+)["']/i);
+            const placeholder = m[0].match(/placeholder=["']([^"']+)["']/i);
+            inputs.push(`<input type="${typeMatch?.[1] || "text"}" name="${nameMatch?.[1] || ""}" placeholder="${placeholder?.[1] || ""}">`);
+          }
+
+          const imgs: string[] = [];
+          const imgRe = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
+          while ((m = imgRe.exec(stripped)) !== null) {
+            const alt = m[0].match(/alt=["']([^"']+)["']/i)?.[1] || "";
+            imgs.push(`[img: ${alt || m[1].split("/").pop()}]`);
+          }
+
+          const headings: string[] = [];
+          const hRe = /<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi;
+          while ((m = hRe.exec(stripped)) !== null) {
+            const hText = m[2].replace(/<[^>]+>/g, "").trim();
+            if (hText) headings.push(`${"#".repeat(parseInt(m[1]))} ${hText}`);
+          }
+
+          const visibleText = stripped.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 8000);
+
+          const result = [
+            `Page: ${pageUrl}`,
+            `Status: ${res.status}`,
+            `Title: ${title}`,
+            "",
+            headings.length ? `## Headings:\n${headings.join("\n")}` : "",
+            links.length ? `## Links (${links.length}):\n${links.slice(0, 50).join("\n")}` : "",
+            buttons.length ? `## Buttons:\n${buttons.join(", ")}` : "",
+            inputs.length ? `## Inputs:\n${inputs.join("\n")}` : "",
+            imgs.length ? `## Images:\n${imgs.join("\n")}` : "",
+            `## Visible Text:\n${visibleText}`,
+          ].filter(Boolean).join("\n");
+
+          return result.slice(0, 30000);
+        } catch (err: any) {
+          clearTimeout(timeout);
+          return JSON.stringify({ error: `Failed to browse page: ${err.message}` });
+        }
+      }
+      case "site_health": {
+        const rawUrl = input.url || "/";
+        let checkUrl: string;
+        if (rawUrl.startsWith("http")) {
+          checkUrl = rawUrl;
+        } else {
+          const devDomain = process.env.REPLIT_DEV_DOMAIN || process.env.REPLIT_DOMAINS || "localhost:5173";
+          const p = rawUrl.startsWith("/") ? rawUrl : `/${rawUrl}`;
+          checkUrl = `https://${devDomain}${p}`;
+        }
+
+        const results: any[] = [];
+        const urls = [checkUrl];
+        if (checkUrl.includes("mrcodeai") && !checkUrl.includes("/api/")) {
+          urls.push(checkUrl.replace(/\/$/, "") + "/api/health");
+        }
+
+        for (const u of urls) {
+          const start = Date.now();
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 15000);
+          try {
+            const res = await fetch(u, {
+              signal: controller.signal,
+              headers: { "User-Agent": "MrCodeAI-HealthCheck/1.0" },
+              redirect: "follow",
+            });
+            clearTimeout(timeout);
+            const elapsed = Date.now() - start;
+            const text = await res.text();
+            const title = text.match(/<title[^>]*>(.*?)<\/title>/si)?.[1]?.trim();
+            const contentLen = text.length;
+            results.push({
+              url: u,
+              status: res.status,
+              statusText: res.statusText,
+              responseTime: `${elapsed}ms`,
+              contentLength: contentLen,
+              title: title || undefined,
+              headers: {
+                server: res.headers.get("server"),
+                contentType: res.headers.get("content-type"),
+              },
+            });
+          } catch (err: any) {
+            clearTimeout(timeout);
+            results.push({ url: u, error: err.message, responseTime: `${Date.now() - start}ms` });
+          }
+        }
+        return JSON.stringify({ health: results }, null, 2);
       }
       default:
         return JSON.stringify({ error: `Unknown tool: ${toolName}` });
