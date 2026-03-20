@@ -75,7 +75,7 @@ function loadThreads(): ChatThread[] {
       const threads = JSON.parse(raw);
       return threads.map((t: any) => ({
         ...t,
-        messages: t.messages.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) })),
+        messages: (t.messages || []).filter((m: any) => m.role !== "status").map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) })),
       }));
     }
   } catch {}
@@ -234,7 +234,7 @@ function FloatingChatInner() {
     const thread = threads.find(t => t.id === threadId);
     if (!thread) return;
     setActiveThreadId(threadId);
-    setMessages(thread.messages);
+    setMessages(thread.messages.filter(m => m.role !== "status"));
     if (agents.length > 0) {
       const ag = agents.find(a => a.agentKey === thread.agentKey);
       if (ag) setSelectedAgent(ag);
