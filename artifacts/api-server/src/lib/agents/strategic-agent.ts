@@ -850,7 +850,7 @@ export async function addToMemory(
   }).where(eq(agentConfigsTable.agentKey, agentKey));
 }
 
-const INFRA_TOOLS = [
+export const INFRA_TOOLS = [
   {
     name: "read_file",
     description: "Read a file's content from the server filesystem. Can also list directory contents.",
@@ -1019,7 +1019,7 @@ const INFRA_TOOLS = [
 
 const PROJECT_ROOT = process.cwd();
 
-async function executeInfraTool(toolName: string, input: any): Promise<string> {
+export async function executeInfraTool(toolName: string, input: any): Promise<string> {
   try {
     switch (toolName) {
       case "read_file": {

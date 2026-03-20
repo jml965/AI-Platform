@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { agentConfigsTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { getSystemBlueprint } from "../lib/system-blueprint";
+import { INFRA_TOOLS, executeInfraTool } from "../lib/agents/strategic-agent";
 const router = Router();
 
 function requireInfraAdmin(req: any, res: any, next: any) {
@@ -640,6 +641,21 @@ router.post("/infra/chat-stream", requireInfraAdmin, async (req, res) => {
 
 ${blueprint}
 
+أنت تعمل في بيئة حقيقية — لديك وصول مباشر لقاعدة البيانات، الملفات، الطرفية، والبنية التحتية.
+لديك الأدوات التالية التي تعمل فعلياً على السيرفر الحقيقي:
+- db_query: تنفيذ أي استعلام SQL حقيقي على قاعدة البيانات
+- db_tables: عرض جداول قاعدة البيانات الحقيقية
+- read_file: قراءة ملفات المشروع الحقيقية
+- write_file: كتابة وتعديل الملفات
+- exec_command: تنفيذ أوامر shell حقيقية
+- system_status: حالة النظام الفعلية
+- list_components: عرض مكونات الواجهة
+- get_env / set_env: إدارة متغيرات البيئة
+- trigger_deploy / deploy_status: إدارة النشر
+- github_api: التعامل مع GitHub API
+
+استخدم أدواتك دائماً للحصول على بيانات حقيقية. لا تتخيل أو تفترض — نفّذ واعرض النتائج الفعلية.
+
 القواعد:
 - رد بالعربية إذا المالك يتحدث بالعربية، وبالإنجليزية إذا يتحدث بالإنجليزية
 - كن مختصراً ومباشراً
@@ -649,7 +665,7 @@ ${blueprint}
 - عند كتابة خطة أو وثيقة، اكتبها داخل code block واحد بصيغة markdown حتى يحفظها المالك كملف
 - اكتب الخطة بأسلوب احترافي: عنوان رئيسي، أقسام مرقمة، مخططات ASCII للبنية والتدفقات، تفاصيل كل مرحلة (الوكيل، النموذج، المدخل، المخرج)، أمثلة عملية، شجرة ملفات
 - لا تكتب خطة مختصرة — اجعلها شاملة ومفصلة وجاهزة للتنفيذ
-- لا تخترع ملفات غير موجودة — اعتمد على خريطة النظام
+- لا تخترع ملفات غير موجودة — استخدم أدواتك للتحقق
 ${config.instructions ? `\n\nتعليمات إضافية:\n${config.instructions}` : ""}
 ${config.permissions && Array.isArray(config.permissions) && config.permissions.length > 0 ? `\nصلاحياتك: ${config.permissions.join(", ")}` : ""}`;
 
@@ -675,22 +691,46 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
     if (slot.provider === "anthropic") {
       const { getAnthropicClient } = await import("../lib/agents/ai-clients");
       const client = await getAnthropicClient();
-      const chatMsgs = conversationMessages
+      const chatMsgs: any[] = conversationMessages
         .filter(m => m.role !== "system")
         .map(m => ({ role: m.role as "user" | "assistant", content: m.content }));
-      const stream = client.messages.stream({
-        model: slot.model,
-        max_tokens: Math.min(slot.maxTokens || 32000, 64000),
-        system: infraSystemPrompt,
-        messages: chatMsgs,
-        temperature: Math.min(parseFloat(String(config.creativity)) || 0.5, 1.0),
-      });
-      stream.on("text", (text: string) => {
-        fullReply += text;
-        res.write(`data: ${JSON.stringify({ type: "chunk", text })}\n\n`);
-      });
-      const response = await stream.finalMessage();
-      tokensUsed = (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0);
+
+      const maxLoops = 15;
+      for (let loop = 0; loop < maxLoops; loop++) {
+        const stream = client.messages.stream({
+          model: slot.model,
+          max_tokens: Math.min(slot.maxTokens || 32000, 64000),
+          system: infraSystemPrompt,
+          messages: chatMsgs,
+          tools: INFRA_TOOLS as any,
+          temperature: Math.min(parseFloat(String(config.creativity)) || 0.5, 1.0),
+        });
+
+        let currentText = "";
+        stream.on("text", (text: string) => {
+          currentText += text;
+          fullReply += text;
+          res.write(`data: ${JSON.stringify({ type: "chunk", text })}\n\n`);
+        });
+
+        const response = await stream.finalMessage();
+        tokensUsed += (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0);
+
+        const toolUseBlocks = response.content.filter((b: any) => b.type === "tool_use");
+        if (response.stop_reason !== "tool_use" || toolUseBlocks.length === 0) break;
+
+        chatMsgs.push({ role: "assistant", content: response.content });
+
+        const toolResults: any[] = [];
+        for (const tool of toolUseBlocks) {
+          res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n\n...*${tool.name}*...\n` })}\n\n`);
+          fullReply += `\n\n...*${tool.name}*...\n`;
+          const result = await executeInfraTool(tool.name, tool.input);
+          res.write(`data: ${JSON.stringify({ type: "tool_result", name: tool.name, result: result.slice(0, 5000) })}\n\n`);
+          toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: result });
+        }
+        chatMsgs.push({ role: "user", content: toolResults });
+      }
     } else if (slot.provider === "google") {
       const { getGoogleClient } = await import("../lib/agents/ai-clients");
       const client = await getGoogleClient();
