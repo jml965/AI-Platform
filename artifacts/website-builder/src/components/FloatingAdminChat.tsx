@@ -163,6 +163,7 @@ function FloatingChatInner() {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
+  const [statusLines, setStatusLines] = useState<string[]>([]);
   const [wandMode, setWandMode] = useState(false);
   const [wandHighlight, setWandHighlight] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
 
@@ -215,7 +216,7 @@ function FloatingChatInner() {
   }, [activeThreadId]);
 
   useEffect(() => {
-    if (messages.length > 0 && activeThreadId) syncMessagesToThread(messages);
+    if (messages.length > 0 && activeThreadId) syncMessagesToThread(messages.filter(m => m.role !== "status"));
   }, [messages, activeThreadId, syncMessagesToThread]);
 
   const startNewThread = () => {
@@ -756,7 +757,7 @@ function FloatingChatInner() {
             const event = JSON.parse(line.slice(6));
             if (event.type === "chunk") { streamedContent += event.text; typewriterFlush(); }
             else if (event.type === "status") {
-              setMessages(prev => [...prev, { id: crypto.randomUUID(), role: "status", content: event.message || event.messageEn, timestamp: new Date() }]);
+              setStatusLines(prev => [...prev, event.message || event.messageEn]);
               scrollToBottom();
             }
             else if (event.type === "done") { streamMeta = { tokensUsed: event.tokensUsed, cost: event.cost, model: event.model, models: event.models }; }
@@ -780,6 +781,7 @@ function FloatingChatInner() {
       }
     } finally {
       setLoading(false);
+      setStatusLines([]);
       abortRef.current = null;
     }
   };
@@ -1250,17 +1252,7 @@ function FloatingChatInner() {
                 </div>
               )}
 
-              {messages.map(msg => {
-                if (msg.role === "status") {
-                  return (
-                    <div key={msg.id} className="flex items-center justify-center py-0.5">
-                      <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#161b22] border border-[#30363d]">
-                        <div className="w-1 h-1 bg-yellow-400 rounded-full animate-pulse" />
-                        <span className="text-[10px] text-[#8b949e]">{msg.content}</span>
-                      </div>
-                    </div>
-                  );
-                }
+              {messages.filter(m => m.role !== "status").map(msg => {
                 const msgImages = (msg as any).images as string[] | undefined;
                 const textContent = msg.content.replace(/\n\n!\[.*?\]\(data:image.*?\.\.\.\)/g, "").trim();
                 return (
@@ -1314,6 +1306,17 @@ function FloatingChatInner() {
                     {btn.icon}
                     {btn.label}
                   </button>
+                ))}
+              </div>
+            )}
+
+            {statusLines.length > 0 && (
+              <div className="px-3 py-1.5 border-t border-[#1c2333] flex-shrink-0 space-y-0.5">
+                {statusLines.map((line, i) => (
+                  <div key={i} className="flex items-center gap-1.5">
+                    <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${i === statusLines.length - 1 ? "bg-cyan-400 animate-pulse" : "bg-[#30363d]"}`} />
+                    <span className={`text-[10px] ${i === statusLines.length - 1 ? "text-[#8b949e]" : "text-[#484f58]"}`}>{line}</span>
+                  </div>
                 ))}
               </div>
             )}
