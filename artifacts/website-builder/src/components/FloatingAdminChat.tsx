@@ -859,7 +859,10 @@ function FloatingChatInner() {
                     </button>
                     <button
                       onClick={() => {
-                        const fileName = `code.${ext}`;
+                        const headingMatch = trimmed.match(/^#\s+(.+)/m);
+                        const fileName = headingMatch
+                          ? headingMatch[1].replace(/[^\w\u0600-\u06FF\s—-]/g, "").trim().slice(0, 60) + `.${ext}`
+                          : `code.${ext}`;
                         saveFile(fileName, seg.lang || "txt", trimmed);
                         setShowSidebar(true);
                         setSidebarTab("files");
