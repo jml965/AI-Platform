@@ -892,18 +892,57 @@ function FloatingChatInner() {
               </div>
             );
           }
+          const lines = seg.value.split("\n");
+          const toolLines: string[] = [];
+          const textLines: string[] = [];
+          for (const line of lines) {
+            const trimLine = line.trim();
+            if (trimLine.match(/^\.\.\.\*[a-z_]+\*\.\.\.$/i) || trimLine.match(/^\*[a-z_]+\*\.\.\.$/i) || trimLine.match(/^\.\.\.\*[a-z_]+\*$/i)) {
+              const m = trimLine.match(/\*([a-z_]+)\*/i);
+              if (m) toolLines.push(m[1]);
+            } else {
+              textLines.push(line);
+            }
+          }
+          const TOOL_ICONS: Record<string, string> = {
+            list_components: "list", db_query: "db", exec_command: "terminal",
+            read_file: "file", write_file: "file", list_files: "folder",
+            deploy: "rocket", search: "search", analyze: "chart",
+          };
+          const cleanText = textLines.join("\n").trim();
           return (
-            <span key={i} className="whitespace-pre-wrap">
-              {seg.value.split(/(\*\*[^*]+\*\*)/g).map((part, j) => {
-                const bold = part.match(/^\*\*([^*]+)\*\*$/);
-                if (bold) return <strong key={j} className="font-bold text-[#e1e4e8]">{bold[1]}</strong>;
-                return part.split(/(`[^`]+`)/g).map((ip, k) => {
-                  const inl = ip.match(/^`([^`]+)`$/);
-                  if (inl) return <code key={`${j}-${k}`} className="px-1 py-0.5 bg-[#1c2333] rounded text-[11px] text-cyan-300 border border-[#30363d]" dir="ltr">{inl[1]}</code>;
-                  return <React.Fragment key={`${j}-${k}`}>{ip}</React.Fragment>;
-                });
-              })}
-            </span>
+            <React.Fragment key={i}>
+              {cleanText && (
+                <span className="whitespace-pre-wrap">
+                  {cleanText.split(/(\*\*[^*]+\*\*)/g).map((part, j) => {
+                    const bold = part.match(/^\*\*([^*]+)\*\*$/);
+                    if (bold) return <strong key={j} className="font-bold text-[#e1e4e8]">{bold[1]}</strong>;
+                    return part.split(/(`[^`]+`)/g).map((ip, k) => {
+                      const inl = ip.match(/^`([^`]+)`$/);
+                      if (inl) return <code key={`${j}-${k}`} className="px-1 py-0.5 bg-[#1c2333] rounded text-[11px] text-cyan-300 border border-[#30363d]" dir="ltr">{inl[1]}</code>;
+                      return <React.Fragment key={`${j}-${k}`}>{ip}</React.Fragment>;
+                    });
+                  })}
+                </span>
+              )}
+              {toolLines.length > 0 && (
+                <div className="flex items-center gap-1.5 my-1.5 flex-wrap">
+                  {toolLines.map((tool, ti) => (
+                    <div key={ti} className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#161b22] border border-[#30363d] text-[9px] text-[#484f58]" title={tool}>
+                      {TOOL_ICONS[tool] === "db" ? <Database className="w-2.5 h-2.5" /> :
+                       TOOL_ICONS[tool] === "terminal" ? <Terminal className="w-2.5 h-2.5" /> :
+                       TOOL_ICONS[tool] === "file" ? <FileText className="w-2.5 h-2.5" /> :
+                       TOOL_ICONS[tool] === "folder" ? <FolderOpen className="w-2.5 h-2.5" /> :
+                       TOOL_ICONS[tool] === "rocket" ? <Rocket className="w-2.5 h-2.5" /> :
+                       TOOL_ICONS[tool] === "list" ? <Settings className="w-2.5 h-2.5" /> :
+                       <Activity className="w-2.5 h-2.5" />}
+                      {tool.replace(/_/g, " ")}
+                    </div>
+                  ))}
+                  <span className="text-[9px] text-[#30363d]">{toolLines.length} {isRTL ? "إجراء" : toolLines.length === 1 ? "action" : "actions"}</span>
+                </div>
+              )}
+            </React.Fragment>
           );
         })}
       </div>
