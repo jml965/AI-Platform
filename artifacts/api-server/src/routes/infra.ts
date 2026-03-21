@@ -771,47 +771,60 @@ ${blueprint}
 
 ⛔⛔⛔ القانون الثاني: التنفيذ الفوري الإجباري ⛔⛔⛔
 
-لما يُطلب تعديل/حذف/إيجاد نص → 3 خطوات فقط:
+لما يُطلب تعديل/حذف/إيجاد نص → 4 خطوات فقط:
   خطوة 1: search_text → يعطيك الملفات والأسطر
-  خطوة 2: read_file → اقرأ أفضل ملف
+  خطوة 2: read_file → اقرأ أفضل ملف (تأكد أنه مستورد/مستخدم في صفحة أو layout)
   خطوة 3: edit_component → عدّل مباشرة
+  خطوة 4: screenshot_page → تحقق أن التغيير ظاهر في الواجهة
 
-بعد search_text ناجح → read_file فوراً → edit_component فوراً.
+بعد search_text ناجح → read_file فوراً → edit_component فوراً → screenshot_page للتحقق.
 ممنوع:
 - بحث ثاني لنفس الهدف
 - قول "سأفعل" أو "دعني" بدون تنفيذ
 - إعادة تحليل نفس النتيجة
 - ممنوع search أكثر من 3 مرات في المحادثة
 
-⛔⛔⛔ القانون الثالث: إثبات التنفيذ (إجباري!) ⛔⛔⛔
+⛔⛔⛔ القانون الثالث: التحقق من الملف المستخدم ⛔⛔⛔
 
-بعد كل edit_component أو write_file، يجب تعرض:
+بعد اختيار ملف من search_text:
+- تأكد أنه مستخدم فعلياً (مستورد import في صفحة أو layout أو route).
+- الملفات الآمنة دائماً: i18n.tsx (ترجمات)، index.css (أنماط)، App.tsx (رئيسي).
+- إذا الملف غير مستخدم → انتقل للملف التالي من نتائج البحث.
+
+⛔⛔⛔ القانون الرابع: إثبات التنفيذ + التحقق البصري (إجباري!) ⛔⛔⛔
+
+بعد كل edit_component أو write_file:
+1. النظام يتحقق تلقائياً (matchesReplaced)
+2. بعد نجاح التعديل → خذ screenshot_page للتحقق البصري من ظهور التغيير
+
+نمط الرد النهائي الوحيد المسموح:
+
 ✔ تم التعديل:
   الملف: [path]
   قبل: [old_text]
   بعد: [new_text]
   matchesReplaced: [number]
+  ظاهر في الواجهة: نعم/لا
 
-IF matchesReplaced = 0 → التعديل فشل. قل:
 ❌ فشل التعديل:
-  السبب: [reason]
+  السبب: [الملف غير مستخدم / التغيير لم يظهر / matchesReplaced=0]
 
-ممنوع تقول "تم ✅" إذا matchesReplaced = 0.
+ممنوع تقول "تم ✅" إلا إذا matchesReplaced > 0.
 
-⛔⛔⛔ القانون الرابع: ممنوع الأسئلة غير المنطقية ⛔⛔⛔
+⛔⛔⛔ القانون الخامس: ممنوع الأسئلة غير المنطقية ⛔⛔⛔
 
 أنت system agent بصلاحيات كاملة. ممنوع تسأل المالك:
 - "هل أنت مسجل دخول؟" — لا تحتاج ذلك
 - "هل عندك صلاحية؟" — أنت لديك كل الصلاحيات
 - "أي ملف تقصد؟" — ابحث بنفسك وحدد
 
-⛔⛔⛔ القانون الخامس: حد الخطوات ⛔⛔⛔
+⛔⛔⛔ القانون السادس: حد الخطوات ⛔⛔⛔
 
 - إذا مرت 4 أدوات بدون edit → توقف وقل: "لم أتمكن من تحديد المكان بدقة"
 - النظام يوقفك تلقائياً بعد 4 أدوات بدون تعديل.
 - نفس search لا يتكرر. نفس الهدف لا يُعاد تحليله.
 
-⛔⛔⛔ القانون السادس: ترتيب الملفات ⛔⛔⛔
+⛔⛔⛔ القانون السابع: ترتيب الملفات ⛔⛔⛔
 
 عندما search_text يرجع عدة نتائج:
   الأولوية 1: ملف يحتوي النص بالضبط (exact match)
@@ -1151,7 +1164,30 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
               } else {
                 const oldText = ((tool.input as any)?.old_text || "").slice(0, 80);
                 const newText = ((tool.input as any)?.new_text || "").slice(0, 80);
-                finalContent = `✅ EDIT_SUCCESS: تم التعديل بنجاح!\n📁 الملف: ${editPath}\n🔄 matchesReplaced: ${matchesReplaced}\n📝 قبل: "${oldText}"\n📝 بعد: "${newText}"\n\n${result}`;
+
+                const isUIFile = /\.(tsx|jsx|css|html|vue|svelte)$/i.test(editPath);
+                let uiVerification = "";
+                if (isUIFile) {
+                  try {
+                    const verifyResult = await executeInfraTool("screenshot_page", { path: "/" }, "admin");
+                    let verifyParsed: any = null;
+                    try { verifyParsed = JSON.parse(verifyResult); } catch {}
+                    if (verifyParsed?.base64) {
+                      res.write(`data: ${JSON.stringify({ type: "tool_result", name: "auto_verify_screenshot", result: "تم أخذ صورة للتحقق البصري", hasScreenshot: true, screenshotBase64: verifyParsed.base64 })}\n\n`);
+                      uiVerification = `\n🔍 تم أخذ screenshot تلقائي للتحقق — راجع الصورة وتأكد أن التغيير "${newText}" ظاهر في الواجهة.`;
+                      console.log(`[Agent] AUTO-VERIFY: Screenshot taken after edit of ${editPath}`);
+                      await logAudit(agentKey, "auto_verify_screenshot", "screenshot_page", { editPath, newText }, "screenshot_taken", "low", "success");
+                    } else {
+                      uiVerification = `\n⚠️ لم يتمكن النظام من أخذ screenshot تلقائي. نفّذ screenshot_page يدوياً للتحقق.`;
+                      console.log(`[Agent] AUTO-VERIFY FAILED: No screenshot for ${editPath}`);
+                    }
+                  } catch (verifyErr: any) {
+                    uiVerification = `\n⚠️ فشل التحقق البصري التلقائي: ${verifyErr.message || "unknown"}. نفّذ screenshot_page يدوياً.`;
+                    console.log(`[Agent] AUTO-VERIFY ERROR: ${verifyErr.message}`);
+                  }
+                }
+
+                finalContent = `✅ EDIT_SUCCESS: تم التعديل بنجاح!\n📁 الملف: ${editPath}\n🔄 matchesReplaced: ${matchesReplaced}\n📝 قبل: "${oldText}"\n📝 بعد: "${newText}"${uiVerification}\n\n${result}`;
                 console.log(`[Agent] EDIT SUCCESS: matchesReplaced=${matchesReplaced} in ${editPath} | before="${oldText}" → after="${newText}"`);
                 await logAudit(agentKey, "edit_success", tool.name, { path: editPath, oldText, newText, matchesReplaced }, result?.slice(0, 500), "medium", "success", durationMs);
               }
@@ -1163,7 +1199,21 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
                 console.log(`[Agent] WRITE FAILED: ${writePath}`);
                 await logAudit(agentKey, "write_failed", tool.name, tool.input, { path: writePath }, "medium", "failed", durationMs);
               } else {
-                finalContent = `✅ WRITE_SUCCESS: تم كتابة الملف بنجاح!\n📁 الملف: ${writePath}\n📏 الحجم: ${parsedResult.size || parsedResult.newSize || "unknown"}\n\n${result}`;
+                const isUIWrite = /\.(tsx|jsx|css|html|vue|svelte)$/i.test(writePath);
+                let writeVerification = "";
+                if (isUIWrite) {
+                  try {
+                    const wVerify = await executeInfraTool("screenshot_page", { path: "/" }, "admin");
+                    let wParsed: any = null;
+                    try { wParsed = JSON.parse(wVerify); } catch {}
+                    if (wParsed?.base64) {
+                      res.write(`data: ${JSON.stringify({ type: "tool_result", name: "auto_verify_screenshot", result: "تم أخذ صورة للتحقق البصري", hasScreenshot: true, screenshotBase64: wParsed.base64 })}\n\n`);
+                      writeVerification = `\n🔍 تم أخذ screenshot تلقائي — تحقق من ظهور التغيير.`;
+                      console.log(`[Agent] AUTO-VERIFY: Screenshot after write ${writePath}`);
+                    }
+                  } catch {}
+                }
+                finalContent = `✅ WRITE_SUCCESS: تم كتابة الملف بنجاح!\n📁 الملف: ${writePath}\n📏 الحجم: ${parsedResult.size || parsedResult.newSize || "unknown"}${writeVerification}\n\n${result}`;
                 console.log(`[Agent] WRITE SUCCESS: ${writePath}`);
                 await logAudit(agentKey, "write_success", tool.name, { path: writePath }, result?.slice(0, 500), "medium", "success", durationMs);
               }
@@ -1187,7 +1237,15 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
               console.log(`[Agent] Search results: found=${found}, matchCount=${matchCount}, topFiles=${JSON.stringify(topFiles)}`);
               if (found && topFiles.length > 0) {
                 hasReadAfterSearch = false;
-                finalContent = `${result}\n\n💡 ملفات مرشحة (أفضل 3 بدون تكرار): ${topFiles.join(", ")}\nاختر أفضل ملف حسب الأولوية: (1) exact match (2) ملف واجهة tsx/jsx (3) اسم يدل على المكان. ثم نفّذ read_file على الملف المختار.`;
+                const safeFiles = ["i18n.tsx", "index.css", "App.tsx", "main.tsx", "index.tsx", "layout.tsx"];
+                const fileNotes = topFiles.map(f => {
+                  const isSafe = safeFiles.some(sf => f.endsWith(sf));
+                  const isUI = /\.(tsx|jsx|css|html|vue|svelte)$/i.test(f);
+                  let note = isUI ? "📄 واجهة" : "📋 خلفية";
+                  if (isSafe) note += " ✅ (مستخدم دائماً)";
+                  return `  ${f} — ${note}`;
+                }).join("\n");
+                finalContent = `${result}\n\n💡 ملفات مرشحة (أفضل 3 بدون تكرار):\n${fileNotes}\n\n⚠️ تأكد أن الملف المختار مستورد (import) في صفحة أو layout قبل التعديل.\nالأولوية: (1) exact match (2) ملف واجهة tsx/jsx مستورد (3) اسم يدل على المكان.\nثم نفّذ read_file على الملف المختار.`;
               }
             }
 
