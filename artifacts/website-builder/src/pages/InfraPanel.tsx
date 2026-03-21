@@ -928,9 +928,36 @@ export default function InfraPanel() {
     requestAnimationFrame(() => { programmaticScrollRef.current = false; });
   }, []);
 
+  useEffect(() => {
+    if (!selectedAgent) return;
+    const key = `infra_chat_${selectedAgent.agentKey}`;
+    const saved = localStorage.getItem(key);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        const restored: ChatMessage[] = parsed.map((m: any) => ({
+          ...m,
+          timestamp: new Date(m.timestamp),
+        }));
+        setMessages(restored);
+        setTimeout(() => scrollToBottomIfNeeded(), 100);
+      } catch { setMessages([]); }
+    } else {
+      setMessages([]);
+    }
+  }, [selectedAgent]);
+
+  useEffect(() => {
+    if (!selectedAgent || messages.length === 0) return;
+    const key = `infra_chat_${selectedAgent.agentKey}`;
+    const toSave = messages.filter(m => m.role !== "status").slice(-50);
+    try {
+      localStorage.setItem(key, JSON.stringify(toSave));
+    } catch {}
+  }, [messages, selectedAgent]);
+
   const selectAgent = (agent: InfraAgent) => {
     setSelectedAgent(agent);
-    setMessages([]);
     setPrompt("");
     localStorage.setItem("infra_last_agent", agent.agentKey);
   };
@@ -1399,16 +1426,37 @@ export default function InfraPanel() {
                         </div>
                         <div className="space-y-1">
                           {msg.toolLogs.map((log, i) => (
-                            <div key={i} className="flex items-center gap-2 text-[11px]">
-                              <span className={cn(
-                                "w-1.5 h-1.5 rounded-full flex-shrink-0",
-                                log.status === "success" ? "bg-emerald-400" :
-                                log.status === "failed" ? "bg-red-400" :
-                                log.status === "blocked" ? "bg-orange-400" :
-                                "bg-cyan-400 animate-pulse"
-                              )} />
-                              <span className="text-[#d4dae3] font-mono">{log.tool}</span>
-                              {log.file && <span className="text-[#484f58] truncate max-w-[150px]">{log.file.split("/").pop()}</span>}
+                            <div key={i}>
+                              <div
+                                className={cn(
+                                  "flex items-center gap-2 text-[11px]",
+                                  log.file ? "cursor-pointer hover:bg-[#1c2128] rounded px-1 -mx-1 transition-colors" : ""
+                                )}
+                                onClick={() => log.file && setExpandedFile(expandedFile === `${msg.id}-${i}` ? null : `${msg.id}-${i}`)}
+                              >
+                                <span className={cn(
+                                  "w-1.5 h-1.5 rounded-full flex-shrink-0",
+                                  log.status === "success" ? "bg-emerald-400" :
+                                  log.status === "failed" ? "bg-red-400" :
+                                  log.status === "blocked" ? "bg-orange-400" :
+                                  "bg-cyan-400 animate-pulse"
+                                )} />
+                                <span className="text-[#d4dae3] font-mono">{log.tool}</span>
+                                {log.file && (
+                                  <span className="flex items-center gap-1 text-cyan-400/70 truncate max-w-[180px]">
+                                    <span>{getFileIcon(log.file.split("/").pop() || "")}</span>
+                                    <span className="underline decoration-dotted">{log.file.split("/").pop()}</span>
+                                  </span>
+                                )}
+                              </div>
+                              {log.file && expandedFile === `${msg.id}-${i}` && (
+                                <div className="mt-1 mb-1 mx-1 p-2 rounded bg-[#0d1117] border border-[#21262d] text-[10px]">
+                                  <div className="text-[#484f58] mb-1">{lang === "ar" ? "المسار:" : "Path:"}</div>
+                                  <div className="text-cyan-400 font-mono break-all">{log.file}</div>
+                                  <div className="text-[#484f58] mt-1">{lang === "ar" ? "النوع:" : "Type:"} <span className="text-[#d4dae3]">{log.file.split(".").pop()?.toUpperCase()}</span></div>
+                                  <div className="text-[#484f58] mt-1">{lang === "ar" ? "الحالة:" : "Status:"} <span className={log.status === "success" ? "text-emerald-400" : log.status === "failed" ? "text-red-400" : "text-cyan-400"}>{log.status}</span></div>
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
