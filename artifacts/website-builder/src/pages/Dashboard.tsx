@@ -931,16 +931,6 @@ function HomeSidebar({ t, lang, userName, isAdmin, onSelectInfraAgent, onToggleF
         </div>
       </div>
 
-      <div className="flex items-center gap-2 mx-2 mt-2 p-2 rounded-md bg-white/5 cursor-pointer hover:bg-white/8 transition-colors relative z-10">
-        <div className="w-5 h-5 rounded-full bg-[#2d7dd2] flex items-center justify-center text-[10px] font-semibold text-white flex-shrink-0">
-          {userName.charAt(0).toUpperCase()}
-        </div>
-        <span className="text-[12.5px] text-[#c9d1d9] font-medium flex-1 truncate">
-          {t.home_workspace.replace("{name}", userName)}
-        </span>
-        <ChevronDown className="w-3 h-3 text-[#d4dae3] flex-shrink-0" />
-      </div>
-
       <div className="p-2 flex flex-col gap-1 relative z-10">
         <button
           className="flex items-center gap-2 w-full px-3 py-2 rounded-md text-[12px] font-semibold text-start relative overflow-hidden transition-all duration-200 hover:brightness-110 active:scale-[0.98] group/createbtn"
