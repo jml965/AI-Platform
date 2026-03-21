@@ -4,6 +4,8 @@ import { agentConfigsTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { getSystemBlueprint } from "../lib/system-blueprint";
 import { INFRA_TOOLS, executeInfraTool, getInfraAccessEnabled, setInfraAccessEnabled } from "../lib/agents/strategic-agent";
+import * as fs from "fs";
+import * as path from "path";
 const router = Router();
 
 function requireInfraAdmin(req: any, res: any, next: any) {
@@ -1271,6 +1273,91 @@ router.get("/infra/defaults/:agentKey", requireInfraAdmin, (req, res) => {
     return;
   }
   res.json(defaultAgent);
+});
+
+function getWorkspaceRoot(): string {
+  let dir = __dirname;
+  for (let i = 0; i < 10; i++) {
+    if (fs.existsSync(path.join(dir, "pnpm-workspace.yaml")) || fs.existsSync(path.join(dir, "artifacts"))) {
+      return dir;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return process.cwd();
+}
+
+interface FileNode {
+  name: string;
+  type: "file" | "folder";
+  children?: FileNode[];
+}
+
+const IGNORE_DIRS = new Set([
+  "node_modules", ".git", "dist", ".cache", ".turbo", ".output",
+  ".nuxt", ".next", ".svelte-kit", "__pycache__", ".DS_Store",
+  ".local", ".config", "attached_assets", ".upm",
+]);
+
+const IGNORE_FILES = new Set([
+  ".DS_Store", "Thumbs.db", ".npmrc",
+]);
+
+function scanDir(dirPath: string, depth: number = 0, maxDepth: number = 4): FileNode[] {
+  if (depth > maxDepth) return [];
+  try {
+    const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+    const result: FileNode[] = [];
+    const folders: FileNode[] = [];
+    const files: FileNode[] = [];
+
+    for (const entry of entries) {
+      if (IGNORE_DIRS.has(entry.name) || IGNORE_FILES.has(entry.name)) continue;
+      if (entry.name.startsWith(".") && entry.name !== ".agents" && entry.name !== ".github" && entry.name !== ".dockerignore" && entry.name !== ".gitignore" && entry.name !== ".gitattributes") continue;
+
+      if (entry.isDirectory()) {
+        const children = scanDir(path.join(dirPath, entry.name), depth + 1, maxDepth);
+        folders.push({ name: entry.name, type: "folder", children });
+      } else {
+        files.push({ name: entry.name, type: "file" });
+      }
+    }
+
+    folders.sort((a, b) => a.name.localeCompare(b.name));
+    files.sort((a, b) => a.name.localeCompare(b.name));
+    return [...folders, ...files];
+  } catch {
+    return [];
+  }
+}
+
+router.get("/infra/files", requireInfraAdmin, (_req, res) => {
+  const root = getWorkspaceRoot();
+  const tree = scanDir(root);
+  res.json({ root: path.basename(root), tree });
+});
+
+router.get("/infra/file-content", requireInfraAdmin, (req, res) => {
+  const filePath = req.query.path as string;
+  if (!filePath) {
+    return res.status(400).json({ error: { message: "path query param required" } });
+  }
+  const root = getWorkspaceRoot();
+  const fullPath = path.resolve(root, filePath);
+  if (!fullPath.startsWith(root)) {
+    return res.status(403).json({ error: { message: "Access denied" } });
+  }
+  try {
+    const stat = fs.statSync(fullPath);
+    if (stat.size > 500_000) {
+      return res.status(413).json({ error: { message: "File too large" } });
+    }
+    const content = fs.readFileSync(fullPath, "utf-8");
+    res.json({ path: filePath, content, size: stat.size });
+  } catch {
+    res.status(404).json({ error: { message: "File not found" } });
+  }
 });
 
 export default router;

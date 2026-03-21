@@ -4,6 +4,7 @@ import { Link, useLocation } from "wouter";
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, LayoutTemplate, Trash2, Loader2, Coins, LogOut, CreditCard, Users, ShieldCheck, Activity, Globe, ExternalLink, Square, RefreshCw, Rocket, Bell, Palette, Home, Smartphone, Play, BarChart2, Gamepad2, FileText, Settings, BookOpen, Gift, Search, ChevronDown, Upload, UploadCloud, Download, Cpu, Wand2, Camera, ArrowRight, Check, X, Bot, FolderGit2, Plug, ChevronRight, Shield, Crown, Lock, Database, Crosshair, FlaskConical, Send, Copy, Server, Maximize2, Minimize2, MousePointer2 } from "lucide-react";
+import AdminFilesPanel from "@/components/AdminFilesPanel";
 import { useI18n } from "@/lib/i18n";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import type { Project, ProjectStatus as ProjectStatusType } from "@workspace/api-client-react";
@@ -47,6 +48,7 @@ export default function Dashboard() {
   const { t, lang } = useI18n();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [infraChatAgent, setInfraChatAgent] = useState<SidebarInfraAgent | null>(null);
+  const [showFilesPanel, setShowFilesPanel] = useState(false);
   
   const { data: projectsData, isLoading: loadingProjects, refetch } = useListProjects();
   const { data: tokenSummary } = useGetTokenSummary();
@@ -172,7 +174,13 @@ export default function Dashboard() {
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        <HomeSidebar t={t} lang={lang} userName={userName} isAdmin={isAdmin} onSelectInfraAgent={setInfraChatAgent} />
+        <HomeSidebar t={t} lang={lang} userName={userName} isAdmin={isAdmin} onSelectInfraAgent={setInfraChatAgent} onToggleFiles={() => setShowFilesPanel(!showFilesPanel)} />
+
+        {isAdmin && showFilesPanel && (
+          <div className="hidden lg:flex flex-col w-[260px] min-w-[260px] border-r border-white/7 rtl:border-r-0 rtl:border-l bg-[#0d1117]">
+            <AdminFilesPanel onClose={() => setShowFilesPanel(false)} />
+          </div>
+        )}
 
         <div className="flex-1 flex overflow-hidden">
           <div className="flex-1 overflow-y-auto">
@@ -836,13 +844,13 @@ function InfraAgentsSection({ t, lang, onSelectAgent }: { t: any; lang: string; 
   );
 }
 
-function AdminPanelSection({ t }: { t: any }) {
+function AdminPanelSection({ t, onToggleFiles }: { t: any; onToggleFiles: () => void }) {
   const [expanded, setExpanded] = useState(true);
   const adminItems = [
     { icon: Bot, label: t.home_nav_agents, href: "/agents" },
     { icon: Cpu, label: t.home_nav_control_center, href: "/control-center" },
     { icon: Shield, label: t.home_nav_admin_dashboard, href: "/admin" },
-    { icon: FolderGit2, label: t.home_nav_repository, href: "#" },
+    { icon: FolderGit2, label: t.home_nav_repository, href: "#", onClick: onToggleFiles },
     { icon: Plug, label: t.home_nav_integration, href: "#" },
   ];
 
@@ -859,23 +867,37 @@ function AdminPanelSection({ t }: { t: any }) {
       </button>
       {expanded && (
         <div className="flex flex-col gap-0.5 mt-1">
-          {adminItems.map((item: any, i: number) => (
-            <Link
-              key={i}
-              href={item.href}
-              className="flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer text-[12.5px] text-[#8b949e] hover:bg-white/5 transition-colors"
-            >
-              <item.icon className="w-4 h-4" />
-              <span>{item.label}</span>
-            </Link>
-          ))}
+          {adminItems.map((item: any, i: number) => {
+            if (item.onClick) {
+              return (
+                <button
+                  key={i}
+                  onClick={item.onClick}
+                  className="flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer text-[12.5px] text-[#8b949e] hover:bg-white/5 transition-colors text-start"
+                >
+                  <item.icon className="w-4 h-4" />
+                  <span>{item.label}</span>
+                </button>
+              );
+            }
+            return (
+              <Link
+                key={i}
+                href={item.href}
+                className="flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer text-[12.5px] text-[#8b949e] hover:bg-white/5 transition-colors"
+              >
+                <item.icon className="w-4 h-4" />
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
         </div>
       )}
     </div>
   );
 }
 
-function HomeSidebar({ t, lang, userName, isAdmin, onSelectInfraAgent }: { t: any; lang: string; userName: string; isAdmin: boolean; onSelectInfraAgent: (agent: SidebarInfraAgent) => void }) {
+function HomeSidebar({ t, lang, userName, isAdmin, onSelectInfraAgent, onToggleFiles }: { t: any; lang: string; userName: string; isAdmin: boolean; onSelectInfraAgent: (agent: SidebarInfraAgent) => void; onToggleFiles: () => void }) {
   const navItems = [
     { icon: Home, label: t.home_nav_home, active: true },
     { icon: LayoutTemplate, label: t.home_nav_apps },
@@ -940,7 +962,7 @@ function HomeSidebar({ t, lang, userName, isAdmin, onSelectInfraAgent }: { t: an
           </Link>
         </div>
 
-        {isAdmin && <AdminPanelSection t={t} />}
+        {isAdmin && <AdminPanelSection t={t} onToggleFiles={onToggleFiles} />}
       </nav>
 
       <div className="border-t border-white/7 p-2">
