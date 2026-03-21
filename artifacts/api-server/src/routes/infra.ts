@@ -19,7 +19,7 @@ const TOOL_RISK_CONFIG: Record<string, { risk: string; category: string; require
   create_component: { risk: "medium", category: "files", requiresApproval: false, sandboxed: false },
   delete_file: { risk: "high", category: "files", requiresApproval: true, sandboxed: false },
   rename_file: { risk: "medium", category: "files", requiresApproval: false, sandboxed: false },
-  db_query: { risk: "low", category: "database", requiresApproval: false, sandboxed: false },
+  db_query: { risk: "medium", category: "database", requiresApproval: false, sandboxed: false },
   db_tables: { risk: "low", category: "database", requiresApproval: false, sandboxed: false },
   run_sql: { risk: "high", category: "database", requiresApproval: true, sandboxed: false },
   run_command: { risk: "critical", category: "system", requiresApproval: true, sandboxed: true },
@@ -52,7 +52,7 @@ const TOOL_RISK_CONFIG: Record<string, { risk: string; category: string; require
 
 function isSafeSQL(query: string): { safe: boolean; reason?: string } {
   const upper = query.toUpperCase().trim();
-  const dangerous = ["DROP ", "ALTER ", "TRUNCATE ", "CREATE TABLE", "CREATE INDEX", "GRANT ", "REVOKE "];
+  const dangerous = ["DROP ", "ALTER ", "TRUNCATE ", "CREATE TABLE", "CREATE INDEX", "GRANT ", "REVOKE ", "DELETE FROM", "INSERT INTO", "UPDATE "];
   for (const d of dangerous) {
     if (upper.includes(d)) return { safe: false, reason: `يحتوي على أمر خطير: ${d.trim()}` };
   }
@@ -887,7 +887,18 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
             }
           }
 
-          if (tool.name === "db_query" || (tool.name === "run_sql" && agentPerms.includes("db_read") && !agentPerms.includes("db_write"))) {
+          if (tool.name === "db_query") {
+            const q = (tool.input as any)?.query || (tool.input as any)?.sql || "";
+            if (!isReadOnlySQL(q)) {
+              const blocked = `⛔ db_query للقراءة فقط (SELECT/EXPLAIN/SHOW/WITH). لتنفيذ كتابة استخدم run_sql (يتطلب موافقة). الأمر المرفوض: ${q.slice(0, 50)}`;
+              res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n\n${blocked}\n` })}\n\n`);
+              await logAudit(agentKey, "blocked_db_write_via_query", tool.name, tool.input, blocked, "high", "blocked");
+              toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: blocked });
+              continue;
+            }
+          }
+
+          if (tool.name === "run_sql" && agentPerms.includes("db_read") && !agentPerms.includes("db_write")) {
             const q = (tool.input as any)?.query || (tool.input as any)?.sql || "";
             if (!isReadOnlySQL(q)) {
               const blocked = `⛔ صلاحيتك db_read فقط — لا يمكن تنفيذ: ${q.slice(0, 50)}`;
