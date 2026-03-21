@@ -1193,6 +1193,18 @@ export const INFRA_TOOLS = [
       required: ["message"],
     },
   },
+  {
+    name: "run_sql",
+    description: "Run a SQL query on the database. Use SELECT to read data, UPDATE/INSERT/DELETE to modify data. You can update user display names, settings, project data, etc. ALWAYS use this when you need to change dynamic data that comes from the database (like user names, project titles, settings). Tables: users (id, email, display_name, role, avatar_url, locale, password_hash, replit_id, created_at, updated_at), projects, agents, etc.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        query: { type: "string", description: "SQL query to execute. Use parameterized values with $1, $2 etc for safety." },
+        params: { type: "array", items: { type: "string" }, description: "Query parameters for $1, $2 etc." },
+      },
+      required: ["query"],
+    },
+  },
 ];
 
 function findWorkspaceRoot(): string {
@@ -1692,6 +1704,28 @@ export async function executeInfraTool(toolName: string, input: any, callerRole?
           return JSON.stringify({ success: true, message: `Pushed to ${branch}`, output: pushOut.slice(0, 5000) });
         } catch (e: any) {
           return JSON.stringify({ success: false, error: (e?.stderr || e?.message || "").slice(0, 5000) });
+        }
+      }
+      case "run_sql": {
+        try {
+          const { db } = await import("@workspace/db");
+          const { sql: rawSql } = await import("drizzle-orm");
+          const query = input.query as string;
+          const params = input.params || [];
+          const upperQuery = query.trim().toUpperCase();
+          const isDangerous = upperQuery.startsWith("DROP") || upperQuery.startsWith("TRUNCATE") || upperQuery.startsWith("ALTER");
+          if (isDangerous) {
+            return JSON.stringify({ error: "DROP, TRUNCATE, and ALTER queries are not allowed for safety." });
+          }
+          let finalQuery = query;
+          params.forEach((p: string, i: number) => {
+            finalQuery = finalQuery.replace(`$${i + 1}`, `'${p.replace(/'/g, "''")}'`);
+          });
+          const result = await db.execute(rawSql.raw(finalQuery));
+          const rows = Array.isArray(result) ? result : (result as any).rows || [];
+          return JSON.stringify({ success: true, rowCount: rows.length, rows: rows.slice(0, 100) });
+        } catch (e: any) {
+          return JSON.stringify({ error: e?.message || "SQL execution failed" });
         }
       }
       default:
