@@ -1368,6 +1368,64 @@ router.get("/infra/file-content", requireInfraAdmin, (req, res) => {
   }
 });
 
+router.post("/infra/file-rename", requireInfraAdmin, (req, res) => {
+  const { oldPath, newName } = req.body;
+  if (!oldPath || !newName) return res.status(400).json({ error: { message: "oldPath and newName required" } });
+  const root = getWorkspaceRoot();
+  const fullOld = path.resolve(root, oldPath);
+  if (!fullOld.startsWith(root)) return res.status(403).json({ error: { message: "Access denied" } });
+  const newPath = path.join(path.dirname(fullOld), newName);
+  if (!newPath.startsWith(root)) return res.status(403).json({ error: { message: "Access denied" } });
+  try {
+    fs.renameSync(fullOld, newPath);
+    res.json({ success: true, oldPath, newPath: path.relative(root, newPath) });
+  } catch (err: any) {
+    res.status(500).json({ error: { message: err.message } });
+  }
+});
+
+router.post("/infra/file-create", requireInfraAdmin, (req, res) => {
+  const { parentPath, name, type } = req.body;
+  if (!name || !type) return res.status(400).json({ error: { message: "name and type required" } });
+  const root = getWorkspaceRoot();
+  const parent = parentPath ? path.resolve(root, parentPath) : root;
+  if (!parent.startsWith(root)) return res.status(403).json({ error: { message: "Access denied" } });
+  const fullPath = path.join(parent, name);
+  if (!fullPath.startsWith(root)) return res.status(403).json({ error: { message: "Access denied" } });
+  try {
+    if (type === "folder") {
+      fs.mkdirSync(fullPath, { recursive: true });
+    } else {
+      const dir = path.dirname(fullPath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(fullPath, "", "utf-8");
+    }
+    res.json({ success: true, path: path.relative(root, fullPath), type });
+  } catch (err: any) {
+    res.status(500).json({ error: { message: err.message } });
+  }
+});
+
+router.delete("/infra/file-delete", requireInfraAdmin, (req, res) => {
+  const filePath = req.query.path as string;
+  if (!filePath) return res.status(400).json({ error: { message: "path required" } });
+  const root = getWorkspaceRoot();
+  const fullPath = path.resolve(root, filePath);
+  if (!fullPath.startsWith(root)) return res.status(403).json({ error: { message: "Access denied" } });
+  if (fullPath === root) return res.status(403).json({ error: { message: "Cannot delete root" } });
+  try {
+    const stat = fs.statSync(fullPath);
+    if (stat.isDirectory()) {
+      fs.rmSync(fullPath, { recursive: true, force: true });
+    } else {
+      fs.unlinkSync(fullPath);
+    }
+    res.json({ success: true, deleted: filePath });
+  } catch (err: any) {
+    res.status(500).json({ error: { message: err.message } });
+  }
+});
+
 router.put("/infra/file-content", requireInfraAdmin, (req, res) => {
   const { path: filePath, content } = req.body;
   if (!filePath || typeof content !== "string") {

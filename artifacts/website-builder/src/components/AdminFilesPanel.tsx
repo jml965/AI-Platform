@@ -18,12 +18,29 @@ import {
   Pencil,
   Save,
   Undo2,
+  MoreVertical,
+  Trash2,
+  FolderPlus,
+  FilePlus,
+  Type,
+  ClipboardCopy,
+  Download,
+  Terminal,
+  FolderMinus,
 } from "lucide-react";
 
 interface FileNode {
   name: string;
   type: "file" | "folder";
   children?: FileNode[];
+}
+
+interface ContextMenuAction {
+  label: string;
+  icon: React.ReactNode;
+  onClick: () => void;
+  danger?: boolean;
+  divider?: boolean;
 }
 
 function getFileIcon(name: string) {
@@ -49,6 +66,98 @@ function getFileIcon(name: string) {
   return <File className="w-3.5 h-3.5 text-[#8b949e] flex-shrink-0" />;
 }
 
+function ContextMenu({
+  x,
+  y,
+  actions,
+  onClose,
+}: {
+  x: number;
+  y: number;
+  actions: ContextMenuAction[];
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    if (rect.bottom > window.innerHeight) {
+      el.style.top = `${y - rect.height}px`;
+    }
+    if (rect.right > window.innerWidth) {
+      el.style.left = `${x - rect.width}px`;
+    }
+  }, [x, y]);
+
+  return (
+    <>
+      <div className="fixed inset-0 z-[100]" onClick={onClose} onContextMenu={(e) => { e.preventDefault(); onClose(); }} />
+      <div
+        ref={ref}
+        className="fixed z-[101] bg-[#1c2128] border border-white/10 rounded-lg shadow-xl py-1 min-w-[180px] animate-in fade-in duration-100"
+        style={{ left: x, top: y }}
+      >
+        {actions.map((action, i) => (
+          <React.Fragment key={i}>
+            {action.divider && i > 0 && <div className="border-t border-white/8 my-1" />}
+            <button
+              onClick={() => { action.onClick(); onClose(); }}
+              className={`w-full flex items-center gap-2.5 px-3 py-[6px] text-[12px] transition-colors ${
+                action.danger
+                  ? "text-red-400 hover:bg-red-500/10"
+                  : "text-[#c9d1d9] hover:bg-white/5"
+              }`}
+            >
+              {action.icon}
+              <span>{action.label}</span>
+            </button>
+          </React.Fragment>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function InlineInput({
+  defaultValue,
+  onSubmit,
+  onCancel,
+  placeholder,
+}: {
+  defaultValue: string;
+  onSubmit: (val: string) => void;
+  onCancel: () => void;
+  placeholder?: string;
+}) {
+  const [value, setValue] = useState(defaultValue);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+
+  return (
+    <input
+      ref={inputRef}
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && value.trim()) onSubmit(value.trim());
+        if (e.key === "Escape") onCancel();
+      }}
+      onBlur={() => {
+        if (value.trim() && value.trim() !== defaultValue) onSubmit(value.trim());
+        else onCancel();
+      }}
+      placeholder={placeholder}
+      className="bg-[#0d419d]/30 border border-[#388bfd] rounded px-1.5 py-[2px] text-[12px] text-[#c9d1d9] outline-none w-full font-mono"
+    />
+  );
+}
+
 function TreeNodeItem({
   node,
   depth,
@@ -57,6 +166,14 @@ function TreeNodeItem({
   searchTerm,
   expandedFolders,
   toggleFolder,
+  onContextMenu,
+  renamingPath,
+  setRenamingPath,
+  onRenameSubmit,
+  creatingIn,
+  creatingType,
+  onCreateSubmit,
+  onCreateCancel,
 }: {
   node: FileNode;
   depth: number;
@@ -65,9 +182,18 @@ function TreeNodeItem({
   searchTerm: string;
   expandedFolders: Set<string>;
   toggleFolder: (path: string) => void;
+  onContextMenu: (e: React.MouseEvent, fullPath: string, nodeType: "file" | "folder") => void;
+  renamingPath: string | null;
+  setRenamingPath: (p: string | null) => void;
+  onRenameSubmit: (oldPath: string, newName: string) => void;
+  creatingIn: string | null;
+  creatingType: "file" | "folder" | null;
+  onCreateSubmit: (parentPath: string, name: string, type: "file" | "folder") => void;
+  onCreateCancel: () => void;
 }) {
   const fullPath = parentPath ? `${parentPath}/${node.name}` : node.name;
   const isExpanded = expandedFolders.has(fullPath);
+  const isRenaming = renamingPath === fullPath;
 
   if (searchTerm && node.type === "file") {
     if (!node.name.toLowerCase().includes(searchTerm.toLowerCase())) return null;
@@ -82,25 +208,59 @@ function TreeNodeItem({
 
     return (
       <div>
-        <button
-          onClick={() => toggleFolder(fullPath)}
-          className="flex items-center gap-1 w-full px-1 py-[3px] text-[12px] text-[#c9d1d9] hover:bg-white/5 rounded transition-colors group"
-          style={{ paddingLeft: `${depth * 12 + 4}px` }}
+        <div
+          className="flex items-center w-full group"
+          onContextMenu={(e) => { e.preventDefault(); onContextMenu(e, fullPath, "folder"); }}
         >
-          {isExpanded ? (
-            <ChevronDown className="w-3 h-3 text-[#8b949e] flex-shrink-0" />
-          ) : (
-            <ChevronRight className="w-3 h-3 text-[#8b949e] flex-shrink-0" />
-          )}
-          {isExpanded ? (
-            <FolderOpen className="w-3.5 h-3.5 text-[#e3b341] flex-shrink-0" />
-          ) : (
-            <Folder className="w-3.5 h-3.5 text-[#8b949e] flex-shrink-0" />
-          )}
-          <span className="truncate">{node.name}</span>
-        </button>
+          <button
+            onClick={() => toggleFolder(fullPath)}
+            className="flex items-center gap-1 flex-1 min-w-0 px-1 py-[3px] text-[12px] text-[#c9d1d9] hover:bg-white/5 rounded transition-colors"
+            style={{ paddingLeft: `${depth * 12 + 4}px` }}
+          >
+            {isExpanded ? (
+              <ChevronDown className="w-3 h-3 text-[#8b949e] flex-shrink-0" />
+            ) : (
+              <ChevronRight className="w-3 h-3 text-[#8b949e] flex-shrink-0" />
+            )}
+            {isExpanded ? (
+              <FolderOpen className="w-3.5 h-3.5 text-[#e3b341] flex-shrink-0" />
+            ) : (
+              <Folder className="w-3.5 h-3.5 text-[#8b949e] flex-shrink-0" />
+            )}
+            {isRenaming ? (
+              <InlineInput
+                defaultValue={node.name}
+                onSubmit={(val) => { onRenameSubmit(fullPath, val); setRenamingPath(null); }}
+                onCancel={() => setRenamingPath(null)}
+              />
+            ) : (
+              <span className="truncate">{node.name}</span>
+            )}
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onContextMenu(e, fullPath, "folder"); }}
+            className="opacity-0 group-hover:opacity-100 p-0.5 mr-1 rounded hover:bg-white/10 text-[#8b949e] hover:text-white transition-all flex-shrink-0"
+          >
+            <MoreVertical className="w-3.5 h-3.5" />
+          </button>
+        </div>
         {isExpanded && (
           <div>
+            {creatingIn === fullPath && creatingType && (
+              <div className="flex items-center gap-1 px-1 py-[3px]" style={{ paddingLeft: `${(depth + 1) * 12 + 20}px` }}>
+                {creatingType === "folder" ? (
+                  <Folder className="w-3.5 h-3.5 text-[#e3b341] flex-shrink-0" />
+                ) : (
+                  <File className="w-3.5 h-3.5 text-[#8b949e] flex-shrink-0" />
+                )}
+                <InlineInput
+                  defaultValue=""
+                  onSubmit={(val) => onCreateSubmit(fullPath, val, creatingType)}
+                  onCancel={onCreateCancel}
+                  placeholder={creatingType === "folder" ? "folder name" : "file name"}
+                />
+              </div>
+            )}
             {visibleChildren.map((child, i) => (
               <TreeNodeItem
                 key={child.name + i}
@@ -111,6 +271,14 @@ function TreeNodeItem({
                 searchTerm={searchTerm}
                 expandedFolders={expandedFolders}
                 toggleFolder={toggleFolder}
+                onContextMenu={onContextMenu}
+                renamingPath={renamingPath}
+                setRenamingPath={setRenamingPath}
+                onRenameSubmit={onRenameSubmit}
+                creatingIn={creatingIn}
+                creatingType={creatingType}
+                onCreateSubmit={onCreateSubmit}
+                onCreateCancel={onCreateCancel}
               />
             ))}
           </div>
@@ -120,14 +288,33 @@ function TreeNodeItem({
   }
 
   return (
-    <button
-      onClick={() => onFileClick(fullPath)}
-      className="flex items-center gap-1.5 w-full px-1 py-[3px] text-[12px] text-[#c9d1d9] hover:bg-white/5 rounded transition-colors"
-      style={{ paddingLeft: `${depth * 12 + 20}px` }}
+    <div
+      className="flex items-center w-full group"
+      onContextMenu={(e) => { e.preventDefault(); onContextMenu(e, fullPath, "file"); }}
     >
-      {getFileIcon(node.name)}
-      <span className="truncate">{node.name}</span>
-    </button>
+      <button
+        onClick={() => onFileClick(fullPath)}
+        className="flex items-center gap-1.5 flex-1 min-w-0 px-1 py-[3px] text-[12px] text-[#c9d1d9] hover:bg-white/5 rounded transition-colors"
+        style={{ paddingLeft: `${depth * 12 + 20}px` }}
+      >
+        {getFileIcon(node.name)}
+        {isRenaming ? (
+          <InlineInput
+            defaultValue={node.name}
+            onSubmit={(val) => { onRenameSubmit(fullPath, val); setRenamingPath(null); }}
+            onCancel={() => setRenamingPath(null)}
+          />
+        ) : (
+          <span className="truncate">{node.name}</span>
+        )}
+      </button>
+      <button
+        onClick={(e) => { e.stopPropagation(); onContextMenu(e, fullPath, "file"); }}
+        className="opacity-0 group-hover:opacity-100 p-0.5 mr-1 rounded hover:bg-white/10 text-[#8b949e] hover:text-white transition-all flex-shrink-0"
+      >
+        <MoreVertical className="w-3.5 h-3.5" />
+      </button>
+    </div>
   );
 }
 
@@ -299,12 +486,12 @@ function FileViewer({ filePath, onClose }: { filePath: string; onClose: () => vo
       </div>
       {saveStatus === "saved" && (
         <div className="px-3 py-1 bg-green-500/10 border-b border-green-500/20 text-green-400 text-[11px]">
-          ✓ Saved successfully
+          Saved successfully
         </div>
       )}
       {saveStatus === "error" && (
         <div className="px-3 py-1 bg-red-500/10 border-b border-red-500/20 text-red-400 text-[11px]">
-          ✗ Failed to save
+          Failed to save
         </div>
       )}
       <div className="flex-1 overflow-auto">
@@ -338,6 +525,17 @@ export default function AdminFilesPanel({ onClose }: { onClose: () => void }) {
   );
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [showMenu, setShowMenu] = useState(false);
+
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string; nodeType: "file" | "folder" } | null>(null);
+  const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  const [creatingIn, setCreatingIn] = useState<string | null>(null);
+  const [creatingType, setCreatingType] = useState<"file" | "folder" | null>(null);
+  const [notification, setNotification] = useState<{ text: string; type: "success" | "error" } | null>(null);
+
+  const showNotification = useCallback((text: string, type: "success" | "error" = "success") => {
+    setNotification({ text, type });
+    setTimeout(() => setNotification(null), 3000);
+  }, []);
 
   const fetchTree = useCallback(() => {
     setLoading(true);
@@ -384,8 +582,115 @@ export default function AdminFilesPanel({ onClose }: { onClose: () => void }) {
     setShowMenu(false);
   }, [tree]);
 
+  const handleContextMenu = useCallback((e: React.MouseEvent, fullPath: string, nodeType: "file" | "folder") => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY, path: fullPath, nodeType });
+  }, []);
+
+  const handleRename = useCallback(async (oldPath: string, newName: string) => {
+    try {
+      const res = await fetch("/api/infra/file-rename", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ oldPath, newName }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error?.message || "Rename failed");
+      }
+      showNotification(`Renamed to ${newName}`);
+      fetchTree();
+    } catch (err: any) {
+      showNotification(err.message || "Rename failed", "error");
+    }
+  }, [fetchTree, showNotification]);
+
+  const handleCreate = useCallback(async (parentPath: string, name: string, type: "file" | "folder") => {
+    try {
+      const res = await fetch("/api/infra/file-create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ parentPath, name, type }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error?.message || "Create failed");
+      }
+      showNotification(`Created ${type}: ${name}`);
+      setExpandedFolders((prev) => new Set([...prev, parentPath]));
+      fetchTree();
+    } catch (err: any) {
+      showNotification(err.message || "Create failed", "error");
+    } finally {
+      setCreatingIn(null);
+      setCreatingType(null);
+    }
+  }, [fetchTree, showNotification]);
+
+  const handleDelete = useCallback(async (filePath: string) => {
+    const name = filePath.split("/").pop() || filePath;
+    if (!window.confirm(`Delete "${name}"? This cannot be undone.`)) return;
+    try {
+      const res = await fetch(`/api/infra/file-delete?path=${encodeURIComponent(filePath)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error?.message || "Delete failed");
+      }
+      showNotification(`Deleted: ${name}`);
+      if (selectedFile === filePath) setSelectedFile(null);
+      fetchTree();
+    } catch (err: any) {
+      showNotification(err.message || "Delete failed", "error");
+    }
+  }, [fetchTree, selectedFile, showNotification]);
+
+  const handleCopyPath = useCallback((filePath: string) => {
+    navigator.clipboard.writeText(filePath);
+    showNotification("Path copied");
+  }, [showNotification]);
+
+  const getContextActions = useCallback((): ContextMenuAction[] => {
+    if (!contextMenu) return [];
+    const { path: itemPath, nodeType } = contextMenu;
+
+    if (nodeType === "folder") {
+      return [
+        { label: "Rename", icon: <Type className="w-3.5 h-3.5" />, onClick: () => setRenamingPath(itemPath) },
+        { label: "Search this directory", icon: <Search className="w-3.5 h-3.5" />, onClick: () => { setSearchTerm(itemPath.split("/").pop() || ""); } },
+        { label: "Add file", icon: <FilePlus className="w-3.5 h-3.5" />, onClick: () => { setCreatingIn(itemPath); setCreatingType("file"); setExpandedFolders((p) => new Set([...p, itemPath])); }, divider: true },
+        { label: "Add folder", icon: <FolderPlus className="w-3.5 h-3.5" />, onClick: () => { setCreatingIn(itemPath); setCreatingType("folder"); setExpandedFolders((p) => new Set([...p, itemPath])); } },
+        { label: "Collapse child folders", icon: <FolderMinus className="w-3.5 h-3.5" />, onClick: () => { setExpandedFolders((prev) => { const next = new Set(prev); for (const k of next) { if (k.startsWith(itemPath + "/")) next.delete(k); } return next; }); }, divider: true },
+        { label: "Copy file path", icon: <ClipboardCopy className="w-3.5 h-3.5" />, onClick: () => handleCopyPath(itemPath), divider: true },
+        { label: "Delete", icon: <Trash2 className="w-3.5 h-3.5" />, onClick: () => handleDelete(itemPath), danger: true, divider: true },
+      ];
+    }
+
+    return [
+      { label: "Rename", icon: <Type className="w-3.5 h-3.5" />, onClick: () => setRenamingPath(itemPath) },
+      { label: "Open file", icon: <FileText className="w-3.5 h-3.5" />, onClick: () => setSelectedFile(itemPath), divider: true },
+      { label: "Copy file path", icon: <ClipboardCopy className="w-3.5 h-3.5" />, onClick: () => handleCopyPath(itemPath), divider: true },
+      { label: "Delete", icon: <Trash2 className="w-3.5 h-3.5" />, onClick: () => handleDelete(itemPath), danger: true, divider: true },
+    ];
+  }, [contextMenu, handleCopyPath, handleDelete]);
+
   return (
     <div className="flex flex-col h-full bg-[#0d1117]">
+      {notification && (
+        <div className={`absolute top-2 left-2 right-2 z-50 px-3 py-2 rounded-md text-[11px] font-medium shadow-lg transition-all ${
+          notification.type === "success"
+            ? "bg-green-500/15 border border-green-500/30 text-green-400"
+            : "bg-red-500/15 border border-red-500/30 text-red-400"
+        }`}>
+          {notification.text}
+        </div>
+      )}
+
       <div className="flex items-center justify-between px-3 py-2.5 flex-shrink-0">
         <span className="text-[13px] font-semibold text-[#c9d1d9]">Library</span>
         <div className="flex items-center gap-2">
@@ -456,10 +761,27 @@ export default function AdminFilesPanel({ onClose }: { onClose: () => void }) {
                 searchTerm={searchTerm}
                 expandedFolders={expandedFolders}
                 toggleFolder={toggleFolder}
+                onContextMenu={handleContextMenu}
+                renamingPath={renamingPath}
+                setRenamingPath={setRenamingPath}
+                onRenameSubmit={handleRename}
+                creatingIn={creatingIn}
+                creatingType={creatingType}
+                onCreateSubmit={handleCreate}
+                onCreateCancel={() => { setCreatingIn(null); setCreatingType(null); }}
               />
             ))
           )}
         </div>
+      )}
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          actions={getContextActions()}
+          onClose={() => setContextMenu(null)}
+        />
       )}
     </div>
   );
