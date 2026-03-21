@@ -912,9 +912,16 @@ function HomeSidebar({ t, lang, userName, isAdmin, onSelectInfraAgent, onToggleF
           <ReplitLogo />
           <ChevronDown className="w-3 h-3 text-[#8b949e]" />
         </div>
-        <button className="text-[#8b949e] hover:text-white transition-colors">
-          <Search className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          {isAdmin && (
+            <button onClick={onToggleFiles} className="text-[#8b949e] hover:text-[#e3b341] transition-colors" title="Files">
+              <FolderGit2 className="w-4 h-4" />
+            </button>
+          )}
+          <button className="text-[#8b949e] hover:text-white transition-colors">
+            <Search className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       <div className="flex items-center gap-2 mx-2 mt-2 p-2 rounded-md bg-white/5 cursor-pointer hover:bg-white/8 transition-colors">
