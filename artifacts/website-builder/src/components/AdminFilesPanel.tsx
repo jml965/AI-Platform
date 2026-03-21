@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   ChevronRight,
   ChevronDown,
@@ -15,6 +15,9 @@ import {
   Search,
   Copy,
   Check,
+  Pencil,
+  Save,
+  Undo2,
 } from "lucide-react";
 
 interface FileNode {
@@ -144,13 +147,26 @@ function filterTree(nodes: FileNode[], term: string): FileNode[] {
 
 function FileViewer({ filePath, onClose }: { filePath: string; onClose: () => void }) {
   const [content, setContent] = useState<string | null>(null);
+  const [originalContent, setOriginalContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saved" | "error">("idle");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const isEditable = useCallback((name: string) => {
+    const ext = name.split(".").pop()?.toLowerCase() || "";
+    const editableExts = ["ts", "tsx", "js", "jsx", "json", "css", "scss", "html", "md", "yaml", "yml", "toml", "sh", "txt", "env", "sql"];
+    return editableExts.includes(ext) || name === "Dockerfile" || name === ".gitignore" || name === ".dockerignore";
+  }, []);
 
   useEffect(() => {
     setLoading(true);
     setError(null);
+    setEditing(false);
+    setSaveStatus("idle");
     fetch(`/api/infra/file-content?path=${encodeURIComponent(filePath)}`, { credentials: "include" })
       .then((r) => {
         if (!r.ok) throw new Error("Failed to load file");
@@ -158,6 +174,7 @@ function FileViewer({ filePath, onClose }: { filePath: string; onClose: () => vo
       })
       .then((data) => {
         setContent(data.content);
+        setOriginalContent(data.content);
         setLoading(false);
       })
       .catch((err) => {
@@ -174,7 +191,46 @@ function FileViewer({ filePath, onClose }: { filePath: string; onClose: () => vo
     }
   }, [content]);
 
+  const handleSave = useCallback(async () => {
+    if (content === null) return;
+    setSaving(true);
+    setSaveStatus("idle");
+    try {
+      const res = await fetch("/api/infra/file-content", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ path: filePath, content }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error?.message || "Failed to save");
+      }
+      setOriginalContent(content);
+      setSaveStatus("saved");
+      setTimeout(() => setSaveStatus("idle"), 2500);
+    } catch {
+      setSaveStatus("error");
+      setTimeout(() => setSaveStatus("idle"), 3000);
+    } finally {
+      setSaving(false);
+    }
+  }, [content, filePath]);
+
+  const handleUndo = useCallback(() => {
+    setContent(originalContent);
+  }, [originalContent]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+      e.preventDefault();
+      handleSave();
+    }
+  }, [handleSave]);
+
+  const hasChanges = content !== originalContent;
   const fileName = filePath.split("/").pop() || filePath;
+  const canEdit = isEditable(fileName);
 
   return (
     <div className="flex flex-col h-full bg-[#0d1117]">
@@ -182,8 +238,50 @@ function FileViewer({ filePath, onClose }: { filePath: string; onClose: () => vo
         <div className="flex items-center gap-2 min-w-0">
           {getFileIcon(fileName)}
           <span className="text-[11px] text-[#c9d1d9] truncate font-mono">{filePath}</span>
+          {hasChanges && <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" title="Unsaved changes" />}
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
+          {canEdit && !editing && (
+            <button
+              onClick={() => {
+                setEditing(true);
+                setTimeout(() => textareaRef.current?.focus(), 50);
+              }}
+              className="p-1 rounded hover:bg-white/10 text-[#8b949e] hover:text-white transition-colors"
+              title="Edit"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {editing && hasChanges && (
+            <button
+              onClick={handleUndo}
+              className="p-1 rounded hover:bg-white/10 text-[#8b949e] hover:text-white transition-colors"
+              title="Undo changes"
+            >
+              <Undo2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {editing && (
+            <button
+              onClick={handleSave}
+              disabled={saving || !hasChanges}
+              className={`p-1 rounded transition-colors ${
+                hasChanges
+                  ? "hover:bg-green-500/20 text-green-400 hover:text-green-300"
+                  : "text-[#484f58] cursor-not-allowed"
+              }`}
+              title="Save (Ctrl+S)"
+            >
+              {saving ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : saveStatus === "saved" ? (
+                <Check className="w-3.5 h-3.5 text-green-400" />
+              ) : (
+                <Save className="w-3.5 h-3.5" />
+              )}
+            </button>
+          )}
           <button
             onClick={handleCopy}
             className="p-1 rounded hover:bg-white/10 text-[#8b949e] hover:text-white transition-colors"
@@ -199,14 +297,33 @@ function FileViewer({ filePath, onClose }: { filePath: string; onClose: () => vo
           </button>
         </div>
       </div>
-      <div className="flex-1 overflow-auto p-3">
-        {loading && <div className="text-[#8b949e] text-[12px] animate-pulse">Loading...</div>}
-        {error && <div className="text-red-400 text-[12px]">{error}</div>}
-        {content !== null && (
-          <pre className="text-[11px] text-[#c9d1d9] font-mono whitespace-pre leading-[1.6] select-text">
+      {saveStatus === "saved" && (
+        <div className="px-3 py-1 bg-green-500/10 border-b border-green-500/20 text-green-400 text-[11px]">
+          ✓ Saved successfully
+        </div>
+      )}
+      {saveStatus === "error" && (
+        <div className="px-3 py-1 bg-red-500/10 border-b border-red-500/20 text-red-400 text-[11px]">
+          ✗ Failed to save
+        </div>
+      )}
+      <div className="flex-1 overflow-auto">
+        {loading && <div className="text-[#8b949e] text-[12px] animate-pulse p-3">Loading...</div>}
+        {error && <div className="text-red-400 text-[12px] p-3">{error}</div>}
+        {content !== null && editing ? (
+          <textarea
+            ref={textareaRef}
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            onKeyDown={handleKeyDown}
+            className="w-full h-full bg-transparent text-[11px] text-[#c9d1d9] font-mono leading-[1.6] p-3 resize-none outline-none border-none"
+            spellCheck={false}
+          />
+        ) : content !== null ? (
+          <pre className="text-[11px] text-[#c9d1d9] font-mono whitespace-pre leading-[1.6] select-text p-3">
             {content}
           </pre>
-        )}
+        ) : null}
       </div>
     </div>
   );

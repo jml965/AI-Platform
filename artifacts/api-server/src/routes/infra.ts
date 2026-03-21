@@ -1360,4 +1360,22 @@ router.get("/infra/file-content", requireInfraAdmin, (req, res) => {
   }
 });
 
+router.put("/infra/file-content", requireInfraAdmin, (req, res) => {
+  const { path: filePath, content } = req.body;
+  if (!filePath || typeof content !== "string") {
+    return res.status(400).json({ error: { message: "path and content required" } });
+  }
+  const root = getWorkspaceRoot();
+  const fullPath = path.resolve(root, filePath);
+  if (!fullPath.startsWith(root)) {
+    return res.status(403).json({ error: { message: "Access denied" } });
+  }
+  try {
+    fs.writeFileSync(fullPath, content, "utf-8");
+    res.json({ success: true, path: filePath, size: Buffer.byteLength(content, "utf-8") });
+  } catch (err: any) {
+    res.status(500).json({ error: { message: err.message || "Failed to save file" } });
+  }
+});
+
 export default router;
