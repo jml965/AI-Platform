@@ -87,12 +87,16 @@ function requireInfraAdmin(req: any, res: any, next: any) {
   next();
 }
 
+const RETIRED_AGENTS = ["infra_monitor", "infra_ui", "infra_db", "infra_qa", "planner", "reviewer", "filemanager", "package_runner", "seo", "translator"];
+
 const DEFAULT_INFRA_AGENTS = [
   {
     agentKey: "infra_sysadmin",
     displayNameEn: "System Director",
     displayNameAr: "مدير النظام",
-    description: "القائد الأعلى للمنصة — يدير كل الوكلاء ويوزع المهام ويشرف على كامل البنية التحتية",
+    agentRole: "infra",
+    agentBadge: "thinker",
+    description: "القائد الأعلى — تحكم، موافقات، مراقبة عليا، إدارة الوكلاء. يدمج قدرات وكيل المراقبة السابق.",
     primaryModel: { provider: "anthropic", model: "claude-sonnet-4-6", enabled: true, creativity: 0.7, timeoutSeconds: 300, maxTokens: 32000 },
     secondaryModel: { provider: "google", model: "gemini-2.5-flash", enabled: true, creativity: 0.5, timeoutSeconds: 240, maxTokens: 16000 },
     tertiaryModel: { provider: "openai", model: "o3-mini", enabled: true, creativity: 1.0, timeoutSeconds: 240, maxTokens: 16000 },
@@ -151,7 +155,7 @@ const DEFAULT_INFRA_AGENTS = [
 - ممنوع كتابة مسارات مطلقة مثل /app/... أو /home/runner/... — دائماً مسارات نسبية من جذر المشروع.
 - مثال: read_file({ path: "artifacts/website-builder/src/pages/Dashboard.tsx" })
 - مثال: exec_command({ command: "ls artifacts/website-builder/src/pages/" })`,
-    permissions: ["manage_agents", "read_all_files", "write_files", "restart_services", "database_read", "database_write", "deploy", "security_scan", "full_system_access"],
+    permissions: ["manage_agents", "read_all_files", "database_read", "view_logs", "check_health", "monitor_performance", "approvals", "kill_switch", "system_status"],
     pipelineOrder: 1,
     receivesFrom: "owner_input",
     sendsTo: "all_agents",
@@ -167,50 +171,11 @@ const DEFAULT_INFRA_AGENTS = [
     ],
   },
   {
-    agentKey: "infra_monitor",
-    displayNameEn: "System Monitor",
-    displayNameAr: "وكيل مراقبة النظام",
-    description: "يراقب أداء المنصة — الذاكرة، المعالج، الأخطاء، أوقات الاستجابة، وصحة الخدمات",
-    primaryModel: { provider: "google", model: "gemini-2.5-flash", enabled: true, creativity: 0.3, timeoutSeconds: 120, maxTokens: 8000 },
-    secondaryModel: { provider: "openai", model: "gpt-4o-mini", enabled: false, creativity: 0.3, timeoutSeconds: 120, maxTokens: 8000 },
-    tertiaryModel: null,
-    governorEnabled: false,
-    autoGovernor: false,
-    governorModel: null,
-    systemPrompt: `أنت وكيل مراقبة النظام لمنصة Mr Code AI.
-مهمتك مراقبة صحة المنصة وتقديم تقارير فورية عن:
-- استخدام الذاكرة والمعالج
-- أوقات استجابة API
-- الأخطاء والتحذيرات في السجلات
-- حالة قاعدة البيانات والاتصالات
-- أداء الوكلاء الآخرين
-
-قدّم التقارير بشكل مختصر ومنظم باستخدام جداول وأرقام.`,
-    instructions: `## مهام المراقبة الأساسية
-
-1. **صحة الخدمات**: تأكد أن API Server و Website Builder يعملان
-2. **قاعدة البيانات**: راقب عدد الاتصالات والاستعلامات البطيئة
-3. **الأخطاء**: افحص سجلات الأخطاء وصنّفها حسب الخطورة
-4. **الأداء**: قِس أوقات الاستجابة للمسارات الرئيسية
-5. **التنبيهات**: أبلغ فوراً عن أي شيء غير طبيعي`,
-    permissions: ["read_all_files", "database_read", "view_logs", "check_health", "monitor_performance"],
-    pipelineOrder: 2,
-    receivesFrom: "infra_sysadmin",
-    sendsTo: "infra_sysadmin",
-    roleOnReceive: "يستقبل طلبات فحص الأداء وتقارير الحالة من مدير النظام",
-    roleOnSend: "يرسل تقارير المراقبة والتنبيهات لمدير النظام",
-    tokenLimit: 30000,
-    batchSize: 5,
-    creativity: "0.20",
-    sourceFiles: [
-      "artifacts/api-server/src/index.ts",
-      "artifacts/api-server/src/routes/index.ts",
-    ],
-  },
-  {
     agentKey: "infra_bugfixer",
     displayNameEn: "Surgical Bug Fixer",
     displayNameAr: "المصلح الجراحي",
+    agentRole: "infra",
+    agentBadge: "specialist",
     description: "يصلح الأخطاء بدقة جراحية — يحدد المشكلة ويعدّل أقل عدد ممكن من الأسطر",
     primaryModel: { provider: "anthropic", model: "claude-sonnet-4-6", enabled: true, creativity: 0.4, timeoutSeconds: 240, maxTokens: 32000 },
     secondaryModel: { provider: "openai", model: "o3-mini", enabled: false, creativity: 1.0, timeoutSeconds: 240, maxTokens: 16000 },
@@ -243,7 +208,7 @@ const DEFAULT_INFRA_AGENTS = [
 - لا radix-ui/shadcn/mui
 - استخدم Tailwind CSS`,
     permissions: ["read_all_files", "write_files", "fix_bugs", "patch_code", "analyze_errors"],
-    pipelineOrder: 3,
+    pipelineOrder: 2,
     receivesFrom: "infra_sysadmin",
     sendsTo: "infra_sysadmin",
     roleOnReceive: "يستقبل تقارير الأخطاء مع تفاصيل المشكلة والملفات المتأثرة",
@@ -259,29 +224,35 @@ const DEFAULT_INFRA_AGENTS = [
   {
     agentKey: "infra_builder",
     displayNameEn: "Feature Builder",
-    displayNameAr: "وكيل التطوير",
-    description: "يبني ميزات جديدة للمنصة — من الفكرة إلى الكود الكامل (واجهة + خلفية)",
+    displayNameAr: "وكيل التطوير والتصميم",
+    agentRole: "infra",
+    agentBadge: "executor",
+    description: "يبني ميزات جديدة كاملة (واجهة + خلفية + قاعدة بيانات). يدمج قدرات UI Updater و Database Manager السابقين.",
     primaryModel: { provider: "anthropic", model: "claude-sonnet-4-6", enabled: true, creativity: 0.7, timeoutSeconds: 300, maxTokens: 32000 },
     secondaryModel: { provider: "openai", model: "gpt-4o", enabled: false, creativity: 0.7, timeoutSeconds: 240, maxTokens: 16000 },
     tertiaryModel: null,
     governorEnabled: false,
     autoGovernor: false,
     governorModel: null,
-    systemPrompt: `أنت وكيل تطوير الميزات لمنصة Mr Code AI.
-مهمتك بناء ميزات جديدة كاملة — من التصميم المعماري إلى الكود النهائي.
+    systemPrompt: `أنت وكيل التطوير والتصميم الشامل لمنصة Mr Code AI.
+مهمتك بناء ميزات جديدة كاملة — واجهة + خلفية + قاعدة بيانات.
+تجمع بين قدرات التطوير والتصميم وإدارة قاعدة البيانات.
 
 عند بناء ميزة جديدة:
 1. خطط البنية أولاً (أي ملفات ستتأثر)
-2. ابدأ بالخلفية (API routes, DB schema)
-3. ثم الواجهة (React components)
-4. تأكد من التكامل بين الأجزاء
+2. صمم الجداول إن لزم (Drizzle schema)
+3. ابدأ بالخلفية (API routes)
+4. ثم الواجهة (React components مع Tailwind)
+5. تأكد من التكامل والتجاوب وRTL
 
 القواعد التقنية:
 - Express + TypeScript للخلفية
 - React + Tailwind + Wouter للواجهة
 - Drizzle ORM لقاعدة البيانات
+- Dark theme: bg-[#0d1117], ألوان cyan-400/emerald-400/purple-400
+- RTL: استخدم ms-/me- بدل ml-/mr-
 - لا axios، لا shadcn/radix/mui`,
-    instructions: `## بناء ميزات جديدة
+    instructions: `## بناء ميزات جديدة (واجهة + خلفية + DB)
 
 ### البنية المعمارية:
 - الخلفية: artifacts/api-server/src/routes/
@@ -292,11 +263,22 @@ const DEFAULT_INFRA_AGENTS = [
 1. تحليل المتطلبات
 2. تصميم الجداول إن لزم (Drizzle schema)
 3. بناء API endpoints
-4. بناء واجهة React
+4. بناء واجهة React مع Tailwind
 5. ربط الواجهة بالخلفية
-6. التأكد من دعم العربية والإنجليزية`,
-    permissions: ["read_all_files", "write_files", "create_files", "database_read", "database_write", "install_packages"],
-    pipelineOrder: 4,
+6. التأكد من دعم العربية والإنجليزية والتجاوب
+
+### قواعد التصميم:
+- خلفية: bg-[#0d1117] أو bg-[#161b22]
+- حدود: border-[#1c2333] أو border-white/10
+- نقاط كسر: sm, md, lg, xl — الجوال أولاً
+- RTL: ms-/me- بدل ml-/mr-
+
+### قواعد قاعدة البيانات:
+- Drizzle ORM دائماً
+- لا تغيّر نوع أعمدة المفاتيح الأساسية
+- db:push للمزامنة`,
+    permissions: ["read_all_files", "write_files", "create_files", "modify_styles", "improve_ux", "responsive_design", "database_read", "database_write", "manage_schema", "install_packages"],
+    pipelineOrder: 3,
     receivesFrom: "infra_sysadmin",
     sendsTo: "infra_sysadmin",
     roleOnReceive: "يستقبل مواصفات الميزة المطلوبة والملفات المرتبطة",
@@ -307,125 +289,16 @@ const DEFAULT_INFRA_AGENTS = [
     sourceFiles: [
       "artifacts/api-server/src/routes/index.ts",
       "artifacts/website-builder/src/pages/Dashboard.tsx",
-    ],
-  },
-  {
-    agentKey: "infra_ui",
-    displayNameEn: "UI Updater",
-    displayNameAr: "وكيل التصميم",
-    description: "يحسّن واجهات المستخدم — الألوان، التخطيط، التجاوب، وتجربة المستخدم",
-    primaryModel: { provider: "anthropic", model: "claude-sonnet-4-6", enabled: true, creativity: 0.8, timeoutSeconds: 240, maxTokens: 32000 },
-    secondaryModel: { provider: "openai", model: "gpt-4o", enabled: false, creativity: 0.8, timeoutSeconds: 240, maxTokens: 16000 },
-    tertiaryModel: null,
-    governorEnabled: false,
-    autoGovernor: false,
-    governorModel: null,
-    systemPrompt: `أنت وكيل تصميم الواجهات لمنصة Mr Code AI.
-متخصص في:
-- تحسين تصميم صفحات React مع Tailwind CSS
-- إضافة تأثيرات حركية جميلة
-- ضمان التجاوب مع الجوال والشاشات الكبيرة
-- دعم RTL للعربية و LTR للإنجليزية
-- تحسين تجربة المستخدم (UX)
-
-القواعد:
-- استخدم Tailwind فقط (لا CSS modules أو styled-components)
-- Dark theme أساسي (خلفية #0d1117)
-- ألوان أساسية: cyan-400, emerald-400, purple-400
-- أيقونات من lucide-react فقط`,
-    instructions: `## قواعد التصميم
-
-### الثيم:
-- خلفية: bg-[#0d1117] أو bg-[#161b22]
-- حدود: border-[#1c2333] أو border-white/10
-- نصوص: text-[#e1e4e8] (رئيسي) / text-[#8b949e] (ثانوي)
-- تأثيرات: hover:bg-[#1c2333], transition-colors
-
-### التجاوب:
-- استخدم grid و flex
-- نقاط كسر: sm, md, lg, xl
-- الجوال أولاً (mobile-first)
-
-### RTL:
-- استخدم ms-/me- بدل ml-/mr-
-- استخدم start/end بدل left/right`,
-    permissions: ["read_all_files", "write_files", "modify_styles", "improve_ux", "responsive_design"],
-    pipelineOrder: 5,
-    receivesFrom: "infra_sysadmin",
-    sendsTo: "infra_sysadmin",
-    roleOnReceive: "يستقبل طلبات تحسين الواجهات مع لقطات أو وصف المشكلة",
-    roleOnSend: "يسلّم كود React/Tailwind المحدّث مع معاينة التغييرات",
-    tokenLimit: 60000,
-    batchSize: 5,
-    creativity: "0.80",
-    sourceFiles: [
       "artifacts/website-builder/src/pages/InfraPanel.tsx",
-      "artifacts/website-builder/src/pages/Dashboard.tsx",
-      "artifacts/website-builder/src/pages/AgentManagement.tsx",
-    ],
-  },
-  {
-    agentKey: "infra_db",
-    displayNameEn: "Database Manager",
-    displayNameAr: "وكيل قاعدة البيانات",
-    description: "يدير قاعدة البيانات — الجداول، الاستعلامات، الأداء، والنسخ الاحتياطي",
-    primaryModel: { provider: "anthropic", model: "claude-sonnet-4-6", enabled: true, creativity: 0.3, timeoutSeconds: 240, maxTokens: 16000 },
-    secondaryModel: { provider: "google", model: "gemini-2.5-flash", enabled: false, creativity: 0.3, timeoutSeconds: 120, maxTokens: 8000 },
-    tertiaryModel: null,
-    governorEnabled: false,
-    autoGovernor: false,
-    governorModel: null,
-    systemPrompt: `أنت مدير قاعدة البيانات لمنصة Mr Code AI.
-المنصة تستخدم PostgreSQL مع Drizzle ORM.
-
-مسؤولياتك:
-- تصميم وتعديل الجداول (schema)
-- كتابة استعلامات SQL مُحسّنة
-- تحليل أداء قاعدة البيانات
-- إدارة العلاقات بين الجداول
-- النسخ الاحتياطي واستعادة البيانات
-
-القواعد:
-- استخدم Drizzle ORM دائماً لتعريف الجداول
-- لا تغيّر نوع أعمدة المفاتيح الأساسية (serial/varchar)
-- استخدم db:push للمزامنة — لا تكتب migrations يدوية
-- حافظ على الأداء مع indexes مناسبة`,
-    instructions: `## بنية قاعدة البيانات
-
-### الملفات:
-- Schema: lib/db/src/schema/
-- Connection: lib/db/src/index.ts
-
-### الجداول الرئيسية:
-- users: المستخدمين والأدوار
-- projects: المشاريع
-- project_files: ملفات المشاريع
-- agent_configs: إعدادات الوكلاء
-- ai_providers: مزودي الذكاء الاصطناعي
-
-### قواعد السلامة:
-- لا تحذف جداول بدون تأكيد
-- لا تغيّر أنواع الأعمدة الأساسية
-- استخدم transactions للعمليات المعقدة`,
-    permissions: ["database_read", "database_write", "manage_schema", "optimize_queries", "backup_restore"],
-    pipelineOrder: 6,
-    receivesFrom: "infra_sysadmin",
-    sendsTo: "infra_sysadmin",
-    roleOnReceive: "يستقبل طلبات تعديل قاعدة البيانات أو استعلامات تحليلية",
-    roleOnSend: "يسلّم نتائج الاستعلامات أو تأكيد التعديلات مع شرح التغييرات",
-    tokenLimit: 50000,
-    batchSize: 5,
-    creativity: "0.20",
-    sourceFiles: [
       "lib/db/src/schema/agent-configs.ts",
-      "lib/db/src/schema/projects.ts",
-      "lib/db/src/index.ts",
     ],
   },
   {
     agentKey: "infra_security",
     displayNameEn: "Security Guard",
     displayNameAr: "وكيل الأمان",
+    agentRole: "infra",
+    agentBadge: "specialist",
     description: "يفحص ويعزز أمان المنصة — الثغرات، الصلاحيات، التشفير، وحماية البيانات",
     primaryModel: { provider: "anthropic", model: "claude-sonnet-4-6", enabled: true, creativity: 0.3, timeoutSeconds: 240, maxTokens: 16000 },
     secondaryModel: { provider: "openai", model: "o3-mini", enabled: false, creativity: 1.0, timeoutSeconds: 240, maxTokens: 16000 },
@@ -460,8 +333,8 @@ const DEFAULT_INFRA_AGENTS = [
 - 🟠 عالي: يجب إصلاحه قريباً
 - 🟡 متوسط: يُفضل إصلاحه
 - 🟢 منخفض: تحسين مستقبلي`,
-    permissions: ["read_all_files", "security_scan", "audit_permissions", "check_secrets", "vulnerability_scan"],
-    pipelineOrder: 7,
+    permissions: ["read_all_files", "security_scan", "audit_permissions", "check_secrets", "vulnerability_scan", "secret_policy_check"],
+    pipelineOrder: 4,
     receivesFrom: "infra_sysadmin",
     sendsTo: "infra_sysadmin",
     roleOnReceive: "يستقبل طلبات فحص أمني لملفات أو مسارات محددة",
@@ -477,37 +350,43 @@ const DEFAULT_INFRA_AGENTS = [
   },
   {
     agentKey: "infra_deploy",
-    displayNameEn: "Deployment Agent",
-    displayNameAr: "وكيل النشر",
-    description: "يدير عمليات النشر والتحديث — بناء المشروع، فحص الجاهزية، والنشر للإنتاج",
+    displayNameEn: "Deployment & QA Agent",
+    displayNameAr: "وكيل النشر والاختبار",
+    agentRole: "infra",
+    agentBadge: "executor",
+    description: "يدير النشر والاختبار — يفحص الجاهزية، يختبر الصفحات والAPI، وينشر ويتراجع عند المشاكل. يدمج قدرات وكيل الاختبار السابق.",
     primaryModel: { provider: "google", model: "gemini-2.5-flash", enabled: true, creativity: 0.3, timeoutSeconds: 180, maxTokens: 8000 },
     secondaryModel: { provider: "openai", model: "gpt-4o-mini", enabled: false, creativity: 0.3, timeoutSeconds: 120, maxTokens: 8000 },
     tertiaryModel: null,
     governorEnabled: false,
     autoGovernor: false,
     governorModel: null,
-    systemPrompt: `أنت وكيل النشر والتحديث لمنصة Mr Code AI.
-مهمتك إدارة عمليات النشر بأمان.
+    systemPrompt: `أنت وكيل النشر والاختبار لمنصة Mr Code AI.
+مهمتك إدارة عمليات النشر بأمان + اختبار المنصة وضمان الجودة.
 
 مسؤولياتك:
 - فحص جاهزية المشروع للنشر
+- اختبار الصفحات والمسارات والـ API
 - التأكد من عدم وجود أخطاء قبل النشر
 - إدارة بيئات التطوير والإنتاج
 - متابعة حالة النشر وتقديم التقارير
 - التراجع عن النشر في حالة المشاكل
+- التحقق من التجاوب (الجوال والشاشات الكبيرة)
+- التأكد من دعم RTL/LTR
 
 القواعد:
 - لا تنشر بدون فحص كامل
-- تأكد من متغيرات البيئة (env variables)
+- تأكد من متغيرات البيئة
 - افحص البناء (build) قبل النشر
-- وثّق كل عملية نشر`,
-    instructions: `## عمليات النشر
+- قدّم تقارير بتصنيف: ✅ نجح / ❌ فشل / ⚠️ تحذير`,
+    instructions: `## عمليات النشر والاختبار
 
 ### قبل النشر:
 1. تأكد أن كل الاختبارات تمر
 2. افحص متغيرات البيئة
 3. تأكد من سلامة قاعدة البيانات
 4. افحص البناء محلياً
+5. اختبر الصفحات الرئيسية
 
 ### أثناء النشر:
 1. ابدأ بالخلفية أولاً (API Server)
@@ -517,92 +396,37 @@ const DEFAULT_INFRA_AGENTS = [
 ### بعد النشر:
 1. افحص الصحة (health check)
 2. تأكد من عمل المسارات الرئيسية
-3. راقب السجلات لأول 5 دقائق`,
-    permissions: ["read_all_files", "deploy", "restart_services", "check_health", "rollback"],
-    pipelineOrder: 8,
+3. راقب السجلات لأول 5 دقائق
+4. اختبر RTL والتجاوب`,
+    permissions: ["read_all_files", "deploy", "restart_services", "check_health", "rollback", "test_endpoints", "check_ui", "validate_forms", "verify_production"],
+    pipelineOrder: 5,
     receivesFrom: "infra_sysadmin",
     sendsTo: "infra_sysadmin",
-    roleOnReceive: "يستقبل أمر النشر مع تفاصيل ما تم تحديثه",
-    roleOnSend: "يرسل تقرير النشر مع الحالة والتفاصيل",
-    tokenLimit: 30000,
-    batchSize: 3,
-    creativity: "0.20",
+    roleOnReceive: "يستقبل أمر النشر أو الاختبار مع تفاصيل ما تم تحديثه",
+    roleOnSend: "يرسل تقرير النشر/الاختبار مع الحالة والنتائج",
+    tokenLimit: 50000,
+    batchSize: 5,
+    creativity: "0.25",
     sourceFiles: [
       "artifacts/api-server/src/index.ts",
       "artifacts/website-builder/vite.config.ts",
-    ],
-  },
-  {
-    agentKey: "infra_qa",
-    displayNameEn: "QA & Testing Agent",
-    displayNameAr: "وكيل الاختبار والجودة",
-    description: "يختبر الميزات والصفحات — يكتشف الأخطاء، يتحقق من التجاوب، ويضمن جودة تجربة المستخدم",
-    primaryModel: { provider: "anthropic", model: "claude-sonnet-4-6", enabled: true, creativity: 0.4, timeoutSeconds: 240, maxTokens: 16000 },
-    secondaryModel: { provider: "openai", model: "gpt-4o", enabled: false, creativity: 0.4, timeoutSeconds: 240, maxTokens: 16000 },
-    tertiaryModel: null,
-    governorEnabled: false,
-    autoGovernor: false,
-    governorModel: null,
-    systemPrompt: `أنت وكيل الاختبار وضمان الجودة لمنصة Mr Code AI.
-مهمتك اختبار كل شيء في المنصة والتأكد من أنه يعمل بشكل صحيح.
-
-مسؤولياتك:
-- اختبار الصفحات والمسارات (هل تفتح؟ هل تعرض البيانات؟)
-- اختبار النماذج (forms) والأزرار والتفاعلات
-- التحقق من التجاوب (الجوال والشاشات الكبيرة)
-- اختبار API endpoints (هل ترد بالشكل الصحيح؟)
-- فحص حالات الخطأ (ماذا يحدث عند إدخال بيانات خاطئة؟)
-- التأكد من دعم العربية والإنجليزية (RTL/LTR)
-- اختبار الأداء وسرعة التحميل
-
-قدّم تقاريرك بتصنيف: ✅ نجح / ❌ فشل / ⚠️ تحذير
-مع وصف واضح لخطوات إعادة الإنتاج لكل مشكلة.`,
-    instructions: `## خطة الاختبار
-
-### 1. اختبار الصفحات:
-- الصفحة الرئيسية (/)
-- لوحة التحكم (/dashboard)
-- منشئ المشاريع (/project/:id)
-- إدارة الوكلاء (/agents)
-- البنية التحتية (/infra)
-- الفوترة (/billing)
-- الفرق (/teams)
-
-### 2. اختبار API:
-- GET /api/projects — قائمة المشاريع
-- POST /api/projects — إنشاء مشروع
-- GET /api/agents/configs — إعدادات الوكلاء
-- POST /api/infra/chat-stream — محادثة الوكلاء
-
-### 3. قائمة التحقق:
-- [ ] هل كل الصفحات تفتح بدون أخطاء؟
-- [ ] هل النماذج ترسل البيانات صحيحياً؟
-- [ ] هل RTL يعمل في العربية؟
-- [ ] هل التصميم متجاوب مع الجوال؟
-- [ ] هل رسائل الخطأ واضحة ومفيدة؟`,
-    permissions: ["read_all_files", "test_endpoints", "check_ui", "validate_forms", "test_responsive", "check_accessibility"],
-    pipelineOrder: 9,
-    receivesFrom: "infra_sysadmin",
-    sendsTo: "infra_sysadmin",
-    roleOnReceive: "يستقبل طلبات اختبار ميزات أو صفحات محددة",
-    roleOnSend: "يرسل تقرير الاختبار مع النتائج والمشاكل المكتشفة",
-    tokenLimit: 50000,
-    batchSize: 5,
-    creativity: "0.30",
-    sourceFiles: [
       "artifacts/website-builder/src/App.tsx",
-      "artifacts/website-builder/src/pages/Dashboard.tsx",
-      "artifacts/api-server/src/routes/index.ts",
     ],
   },
 ];
 
 async function seedInfraAgents() {
   try {
-    const existing = await db.select({ agentKey: agentConfigsTable.agentKey })
-      .from(agentConfigsTable)
-      .where(eq(agentConfigsTable.agentLayer, "infra"));
-    const existingKeys = new Set(existing.map(a => a.agentKey));
+    const allExisting = await db.select({ agentKey: agentConfigsTable.agentKey, agentLayer: agentConfigsTable.agentLayer })
+      .from(agentConfigsTable);
+    const existingKeys = new Set(allExisting.map(a => a.agentKey));
+
+    for (const retiredKey of RETIRED_AGENTS) {
+      if (existingKeys.has(retiredKey)) {
+        await db.update(agentConfigsTable).set({ enabled: false })
+          .where(eq(agentConfigsTable.agentKey, retiredKey));
+      }
+    }
 
     for (const agent of DEFAULT_INFRA_AGENTS) {
       if (!existingKeys.has(agent.agentKey)) {
@@ -635,28 +459,27 @@ async function seedInfraAgents() {
           longTermMemory: [],
         });
       } else {
-        const [current] = await db.select({ receivesFrom: agentConfigsTable.receivesFrom, sourceFiles: agentConfigsTable.sourceFiles })
-          .from(agentConfigsTable).where(eq(agentConfigsTable.agentKey, agent.agentKey)).limit(1);
-        if (current && !current.receivesFrom && (!current.sourceFiles || (Array.isArray(current.sourceFiles) && current.sourceFiles.length === 0))) {
-          await db.update(agentConfigsTable).set({
-            instructions: agent.instructions,
-            permissions: agent.permissions,
-            pipelineOrder: agent.pipelineOrder,
-            receivesFrom: agent.receivesFrom,
-            sendsTo: agent.sendsTo,
-            roleOnReceive: agent.roleOnReceive,
-            roleOnSend: agent.roleOnSend,
-            tokenLimit: agent.tokenLimit,
-            batchSize: agent.batchSize,
-            creativity: agent.creativity,
-            sourceFiles: agent.sourceFiles,
-            description: agent.description,
-            systemPrompt: agent.systemPrompt,
-          }).where(eq(agentConfigsTable.agentKey, agent.agentKey));
-        }
+        await db.update(agentConfigsTable).set({
+          displayNameEn: agent.displayNameEn,
+          displayNameAr: agent.displayNameAr,
+          description: agent.description,
+          enabled: true,
+          systemPrompt: agent.systemPrompt,
+          instructions: agent.instructions,
+          permissions: agent.permissions,
+          pipelineOrder: agent.pipelineOrder,
+          receivesFrom: agent.receivesFrom,
+          sendsTo: agent.sendsTo,
+          roleOnReceive: agent.roleOnReceive,
+          roleOnSend: agent.roleOnSend,
+          tokenLimit: agent.tokenLimit,
+          batchSize: agent.batchSize,
+          creativity: agent.creativity,
+          sourceFiles: agent.sourceFiles,
+        }).where(eq(agentConfigsTable.agentKey, agent.agentKey));
       }
     }
-    console.log("[Infra] Seeded/updated infra agent defaults");
+    console.log("[Infra] Seeded/updated infra agents (5 active, retired:", RETIRED_AGENTS.join(", "), ")");
   } catch (err: any) {
     console.error("[Infra] Seed error:", err.message);
   }

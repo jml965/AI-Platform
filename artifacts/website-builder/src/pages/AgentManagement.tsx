@@ -138,9 +138,11 @@ export default function AgentManagement() {
     try {
       const res = await fetch(`${API}/agents/configs`, { credentials: "include" });
       const data = await res.json();
-      setAgents(data.agents || []);
-      if (data.agents?.length > 0 && !selectedAgent) {
-        setSelectedAgent(data.agents[0].agentKey);
+      const allAgents = (data.agents || []) as AgentConfig[];
+      const enabledAgents = allAgents.filter((a: AgentConfig) => a.enabled);
+      setAgents(enabledAgents);
+      if (enabledAgents.length > 0 && !selectedAgent) {
+        setSelectedAgent(enabledAgents[0].agentKey);
       }
     } catch (e) {
       console.error("Failed to load agents:", e);
@@ -341,9 +343,9 @@ export default function AgentManagement() {
 
         <div className="flex-1 overflow-y-auto p-2">
           <div className="text-[10px] uppercase tracking-wider text-[#d4dae3] px-2 py-1 mb-1">
-            {isRTL ? "وكلاء خط الأنابيب" : "Pipeline Agents"}
+            {isRTL ? "وكلاء البنية التحتية" : "Infrastructure Agents"}
           </div>
-          {agents.filter(a => a.pipelineOrder > 0).sort((a, b) => a.pipelineOrder - b.pipelineOrder).map(agent => (
+          {agents.filter(a => a.agentKey.startsWith("infra_")).sort((a, b) => a.pipelineOrder - b.pipelineOrder).map(agent => (
             <AgentListItem
               key={agent.agentKey}
               agent={agent}
@@ -354,9 +356,9 @@ export default function AgentManagement() {
           ))}
 
           <div className="text-[10px] uppercase tracking-wider text-[#d4dae3] px-2 py-1 mt-3 mb-1">
-            {isRTL ? "وكلاء مستقلون" : "Standalone Agents"}
+            {isRTL ? "وكلاء الخدمة" : "Service Agents"}
           </div>
-          {agents.filter(a => a.pipelineOrder === 0).map(agent => (
+          {agents.filter(a => !a.agentKey.startsWith("infra_")).sort((a, b) => a.pipelineOrder - b.pipelineOrder).map(agent => (
             <AgentListItem
               key={agent.agentKey}
               agent={agent}
@@ -385,6 +387,16 @@ export default function AgentManagement() {
           </div>
         )}
 
+        {currentAgent && getAgentBadge(currentAgent) === "thinker" && currentAgent.permissions?.some(p => DANGEROUS_PERMISSIONS.includes(p)) && (
+          <div className="bg-red-500/10 border-b border-red-500/20 px-4 py-2 text-red-400 text-[12px] flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+            {isRTL
+              ? `تحذير: وكيل "${currentAgent.displayNameAr}" من نوع "مفكر" لكنه يملك صلاحيات تنفيذية خطيرة. يُفضل إزالة: ${currentAgent.permissions.filter(p => DANGEROUS_PERMISSIONS.includes(p)).join(", ")}`
+              : `Warning: "${currentAgent.displayNameEn}" is a Thinker but has dangerous execution permissions. Consider removing: ${currentAgent.permissions.filter(p => DANGEROUS_PERMISSIONS.includes(p)).join(", ")}`
+            }
+          </div>
+        )}
+
         {currentAgent ? (
           <>
             <div className="flex items-center justify-between px-4 py-3 border-b border-white/7 bg-[#161b22]/50">
@@ -393,7 +405,14 @@ export default function AgentManagement() {
                   <Bot className={`w-4 h-4 ${currentAgent.enabled ? "text-[#7c3aed]" : "text-red-400"}`} />
                 </div>
                 <div>
-                  <h2 className="font-semibold text-sm">{isRTL ? currentAgent.displayNameAr : currentAgent.displayNameEn}</h2>
+                  <div className="flex items-center gap-2">
+                    <h2 className="font-semibold text-sm">{isRTL ? currentAgent.displayNameAr : currentAgent.displayNameEn}</h2>
+                    {(() => {
+                      const b = getAgentBadge(currentAgent);
+                      const bi = BADGE_CONFIG[b];
+                      return bi ? <span className={`text-[9px] px-2 py-0.5 rounded-full ${bi.color}`}>{isRTL ? bi.labelAr : bi.label}</span> : null;
+                    })()}
+                  </div>
                   <p className="text-[11px] text-[#d4dae3]">{currentAgent.agentKey} • {isRTL ? "ترتيب" : "Order"}: {currentAgent.pipelineOrder}</p>
                 </div>
               </div>
@@ -506,7 +525,28 @@ export default function AgentManagement() {
   );
 }
 
+const BADGE_CONFIG: Record<string, { label: string; labelAr: string; color: string; icon: typeof Brain }> = {
+  thinker: { label: "Thinker", labelAr: "مفكر", color: "text-blue-400 bg-blue-400/10", icon: Brain },
+  executor: { label: "Executor", labelAr: "منفذ", color: "text-emerald-400 bg-emerald-400/10", icon: Zap },
+  specialist: { label: "Specialist", labelAr: "متخصص", color: "text-purple-400 bg-purple-400/10", icon: Settings },
+  infra: { label: "Infra", labelAr: "بنية", color: "text-orange-400 bg-orange-400/10", icon: Server },
+};
+
+const DANGEROUS_PERMISSIONS = ["modify_code", "write_files", "database_write", "git_push", "deploy", "db_admin", "exec_command"];
+
+function getAgentBadge(agent: AgentConfig): string {
+  const key = agent.agentKey;
+  if (key === "strategic") return "thinker";
+  if (key === "execution_engine" || key === "infra_builder" || key === "infra_deploy") return "executor";
+  if (key === "infra_sysadmin") return "thinker";
+  return "specialist";
+}
+
 function AgentListItem({ agent, selected, onClick, isRTL }: { agent: AgentConfig; selected: boolean; onClick: () => void; isRTL: boolean }) {
+  const badge = getAgentBadge(agent);
+  const badgeInfo = BADGE_CONFIG[badge];
+  const hasDangerousPerms = agent.agentKey === "strategic" && agent.permissions?.some(p => DANGEROUS_PERMISSIONS.includes(p));
+
   return (
     <button
       onClick={onClick}
@@ -516,11 +556,13 @@ function AgentListItem({ agent, selected, onClick, isRTL }: { agent: AgentConfig
     >
       <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${agent.enabled ? "bg-green-400" : "bg-red-400"}`} />
       <span className="truncate flex-1">{isRTL ? agent.displayNameAr : agent.displayNameEn}</span>
-      {agent.pipelineOrder > 0 && (
-        <span className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded">{agent.pipelineOrder}</span>
+      {badgeInfo && (
+        <span className={`text-[9px] px-1.5 py-0.5 rounded-full flex-shrink-0 ${badgeInfo.color}`}>
+          {isRTL ? badgeInfo.labelAr : badgeInfo.label}
+        </span>
       )}
+      {hasDangerousPerms && <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0" />}
       {agent.governorEnabled && <Zap className="w-3 h-3 text-yellow-400 flex-shrink-0" />}
-      {agent.autoGovernor && <Activity className="w-3 h-3 text-emerald-400 flex-shrink-0" />}
     </button>
   );
 }

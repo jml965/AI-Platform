@@ -1,0 +1,337 @@
+المطلوب: إعادة هيكلة نظام الوكلاء بالكامل لتقليل التعقيد ومنع تضارب الأدوار
+
+الهدف:
+- تقليل الوكلاء من 21 إلى 11
+- فصل التفكير عن التنفيذ
+- جعل execution_engine هو المنفذ الوحيد
+- إزالة الصلاحيات الزائدة والخطيرة
+- توحيد مسار العمل في النظام
+
+========================================
+1) الهيكل النهائي المطلوب
+========================================
+
+Infrastructure Agents:
+- infra_sysadmin
+- infra_builder
+- infra_bugfixer
+- infra_deploy
+- infra_security
+
+Service Agents:
+- strategic
+- execution_engine
+- codegen
+- fixer
+- surgical_edit
+- qa_pipeline
+
+========================================
+2) الدمج والحذف
+========================================
+
+ادمج:
+- planner داخل strategic
+- reviewer داخل qa_pipeline
+- filemanager داخل execution_engine
+- package_runner داخل execution_engine
+- infra_monitor داخل infra_sysadmin
+- infra_ui داخل infra_builder
+- infra_db داخل infra_builder
+- infra_qa داخل infra_deploy
+
+احذف كوكيل مستقل:
+- seo
+- translator (أو حوّله لوكيل محدود جدًا)
+- planner
+- reviewer
+- filemanager
+- package_runner
+- infra_monitor
+- infra_ui
+- infra_db
+- infra_qa
+
+========================================
+3) الصلاحيات الجديدة
+========================================
+
+A) strategic
+الدور:
+- فهم الطلب
+- تصنيف المهمة
+- إنتاج خطة قصيرة
+- إرسال المهمة إلى execution_engine
+
+مسموح:
+- analyze_request
+- classify_task
+- plan_execution
+- choose_specialist
+
+ممنوع:
+- modify_code
+- write_files
+- database_write
+- git_push
+- deploy
+- run_command
+
+----------------------------------------
+
+B) execution_engine
+الدور:
+- المنفذ الوحيد
+- orchestrator الفعلي لكل التنفيذ
+
+مسموح:
+- read_files
+- write_files
+- edit_component
+- create_files
+- delete_files (approval)
+- run_tests
+- run_build
+- invoke_codegen
+- invoke_fixer
+- invoke_surgical_edit
+- invoke_qa
+- database_read
+- database_write (approval)
+- git_commit
+- git_push (approval)
+- trigger_deploy (approval)
+
+----------------------------------------
+
+C) codegen
+مسموح:
+- generate_code
+- create_file_drafts
+
+ممنوع:
+- deploy
+- db_write
+- git_push
+
+----------------------------------------
+
+D) fixer
+مسموح:
+- read_code
+- patch_code
+- fix_issues
+
+----------------------------------------
+
+E) surgical_edit
+مسموح:
+- read_code
+- patch_specific_lines
+
+----------------------------------------
+
+F) qa_pipeline
+مسموح:
+- validate_output
+- run_checks
+- review_result
+- verify_ui
+- verify_production
+
+----------------------------------------
+
+G) infra_sysadmin
+الدور:
+- تحكم وموافقات ومراقبة عليا فقط
+
+مسموح:
+- manage_agents
+- approvals
+- read_logs
+- kill_switch
+- system_status
+
+ممنوع:
+- edit مباشر إلا عند الحاجة القصوى
+
+----------------------------------------
+
+H) infra_builder
+مسموح:
+- build_features
+- modify_ui
+- modify_backend
+- db_read
+- limited_db_write (approval)
+
+----------------------------------------
+
+I) infra_bugfixer
+مسموح:
+- patch_code
+- analyze_runtime_errors
+- surgical_fix
+
+----------------------------------------
+
+J) infra_deploy
+مسموح:
+- build
+- deploy
+- rollback
+- verify_production
+
+----------------------------------------
+
+K) infra_security
+مسموح:
+- security_scan
+- permission_audit
+- secret_policy_check
+
+========================================
+4) مسار العمل الجديد (إجباري)
+========================================
+
+أي طلب من المستخدم يمر هكذا:
+
+User Request
+→ strategic
+→ execution_engine
+→ specialist agent if needed
+→ qa_pipeline
+→ final result
+
+أي طلب من المالك في /infra يمر هكذا:
+
+Owner Request
+→ infra_sysadmin
+→ infra_builder أو infra_bugfixer أو infra_deploy أو infra_security
+→ verification
+→ final result
+
+========================================
+5) قواعد تنفيذ إلزامية
+========================================
+
+1. strategic ممنوع يرجع JSON إذا كان الطلب تنفيذي
+2. strategic لا ينفذ أي أداة مباشرة
+3. execution_engine هو الوحيد الذي:
+   - يكتب ملفات
+   - يعدل
+   - يشغل build
+   - يدفع git
+   - يطلب deploy
+4. أي عملية خطرة:
+   - db_write
+   - delete_file
+   - git_push
+   - trigger_deploy
+   - rollback
+   تحتاج approval
+5. translator إن بقي:
+   - صلاحياته فقط i18n / text replacement
+   - ممنوع db_admin / exec_command / git_push
+
+========================================
+6) تعديل البرومبتات
+========================================
+
+A) strategic prompt
+استبدل أي منطق يجبره على JSON فقط.
+
+النص المطلوب إضافته:
+
+"أنت وكيل فهم وتخطيط فقط.
+ممنوع تنفيذ أي تعديل مباشر.
+إذا كان الطلب تنفيذيًا، أرسل المهمة إلى execution_engine بصيغة واضحة:
+- الهدف
+- الملفات المحتملة
+- نوع التعديل
+- مستوى الخطورة
+- هل يحتاج approval
+ممنوع استخدام الأدوات التنفيذية مباشرة."
+
+----------------------------------------
+
+B) execution_engine prompt
+أضف:
+
+"أنت المنفذ الوحيد في النظام.
+أي طلب تنفيذي يجب أن يمر منك.
+تستقبل الهدف من strategic أو infra_sysadmin.
+تحدد الأداة أو الوكيل المناسب.
+لا تكتفي بالتحليل.
+يجب أن تنتهي دائمًا بـ:
+- تم التنفيذ
+أو
+- فشل التنفيذ مع السبب."
+
+========================================
+7) واجهة الإدارة
+========================================
+
+عدّل AgentManagement ليعرض فقط الوكلاء الـ 11 الجدد.
+
+أضف:
+- badge يوضح:
+  thinker / executor / specialist / infra
+- منع تفعيل صلاحيات مخالفة للدور
+- تحذير إذا strategic لديه modify_code
+- تحذير إذا translator لديه صلاحيات خطيرة
+
+========================================
+8) Migration
+========================================
+
+- احتفظ بالسجلات القديمة
+- عطّل الوكلاء المحذوفين soft delete
+- لا تحذف البيانات القديمة
+- أعد ربط pipeline بالأسماء الجديدة
+
+========================================
+9) اختبارات إلزامية
+========================================
+
+اختبر هذه الحالات:
+
+1. طلب تنفيذي من المستخدم:
+"غير نص في الواجهة"
+النتيجة المتوقعة:
+strategic يخطط فقط
+execution_engine ينفذ
+
+2. طلب فني تحليلي:
+"لماذا هذا الخطأ يحدث؟"
+النتيجة:
+strategic يحلل
+لا يوجد تنفيذ
+
+3. طلب deploy:
+execution_engine أو infra_deploy
+مع approval
+
+4. طلب ترجمة:
+translator أو tool translation فقط
+بدون صلاحيات خطيرة
+
+5. تأكد أن strategic لا يستطيع:
+- write_files
+- db_write
+- git_push
+
+========================================
+10) المخرجات المطلوبة
+========================================
+
+أريد منك:
+1. قائمة الملفات التي عدلتها
+2. before/after لكل ملف مهم
+3. جدول الوكلاء قبل/بعد
+4. إثبات أن execution_engine أصبح المنفذ الوحيد
+5. إثبات أن strategic لم يعد ينفذ
+6. إثبات أن translator لم يعد يملك صلاحيات خطيرة
+7. نتيجة الاختبارات الخمسة
+
+ابدأ التنفيذ الآن.

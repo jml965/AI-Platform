@@ -12,315 +12,198 @@ function requireAdmin(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+const SERVICE_RETIRED_AGENTS = ["planner", "reviewer", "filemanager", "package_runner", "seo", "translator"];
+
 const DEFAULT_AGENTS = [
   {
-    agentKey: "planner",
-    displayNameEn: "Planner Agent",
-    displayNameAr: "وكيل التخطيط",
-    description: "Analyzes project requests and creates structured file plans for large projects",
-    primaryModel: { provider: "openai", model: "o3", enabled: true, creativity: 0.7, timeoutSeconds: 240, maxTokens: 16000 },
-    secondaryModel: { provider: "anthropic", model: "claude-sonnet-4-20250514", enabled: false, creativity: 0.7, timeoutSeconds: 240, maxTokens: 16000 },
-    tertiaryModel: { provider: "openai", model: "gpt-4o", enabled: false, creativity: 0.7, timeoutSeconds: 240, maxTokens: 16000 },
-    systemPrompt: `You are a senior software architect AI. Your job is to analyze a project request and produce a structured project plan BEFORE any code is generated.`,
-    permissions: ["read_prompt", "plan_files", "estimate_complexity"],
-    pipelineOrder: 1,
+    agentKey: "strategic",
+    displayNameEn: "Strategic Planner",
+    displayNameAr: "المخطط الاستراتيجي",
+    agentBadge: "thinker",
+    description: "Understands user intent, classifies tasks, creates execution plans. Does NOT execute — sends plans to execution_engine. Merges former planner capabilities.",
+    primaryModel: { provider: "anthropic", model: "claude-sonnet-4-20250514", enabled: true, creativity: 0.7, timeoutSeconds: 240, maxTokens: 16000 },
+    secondaryModel: { provider: "openai", model: "o3", enabled: true, creativity: 0.7, timeoutSeconds: 240, maxTokens: 16000 },
+    tertiaryModel: { provider: "openai", model: "gpt-4o", enabled: true, creativity: 0.7, timeoutSeconds: 240, maxTokens: 16000 },
+    systemPrompt: `أنت وكيل فهم وتخطيط فقط — العقل المفكر لنظام بناء المواقع.
+ممنوع تنفيذ أي تعديل مباشر.
+
+مهمتك:
+1. فهم طلب المستخدم بدقة
+2. تصنيف نوع المهمة (بناء / تعديل / إصلاح / تحليل)
+3. تخطيط الملفات والخطوات
+4. تقدير التعقيد
+
+إذا كان الطلب تنفيذيًا (يحتاج كتابة كود أو تعديل ملفات):
+أرسل خطة واضحة إلى execution_engine تتضمن:
+- الهدف
+- الملفات المحتملة
+- نوع التعديل
+- مستوى الخطورة
+- هل يحتاج approval
+
+إذا كان الطلب محادثة عادية:
+رد بشكل طبيعي ومختصر.
+
+إذا كان الطلب تحليلي (لماذا يحدث هذا الخطأ؟):
+حلل وقدم الجواب مباشرة بدون تنفيذ.
+
+ممنوع استخدام الأدوات التنفيذية مباشرة:
+- ممنوع write_files / modify_code / database_write / git_push / deploy / run_command`,
+    permissions: ["analyze_request", "classify_task", "plan_execution", "choose_specialist", "read_code", "access_project_files"],
+    pipelineOrder: 0,
     receivesFrom: "user_input",
-    sendsTo: "codegen",
-    roleOnReceive: "Receives user prompt and analyzes project requirements",
-    roleOnSend: "Sends structured file plan to code generator",
-    tokenLimit: 50000,
-    batchSize: 10,
+    sendsTo: "execution_engine",
+    roleOnReceive: "Receives user request and analyzes intent",
+    roleOnSend: "Sends structured execution plan to execution_engine",
+    tokenLimit: 64000,
+    batchSize: 1,
     creativity: "0.70",
-    sourceFiles: ["artifacts/api-server/src/lib/agents/planner-agent.ts"],
+    sourceFiles: ["artifacts/api-server/src/lib/agents/strategic-agent.ts"],
+    instructions: `- Analyze before responding — never guess
+- Classify every request: conversational / analytical / execution
+- For execution requests: produce a plan, never execute directly
+- For analytical requests: analyze and respond without execution
+- For conversational requests: respond naturally in 1-2 sentences
+- Always identify root cause before suggesting solutions
+- Reference specific file paths
+- Respond in user's language (Arabic or English)
+- If unclear, ask exactly one clarifying question
+- Never use execution tools (write_files, modify_code, db_write, git_push, deploy)`,
+  },
+  {
+    agentKey: "execution_engine",
+    displayNameEn: "Execution Engine",
+    displayNameAr: "محرك التنفيذ",
+    agentBadge: "executor",
+    description: "The SOLE executor in the system. Receives plans from strategic, orchestrates specialists (codegen, fixer, surgical_edit), manages files, packages, and delivers results. Merges filemanager + package_runner.",
+    primaryModel: { provider: "local", model: "orchestrator", enabled: true, creativity: 0, timeoutSeconds: 0, maxTokens: 0 },
+    secondaryModel: null,
+    tertiaryModel: null,
+    systemPrompt: `أنت المنفذ الوحيد في النظام.
+أي طلب تنفيذي يجب أن يمر منك.
+تستقبل الهدف من strategic أو infra_sysadmin.
+تحدد الأداة أو الوكيل المناسب (codegen / fixer / surgical_edit / qa_pipeline).
+تدير الملفات وتثبيت الحزم وتشغيل البناء.
+
+لا تكتفي بالتحليل.
+يجب أن تنتهي دائمًا بـ:
+- تم التنفيذ (مع تفاصيل ما تم)
+أو
+- فشل التنفيذ مع السبب
+
+العمليات الخطرة التي تحتاج approval:
+- delete_files
+- database_write
+- git_push
+- trigger_deploy
+- rollback`,
+    permissions: ["read_files", "write_files", "edit_component", "create_files", "delete_files", "run_tests", "run_build", "invoke_codegen", "invoke_fixer", "invoke_surgical_edit", "invoke_qa", "database_read", "database_write", "git_commit", "git_push", "trigger_deploy", "manage_sandbox", "install_packages", "organize_structure"],
+    pipelineOrder: 1,
+    receivesFrom: "strategic",
+    sendsTo: "codegen",
+    roleOnReceive: "Receives execution plan from strategic",
+    roleOnSend: "Routes to appropriate specialist and delivers final result",
+    tokenLimit: 100000,
+    batchSize: 10,
+    creativity: "0.00",
+    sourceFiles: ["artifacts/api-server/src/lib/agents/execution-engine.ts"],
   },
   {
     agentKey: "codegen",
     displayNameEn: "Code Generator",
     displayNameAr: "مولّد الأكواد",
-    description: "Generates complete, production-ready project code from natural language descriptions",
+    agentBadge: "specialist",
+    description: "Generates complete, production-ready project code from plans. Called by execution_engine only.",
     primaryModel: { provider: "anthropic", model: "claude-sonnet-4-20250514", enabled: true, creativity: 0.7, timeoutSeconds: 240, maxTokens: 16000 },
     secondaryModel: { provider: "openai", model: "o3", enabled: false, creativity: 0.7, timeoutSeconds: 240, maxTokens: 16000 },
     tertiaryModel: { provider: "openai", model: "gpt-4o", enabled: false, creativity: 0.7, timeoutSeconds: 240, maxTokens: 16000 },
     systemPrompt: `You are a senior full-stack developer AI agent. Your job is to generate complete, production-ready project code based on user descriptions.`,
-    permissions: ["read_prompt", "generate_code", "create_files", "define_dependencies"],
+    permissions: ["generate_code", "create_file_drafts"],
     pipelineOrder: 2,
-    receivesFrom: "planner",
-    sendsTo: "reviewer",
-    roleOnReceive: "Receives file plan or direct prompt and generates code",
-    roleOnSend: "Sends generated code files to reviewer for quality check",
+    receivesFrom: "execution_engine",
+    sendsTo: "execution_engine",
+    roleOnReceive: "Receives file plan from execution_engine and generates code",
+    roleOnSend: "Returns generated code files to execution_engine",
     tokenLimit: 100000,
     batchSize: 10,
     creativity: "0.70",
     sourceFiles: ["artifacts/api-server/src/lib/agents/codegen-agent.ts"],
   },
   {
-    agentKey: "reviewer",
-    displayNameEn: "Code Reviewer",
-    displayNameAr: "مراجع الأكواد",
-    description: "Reviews generated code for quality, security, accessibility, and best practices",
-    primaryModel: { provider: "openai", model: "o3", enabled: true, creativity: 0.7, timeoutSeconds: 240, maxTokens: 16000 },
-    secondaryModel: { provider: "anthropic", model: "claude-sonnet-4-20250514", enabled: false, creativity: 0.7, timeoutSeconds: 240, maxTokens: 16000 },
-    tertiaryModel: { provider: "openai", model: "gpt-4o", enabled: false, creativity: 0.7, timeoutSeconds: 240, maxTokens: 16000 },
-    systemPrompt: `You are a senior code reviewer AI agent. Your job is to review generated website code for quality, security, accessibility, and best practices.`,
-    permissions: ["read_code", "report_issues", "score_quality"],
-    pipelineOrder: 3,
-    receivesFrom: "codegen",
-    sendsTo: "fixer",
-    roleOnReceive: "Receives generated code and performs quality review",
-    roleOnSend: "Sends issue list to fixer if errors found, or passes to file manager",
-    tokenLimit: 50000,
-    batchSize: 10,
-    creativity: "0.30",
-    sourceFiles: ["artifacts/api-server/src/lib/agents/reviewer-agent.ts"],
-  },
-  {
     agentKey: "fixer",
     displayNameEn: "Code Fixer",
     displayNameAr: "مصلح الأكواد",
-    description: "Automatically fixes issues found during code review",
+    agentBadge: "specialist",
+    description: "Fixes issues found during code review. Called by execution_engine only.",
     primaryModel: { provider: "anthropic", model: "claude-sonnet-4-20250514", enabled: true, creativity: 0.7, timeoutSeconds: 240, maxTokens: 16000 },
     secondaryModel: { provider: "openai", model: "o3", enabled: false, creativity: 0.7, timeoutSeconds: 240, maxTokens: 16000 },
     tertiaryModel: { provider: "openai", model: "gpt-4o", enabled: false, creativity: 0.7, timeoutSeconds: 240, maxTokens: 16000 },
     systemPrompt: `You are a code fixer AI agent. Your job is to fix issues found during code review. You receive the original code and a list of issues, and you return the corrected files.`,
-    permissions: ["read_code", "modify_code", "fix_issues"],
-    pipelineOrder: 4,
-    receivesFrom: "reviewer",
-    sendsTo: "filemanager",
+    permissions: ["read_code", "patch_code", "fix_issues"],
+    pipelineOrder: 3,
+    receivesFrom: "execution_engine",
+    sendsTo: "execution_engine",
     roleOnReceive: "Receives code with issue list and applies fixes",
-    roleOnSend: "Sends fixed code to file manager for persistence",
+    roleOnSend: "Returns fixed code to execution_engine",
     tokenLimit: 80000,
     batchSize: 10,
     creativity: "0.50",
     sourceFiles: ["artifacts/api-server/src/lib/agents/fixer-agent.ts"],
   },
   {
-    agentKey: "filemanager",
-    displayNameEn: "File Manager",
-    displayNameAr: "مدير الملفات",
-    description: "Manages file persistence in the database — saves, updates, and organizes project files",
-    primaryModel: { provider: "local", model: "none", enabled: true, creativity: 0, timeoutSeconds: 0, maxTokens: 0 },
-    secondaryModel: null,
-    tertiaryModel: null,
-    systemPrompt: "Local agent — no AI model used. Handles file save/update/delete operations in the database.",
-    permissions: ["read_files", "write_files", "delete_files", "organize_structure"],
-    pipelineOrder: 5,
-    receivesFrom: "fixer",
-    sendsTo: "package_runner",
-    roleOnReceive: "Receives final code files and saves them to database",
-    roleOnSend: "Notifies package runner that files are ready for installation",
-    tokenLimit: 0,
-    batchSize: 10,
-    creativity: "0.00",
-    sourceFiles: ["artifacts/api-server/src/lib/agents/filemanager-agent.ts"],
-  },
-  {
-    agentKey: "package_runner",
-    displayNameEn: "Package Runner",
-    displayNameAr: "مشغّل الحزم",
-    description: "Detects project type and runs install/start commands in sandbox environment",
-    primaryModel: { provider: "openai", model: "o3", enabled: true, creativity: 0.7, timeoutSeconds: 240, maxTokens: 16000 },
-    secondaryModel: { provider: "anthropic", model: "claude-sonnet-4-20250514", enabled: false, creativity: 0.7, timeoutSeconds: 240, maxTokens: 16000 },
-    tertiaryModel: null,
-    systemPrompt: `You are a build and deployment assistant. You analyze error logs from package installation and server startup, then suggest fixes.`,
-    permissions: ["read_files", "execute_commands", "manage_sandbox", "install_packages"],
-    pipelineOrder: 6,
-    receivesFrom: "filemanager",
-    sendsTo: "qa_pipeline",
-    roleOnReceive: "Receives notification that files are saved, starts installation",
-    roleOnSend: "Sends running sandbox URL to QA pipeline for validation",
-    tokenLimit: 20000,
-    batchSize: 1,
-    creativity: "0.20",
-    sourceFiles: ["artifacts/api-server/src/lib/agents/package-runner-agent.ts"],
-  },
-  {
-    agentKey: "qa_pipeline",
-    displayNameEn: "QA Pipeline",
-    displayNameAr: "خط ضمان الجودة",
-    description: "Validates the running application by re-reviewing and re-fixing code issues",
-    primaryModel: { provider: "local", model: "orchestrator", enabled: true, creativity: 0, timeoutSeconds: 0, maxTokens: 0 },
-    secondaryModel: null,
-    tertiaryModel: null,
-    systemPrompt: "Orchestrator — runs reviewer + fixer in a retry loop until quality passes or max retries reached.",
-    permissions: ["trigger_review", "trigger_fix", "validate_output"],
-    pipelineOrder: 7,
-    receivesFrom: "package_runner",
-    sendsTo: "output",
-    roleOnReceive: "Receives running project and validates quality",
-    roleOnSend: "Delivers final validated project to user",
-    tokenLimit: 50000,
-    batchSize: 1,
-    creativity: "0.00",
-    sourceFiles: ["artifacts/api-server/src/lib/agents/qa-pipeline.ts"],
-  },
-  {
     agentKey: "surgical_edit",
     displayNameEn: "Surgical Editor",
     displayNameAr: "المحرر الجراحي",
-    description: "Makes precise, minimal edits to existing code files based on modification requests",
+    agentBadge: "specialist",
+    description: "Makes precise, minimal edits to existing code files. Called by execution_engine only.",
     primaryModel: { provider: "anthropic", model: "claude-sonnet-4-20250514", enabled: true, creativity: 0.7, timeoutSeconds: 240, maxTokens: 16000 },
     secondaryModel: { provider: "openai", model: "o3", enabled: false, creativity: 0.7, timeoutSeconds: 240, maxTokens: 16000 },
     tertiaryModel: { provider: "openai", model: "gpt-4o", enabled: false, creativity: 0.7, timeoutSeconds: 240, maxTokens: 16000 },
     systemPrompt: `You are a surgical code editor AI agent. Your job is to make precise, minimal edits to existing code files based on user modification requests.`,
-    permissions: ["read_code", "modify_code", "patch_files"],
-    pipelineOrder: 0,
-    receivesFrom: "user_input",
-    sendsTo: "filemanager",
+    permissions: ["read_code", "patch_specific_lines"],
+    pipelineOrder: 4,
+    receivesFrom: "execution_engine",
+    sendsTo: "execution_engine",
     roleOnReceive: "Receives edit request with existing files context",
-    roleOnSend: "Sends patched files to file manager",
+    roleOnSend: "Returns patched files to execution_engine",
     tokenLimit: 60000,
     batchSize: 5,
     creativity: "0.40",
     sourceFiles: ["artifacts/api-server/src/lib/agents/surgical-edit-agent.ts"],
   },
   {
-    agentKey: "translator",
-    displayNameEn: "Translation Agent",
-    displayNameAr: "وكيل الترجمة",
-    description: "Translates website content between languages while preserving HTML structure",
-    primaryModel: { provider: "anthropic", model: "claude-sonnet-4-20250514", enabled: true, creativity: 0.7, timeoutSeconds: 240, maxTokens: 16000 },
-    secondaryModel: { provider: "openai", model: "gpt-4o", enabled: false, creativity: 0.7, timeoutSeconds: 240, maxTokens: 16000 },
-    tertiaryModel: null,
-    systemPrompt: `You are a professional website content translator AI. Your job is to translate website content from one language to another while preserving HTML tags and structure.`,
-    permissions: ["read_content", "translate_content", "preserve_structure"],
-    pipelineOrder: 0,
-    receivesFrom: "user_input",
-    sendsTo: "output",
-    roleOnReceive: "Receives content and target language",
-    roleOnSend: "Delivers translated content",
-    tokenLimit: 40000,
-    batchSize: 5,
-    creativity: "0.50",
-    sourceFiles: ["artifacts/api-server/src/lib/agents/translation-agent.ts"],
-  },
-  {
-    agentKey: "seo",
-    displayNameEn: "SEO Analyst",
-    displayNameAr: "محلل السيو",
-    description: "Analyzes HTML websites and provides comprehensive SEO audits with scores and suggestions",
-    primaryModel: { provider: "openai", model: "gpt-4o", enabled: true, creativity: 0.7, timeoutSeconds: 240, maxTokens: 16000 },
-    secondaryModel: { provider: "anthropic", model: "claude-sonnet-4-20250514", enabled: false, creativity: 0.7, timeoutSeconds: 240, maxTokens: 16000 },
-    tertiaryModel: null,
-    systemPrompt: `You are an expert SEO analyst. You analyze HTML websites and provide comprehensive SEO audits.`,
-    permissions: ["read_html", "analyze_seo", "suggest_fixes"],
-    pipelineOrder: 0,
-    receivesFrom: "user_input",
-    sendsTo: "output",
-    roleOnReceive: "Receives HTML content for SEO analysis",
-    roleOnSend: "Delivers SEO report with scores and suggestions",
-    tokenLimit: 30000,
-    batchSize: 1,
-    creativity: "0.30",
-    sourceFiles: ["artifacts/api-server/src/lib/agents/seo-agent.ts"],
-  },
-  {
-    agentKey: "strategic",
-    displayNameEn: "Strategic Execution Agent",
-    displayNameAr: "وكيل التنفيذ الاستراتيجي",
-    description: "Elite debugging and problem-solving agent with multi-model governor system. 3 models think independently, 1 synthesizes the best solution.",
-    primaryModel: { provider: "anthropic", model: "claude-sonnet-4-20250514", enabled: true, creativity: 0.7, timeoutSeconds: 240, maxTokens: 16000 },
-    secondaryModel: { provider: "openai", model: "o3", enabled: true, creativity: 0.7, timeoutSeconds: 240, maxTokens: 16000 },
-    tertiaryModel: { provider: "openai", model: "gpt-4o", enabled: true, creativity: 0.7, timeoutSeconds: 240, maxTokens: 16000 },
-    systemPrompt: `You are the Strategic Execution Agent — the primary reasoning and problem-solving brain of the AI Website Builder system.
-
-You work alongside: Planner, CodeGenerator, CodeReviewer, CodeFixer, SurgicalEditor, TranslationAgent, SeoAgent, FileManager, PackageRunner, and QA Pipeline.
-
-Expertise: Web development (React, TypeScript, Node.js, Express), architecture, debugging, refactoring, risk analysis, execution planning.
-
-Your job:
-- Understand user intent
-- Identify the TRUE root cause (not symptoms)
-- Decide the correct response type
-- Provide exact, execution-ready solutions when needed
-
-Decision logic:
-1) First determine request type:
-   - Conversational (greeting, thanks, casual discussion, non-technical questions)
-   - Technical (code, bugs, architecture, execution, debugging)
-
-2) If Conversational:
-   - Respond naturally in 1-2 short sentences
-   - Match the tone — if the user says "مرحبا", reply warmly and briefly
-   - NO JSON, NO analysis, NO overthinking
-
-3) If Technical:
-   - Classify decisionType:
-     quick-fix | refactor | architecture-change | investigation
-   - Match response depth to problem complexity — simple bug = short JSON, complex architecture = detailed JSON
-   - Then respond ONLY with strict JSON:
-
-{
-  "decisionType": "quick-fix | refactor | architecture-change | investigation",
-  "urgency": "blocking | important | improvement",
-  "rootCause": "One clear sentence explaining WHY the problem exists",
-  "analysis": "What is happening and where (symptom + context)",
-  "solution": "Exact fix with code if possible",
-  "fixFiles": [{"path": "src/file.tsx", "description": "What to change and why"}],
-  "executionSteps": ["Step 1", "Step 2"],
-  "risks": ["Possible side effects"],
-  "confidence": 0.0-1.0,
-  "needsMoreInfo": false
-}
-
-Rules:
-- Be direct and concise — no filler
-- No vague advice — always prefer exact fixes
-- Distinguish clearly between: root cause vs symptom vs solution
-- Reference specific file paths when suggesting changes
-- Order files by execution priority
-- Respond in user's language (Arabic or English)
-- Technical requests → strict JSON only
-- Conversational requests → natural text only`,
-    permissions: ["read_code", "analyze_bugs", "suggest_fixes", "access_project_files", "debug_runtime", "modify_code"],
-    pipelineOrder: 0,
-    receivesFrom: "user_input",
-    sendsTo: "output",
-    roleOnReceive: "Receives complex debugging or problem-solving requests from user",
-    roleOnSend: "Delivers analysis, solutions, and fix instructions",
-    tokenLimit: 64000,
-    batchSize: 1,
-    creativity: "0.70",
-    sourceFiles: ["artifacts/api-server/src/lib/agents/strategic-agent.ts"],
-    instructions: `- Always start by examining actual error messages before guessing
-- Never propose a fix before clearly identifying the root cause
-- If you discover a security issue (XSS, SQL injection, data leak), classify it as blocking even if the user didn't ask about it
-- When proposing changes across multiple files, order them by correct execution sequence (backend first, then frontend)
-- Never suggest deleting working code unless the reason is clear and justified
-- Always prioritize solutions that don't break existing functionality
-- When multiple solutions exist, present the fastest and the best — let the user decide
-- If the problem involves another agent in the pipeline, name that agent explicitly
-- Don't suggest changing the project's core architecture unless the problem is structural or has occurred repeatedly (3+ times)
-- Tie complexity estimates to decision type (quick-fix = simple, refactor = moderate, architecture-change = complex)
-- Never suggest generic or theoretical solutions — every fix must be directly actionable
-- If the user's request is unclear, ask exactly one specific clarifying question
-- After every solution, explain how to verify the fix actually worked
-- If the same solution was previously suggested, investigate why before repeating it`,
-  },
-  {
-    agentKey: "execution_engine",
-    displayNameEn: "Execution Engine",
-    displayNameAr: "محرك التنفيذ",
-    description: "Main orchestrator — routes builds to the correct pipeline and coordinates all agents",
+    agentKey: "qa_pipeline",
+    displayNameEn: "QA Pipeline",
+    displayNameAr: "خط ضمان الجودة",
+    agentBadge: "specialist",
+    description: "Validates output quality — reviews code, runs checks, verifies UI and production. Merges former reviewer capabilities.",
     primaryModel: { provider: "local", model: "orchestrator", enabled: true, creativity: 0, timeoutSeconds: 0, maxTokens: 0 },
     secondaryModel: null,
     tertiaryModel: null,
-    systemPrompt: "Orchestrator — manages the build pipeline, decides single-shot vs batched mode, and coordinates agent handoffs.",
-    permissions: ["orchestrate", "route_builds", "manage_pipeline", "track_progress"],
-    pipelineOrder: 0,
-    receivesFrom: "user_input",
-    sendsTo: "planner",
-    roleOnReceive: "Receives build request from user",
-    roleOnSend: "Routes to appropriate pipeline (single/batched)",
-    tokenLimit: 0,
-    batchSize: 10,
+    systemPrompt: "Orchestrator — runs review + fix in a retry loop until quality passes or max retries reached. Also handles code review, UI verification, and production checks.",
+    permissions: ["validate_output", "run_checks", "review_result", "verify_ui", "verify_production"],
+    pipelineOrder: 5,
+    receivesFrom: "execution_engine",
+    sendsTo: "execution_engine",
+    roleOnReceive: "Receives built project for quality validation",
+    roleOnSend: "Returns validation result to execution_engine",
+    tokenLimit: 50000,
+    batchSize: 1,
     creativity: "0.00",
-    sourceFiles: ["artifacts/api-server/src/lib/agents/execution-engine.ts"],
+    sourceFiles: ["artifacts/api-server/src/lib/agents/qa-pipeline.ts"],
   },
 ];
 
 async function seedDefaultAgents() {
   const existing = await db.select({ agentKey: agentConfigsTable.agentKey }).from(agentConfigsTable);
   const existingKeys = new Set(existing.map(e => e.agentKey));
+
+  for (const retiredKey of SERVICE_RETIRED_AGENTS) {
+    if (existingKeys.has(retiredKey)) {
+      await db.update(agentConfigsTable).set({ enabled: false })
+        .where(eq(agentConfigsTable.agentKey, retiredKey));
+    }
+  }
 
   for (const agent of DEFAULT_AGENTS) {
     if (!existingKeys.has(agent.agentKey)) {
@@ -349,8 +232,24 @@ async function seedDefaultAgents() {
         creativity: agent.creativity,
         sourceFiles: agent.sourceFiles,
       });
+    } else {
+      await db.update(agentConfigsTable).set({
+        displayNameEn: agent.displayNameEn,
+        displayNameAr: agent.displayNameAr,
+        description: agent.description,
+        enabled: true,
+        systemPrompt: agent.systemPrompt,
+        instructions: (agent as any).instructions || "",
+        permissions: agent.permissions,
+        pipelineOrder: agent.pipelineOrder,
+        receivesFrom: agent.receivesFrom,
+        sendsTo: agent.sendsTo,
+        roleOnReceive: agent.roleOnReceive,
+        roleOnSend: agent.roleOnSend,
+      }).where(eq(agentConfigsTable.agentKey, agent.agentKey));
     }
   }
+  console.log("[Agents] Seeded/updated service agents (6 active, retired:", SERVICE_RETIRED_AGENTS.join(", "), ")");
 }
 
 router.get("/agents/configs", async (_req, res) => {
