@@ -1235,9 +1235,10 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
 
           if (targetState.found) {
             targetState.stepsAfterFound++;
-            if (targetState.stepsAfterFound >= 3 && !["edit_component", "write_file"].includes(tool.name)) {
+            const allowedAfterTarget = ["edit_component", "write_file", "read_file", "view_page_source", "get_page_structure", "browse_page"];
+            if (targetState.stepsAfterFound >= 3 && !allowedAfterTarget.includes(tool.name)) {
               const nudge = `⚠️ TARGET_NUDGE — تم العثور على الملف "${targetState.file}" منذ ${targetState.stepsAfterFound} خطوات ولم تنفّذ التعديل بعد.\n\n🔧 نفّذ الآن:\n1. read_file path="${targetState.file}"\n2. edit_component مع old_text و new_text`;
-              console.log(`[Agent] NUDGE: ${targetState.stepsAfterFound} steps after target found, no edit yet`);
+              console.log(`[Agent] NUDGE: ${targetState.stepsAfterFound} steps after target found, no edit yet. tool=${tool.name}`);
               toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: nudge });
               continue;
             }
