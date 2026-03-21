@@ -1,0 +1,65 @@
+[عصا سحرية] العنصر المحدد:
+• النوع: <div>
+• المسار: div.h-screen.bg-[#0e1117] > div.flex.flex-1 > div.hidden.lg:flex > div.p-2.flex
+• النص: "يوحنا"
+• الحجم: 199×52px
+• الموقع: (1313, 145)
+• اللون: rgb(226, 232, 240)
+• الخلفية: rgba(0, 0, 0, 0)
+• الخط: 16px 400
+
+ما التعديل المطلوب على هذا العنصر؟
+اريدك تغيير اسم اليقونه من يوحنا الى اوكي تمام
+
+
+2 إجراء
+لماذا لم تغيرها اعطني تقرير بهذا السبب فورا
+{
+  "decisionType": "investigation",
+  "urgency": "important",
+  "rootCause": "النص 'يوحنا' لا يأتي من قاعدة البيانات أو الكود المباشر - مصدره غير محدد",
+  "analysis": "بحثت في قاعدة البيانات وجميع ملفات الكود ولم أجد النص 'يوحنا' في أي مكان. هذا يعني أن المصدر إما: 1) ملف ترجمة منفصل 2) متغير بيئة 3) API خارجي 4) كاش المتصفح",
+  "solution": "أحتاج البحث في ملفات الترجمة وفحص المتغيرات البيئية لتحديد المصدر الحقيقي",
+  "fixFiles": [
+    {"path": "src/i18n/ar.json", "description": "فحص ملفات الترجمة العربية"},
+    {"path": "src/contexts/AuthContext.tsx", "description": "فحص سياق المصادقة"},
+    {"path": ".env files", "description": "فحص متغيرات البيئة"}
+  ],
+  "executionSteps": [
+    "البحث عن 'يوحنا' في جميع ملفات المشروع",
+    "فحص ملفات الترجمة والتدويل",
+    "فحص متغيرات البيئة والإعدادات",
+    "تحديد المصدر الحقيقي للنص"
+  ],
+  "risks": ["قد يكون النص مخزن في مكان غير متوقع"],
+  "confidence": 0.7,
+  "needsMoreInfo": false
+}
+· 8,692 tokens
+افحص بملفات الترجمه غيره
+
+
+2 إجراء
+تقرير
+{
+  "decisionType": "investigation",
+  "urgency": "important", 
+  "rootCause": "النص 'يوحنا' يظهر في الواجهة لكن مصدره غير محدد - لا يوجد في قاعدة البيانات أو الكود المباشر",
+  "analysis": "تم البحث الشامل في: 1) قاعدة البيانات (جميع الجداول) 2) ملفات الكود (React components) 3) ملفات الترجمة والإعدادات. النتيجة: لا يوجد النص 'يوحنا' في أي مكان واضح",
+  "solution": "المصادر المحتملة المتبقية: 1) localStorage/sessionStorage في المتصفح 2) API خارجي 3) متغير بيئة مخفي 4) cache المتصفح 5) ملف ترجمة غير مفهرس",
+  "fixFiles": [
+    {"path": "artifacts/website-builder/src/components/Header.tsx", "description": "فحص كيفية عرض اسم المستخدم"},
+    {"path": "artifacts/website-builder/src/hooks/useAuth.tsx", "description": "تتبع مصدر بيانات المستخدم"},
+    {"path": "artifacts/website-builder/src/contexts/AuthContext.tsx", "description": "فحص context المصادقة"}
+  ],
+  "executionSteps": [
+    "فحص localStorage في المتصفح",
+    "تتبع API calls للمصادقة", 
+    "فحص ملفات الترجمة المخفية",
+    "مراجعة cache المتصفح"
+  ],
+  "risks": ["قد يكون النص محفوظ في المتصفح محلياً"],
+  "confidence": 0.7,
+  "needsMoreInfo": true
+}
+· 8,686 tokens

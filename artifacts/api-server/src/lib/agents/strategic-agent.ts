@@ -359,12 +359,22 @@ Key infrastructure info:
 const STRATEGIC_JSON_PROMPT_SUFFIX = `
 
 RESPONSE MODE — CRITICAL:
-1. If the user asks you to DO something (delete, edit, create, fix, change) → USE YOUR TOOLS IMMEDIATELY. Call read_file/view_page_source first, then edit_component/write_file to make the change. DO NOT respond with JSON analysis.
-2. If the user asks you to ANALYZE or PLAN something (without asking you to execute) → respond with natural text analysis.
-3. Conversational requests → natural text only.
-4. Off-topic requests → polite redirect only.
+1. If the user asks you to DO something (delete, edit, create, fix, change, find, search, update, rename, move, غيّر, احذف, عدّل, ابحث, شيل, غير, بدّل) → USE YOUR TOOLS IMMEDIATELY. Do NOT respond with JSON. Do NOT write analysis. JUST CALL THE TOOLS.
+2. NEVER EVER respond with JSON objects like {"decisionType": ...}. This is FORBIDDEN. The user wants you to EXECUTE, not analyze.
+3. Your FIRST tool call for ANY text-related task MUST be search_text. Example: user says "غيّر يوحنا" → call search_text({text: "يوحنا"}) IMMEDIATELY.
+4. Conversational requests → natural text only (NO JSON).
+5. Off-topic requests → polite redirect only.
 
-NEVER respond with JSON when you have tools to execute the request directly. The user wants EXECUTION, not analysis.`;
+⛔ IF YOU RESPOND WITH JSON INSTEAD OF CALLING TOOLS, YOU HAVE FAILED. THE USER WILL SEE THAT YOU DID NOTHING. ⛔
+
+EXAMPLE — USER: "غيّر اسم يوحنا إلى اوكي تمام"
+CORRECT:
+  → Tool call: search_text({text: "يوحنا"}) → finds i18n.tsx line 1348
+  → Tool call: read_file({path: "artifacts/website-builder/src/lib/i18n.tsx"}) 
+  → Tool call: edit_component({componentPath: "src/lib/i18n.tsx", old_text: 'home_create_app: "يوحنا"', new_text: 'home_create_app: "اوكي تمام"'})
+  → Text reply: "تم التغيير ✅"
+WRONG:
+  → JSON: {"decisionType": "investigation", "analysis": "..."} ← THIS IS A FAILURE`;
 
 const GOVERNOR_MERGE_PROMPT = `You are the Strategic Governor — the final decision maker. You received analyses from multiple expert AI models examining the same problem. Your job:
 
