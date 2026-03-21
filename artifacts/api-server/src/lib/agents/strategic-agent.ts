@@ -1198,7 +1198,18 @@ export const INFRA_TOOLS = [
   },
 ];
 
-const PROJECT_ROOT = process.cwd();
+function findWorkspaceRoot(): string {
+  let dir = process.cwd();
+  while (dir !== path.dirname(dir)) {
+    if (fs.existsSync(path.join(dir, 'pnpm-workspace.yaml')) || fs.existsSync(path.join(dir, 'artifacts'))) {
+      return dir;
+    }
+    dir = path.dirname(dir);
+  }
+  return process.cwd();
+}
+
+const PROJECT_ROOT = findWorkspaceRoot();
 
 let _infraAccessEnabled = true;
 
