@@ -1049,6 +1049,29 @@ export const INFRA_TOOLS = [
     },
   },
   {
+    name: "rollback_deploy",
+    description: "Rollback to a previous backup tag and push to GitHub. Use when a deployment causes issues. Input: { tag: 'backup-2026-03-21T14-30-00' }",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        tag: { type: "string", description: "Backup tag name (starts with 'backup-'). Use deploy_status to see recent tags." },
+      },
+      required: ["tag"],
+    },
+  },
+  {
+    name: "verify_production",
+    description: "Verify that a text change is visible on the production site (mrcodeai.com). Fetches the page HTML and checks if the expected text exists. Input: { text: 'النص المتوقع', path: '/' }",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        text: { type: "string", description: "The text to search for in the production page HTML" },
+        path: { type: "string", description: "Page path to check (default: /). Example: /login, /dashboard" },
+      },
+      required: ["text"],
+    },
+  },
+  {
     name: "github_api",
     description: "Make any GitHub API call. Use for managing secrets, checking repos, workflows, etc.",
     input_schema: {
@@ -1808,6 +1831,15 @@ export async function executeInfraTool(toolName: string, input: any, callerRole?
       }
       case "git_push": {
         try {
+          const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+          const backupTag = `backup-${timestamp}`;
+          try {
+            execSync(`git tag ${backupTag}`, { cwd: PROJECT_ROOT, encoding: "utf-8" });
+            console.log(`[Deploy] Created backup tag: ${backupTag}`);
+          } catch (tagErr: any) {
+            console.log(`[Deploy] Tag warning: ${(tagErr?.message || "").slice(0, 100)}`);
+          }
+
           execSync("git add -A", { cwd: PROJECT_ROOT, encoding: "utf-8" });
           const commitMsg = (input.message || "Agent push").replace(/"/g, '\\"');
           try {
@@ -1815,10 +1847,66 @@ export async function executeInfraTool(toolName: string, input: any, callerRole?
           } catch (ce: any) {
             if (!(ce?.stderr || ce?.message || "").includes("nothing to commit")) throw ce;
           }
-          const pushOut = execSync(`git push github master:main --force`, { cwd: PROJECT_ROOT, encoding: "utf-8", timeout: 30000 });
-          return JSON.stringify({ success: true, message: `Pushed to GitHub (master → main)`, output: pushOut.slice(0, 5000) });
+          const pushOut = execSync(`git push github master:main`, { cwd: PROJECT_ROOT, encoding: "utf-8", timeout: 30000 });
+          return JSON.stringify({ success: true, message: `Pushed to GitHub (master → main)`, backupTag, output: pushOut.slice(0, 5000) });
         } catch (e: any) {
-          return JSON.stringify({ success: false, error: (e?.stderr || e?.message || "").slice(0, 5000) });
+          const errMsg = (e?.stderr || e?.message || "").slice(0, 5000);
+          if (errMsg.includes("rejected") || errMsg.includes("non-fast-forward")) {
+            return JSON.stringify({ success: false, error: `Push rejected (non-fast-forward). يجب git pull أولاً أو حل التعارض. التفاصيل: ${errMsg}` });
+          }
+          return JSON.stringify({ success: false, error: errMsg });
+        }
+      }
+      case "rollback_deploy": {
+        try {
+          const tag = input.tag as string;
+          if (!tag || !tag.startsWith("backup-")) {
+            const allTags = execSync("git tag -l 'backup-*' --sort=-creatordate | head -10", { cwd: PROJECT_ROOT, encoding: "utf-8" }).trim();
+            return JSON.stringify({ success: false, error: "Tag يجب أن يبدأ بـ backup-", availableTags: allTags.split("\n").filter(Boolean) });
+          }
+          const tagExists = execSync(`git tag -l "${tag}"`, { cwd: PROJECT_ROOT, encoding: "utf-8" }).trim();
+          if (!tagExists) {
+            const allTags = execSync("git tag -l 'backup-*' --sort=-creatordate | head -10", { cwd: PROJECT_ROOT, encoding: "utf-8" }).trim();
+            return JSON.stringify({ success: false, error: `Tag "${tag}" غير موجود`, availableTags: allTags.split("\n").filter(Boolean) });
+          }
+          execSync(`git checkout ${tag} -- .`, { cwd: PROJECT_ROOT, encoding: "utf-8" });
+          execSync(`git add -A && git commit -m "Rollback to ${tag}"`, { cwd: PROJECT_ROOT, encoding: "utf-8" });
+          const pushOut = execSync(`git push github master:main`, { cwd: PROJECT_ROOT, encoding: "utf-8", timeout: 30000 });
+          return JSON.stringify({ success: true, message: `تم التراجع إلى ${tag} والنشر`, output: pushOut.slice(0, 3000) });
+        } catch (e: any) {
+          return JSON.stringify({ success: false, error: (e?.stderr || e?.message || "").slice(0, 3000) });
+        }
+      }
+      case "verify_production": {
+        try {
+          const searchText = input.text as string;
+          const pagePath = input.path || "/";
+          const prodUrl = `https://mrcodeai.com${pagePath}`;
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 15000);
+          const res = await fetch(prodUrl, {
+            signal: controller.signal,
+            headers: { "User-Agent": "MrCodeAI-Verifier/1.0" },
+          });
+          clearTimeout(timeout);
+          if (!res.ok) {
+            return JSON.stringify({ success: false, found: false, error: `HTTP ${res.status}`, url: prodUrl });
+          }
+          const html = await res.text();
+          const found = html.includes(searchText);
+          const htmlSnippet = found
+            ? (() => { const idx = html.indexOf(searchText); return html.slice(Math.max(0, idx - 50), idx + searchText.length + 50); })()
+            : "";
+          return JSON.stringify({
+            success: true,
+            found,
+            url: prodUrl,
+            message: found ? `✅ النص "${searchText}" موجود في الصفحة` : `❌ النص "${searchText}" غير موجود في الصفحة`,
+            snippet: htmlSnippet.slice(0, 300),
+            htmlLength: html.length,
+          });
+        } catch (e: any) {
+          return JSON.stringify({ success: false, found: false, error: e.message?.slice(0, 500), url: `https://mrcodeai.com${input.path || "/"}` });
         }
       }
       case "search_text": {

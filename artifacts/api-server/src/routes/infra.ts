@@ -46,7 +46,8 @@ const TOOL_RISK_CONFIG: Record<string, { risk: string; category: string; require
   deploy_status: { risk: "low", category: "deploy", requiresApproval: false, sandboxed: false },
   github_api: { risk: "medium", category: "deploy", requiresApproval: false, sandboxed: false },
   remote_server_api: { risk: "high", category: "deploy", requiresApproval: true, sandboxed: false },
-  rollback_deploy: { risk: "medium", category: "deploy", requiresApproval: true, sandboxed: false },
+  rollback_deploy: { risk: "high", category: "deploy", requiresApproval: true, sandboxed: false },
+  verify_production: { risk: "low", category: "deploy", requiresApproval: false, sandboxed: false },
 };
 
 function isSafeSQL(query: string): { safe: boolean; reason?: string } {
@@ -850,30 +851,38 @@ ${blueprint}
 
 ⛔ ممنوع ترجع JSON مثل {"decisionType": ...}. المالك يريد تنفيذ.
 
-⛔⛔⛔ القانون الثامن: النشر الإجباري (Deploy Chain) ⛔⛔⛔
+⛔⛔⛔ القانون الثامن: النشر الآمن (Safe Deploy Chain) ⛔⛔⛔
 
 بعد أي edit_component أو write_file ناجح (matchesReplaced > 0):
 
 خطوة 1: edit_component / write_file ← (تم)
-خطوة 2: git_push مع message يصف التغيير (يشمل commit + push + يشغّل CI/CD)
-خطوة 3: انتظر 60 ثانية ثم deploy_status للتأكد
-خطوة 4: browse_page على mrcodeai.com للتحقق البصري
+خطوة 2: git_push مع message يصف التغيير (يتطلب موافقة المالك)
+  - النظام يأخذ backup tag تلقائياً قبل كل push
+  - ممنوع --force! Push عادي فقط
+خطوة 3: deploy_status للتأكد من حالة CI/CD
+خطوة 4: verify_production مع النص المتوقع للتأكد من ظهوره في الموقع الحقيقي
 
-⚠️ git_push يتطلب موافقة المالك (approval) — بعد الموافقة، يتم Push + Deploy تلقائياً.
-⚠️ النشر عبر GitHub Actions CI/CD → يأخذ ~3 دقائق حتى يظهر التغيير على mrcodeai.com
+⚠️ git_push يتطلب موافقة المالك (approval).
+⚠️ CI/CD يستغرق ~3 دقائق. بعدها verify_production.
 
-الرد النهائي بعد كل تعديل UI:
+إذا verify_production أرجع found=false:
+→ التغيير لم يظهر في الإنتاج = فشل! أخبر المالك.
+
+أدوات التراجع:
+- rollback_deploy مع tag (يتطلب موافقة) — يرجع لنسخة سابقة
+
+الرد النهائي:
 ✔ تم التعديل والنشر:
   الملف: [path]
   قبل: [old] → بعد: [new]
-  matchesReplaced: [N]
-  النشر: تم الدفع لـ GitHub → CI/CD قيد التنفيذ
-  الرابط: https://mrcodeai.com
+  النشر: ✅ تم الدفع لـ GitHub
+  backup: [backup-tag]
+  التحقق: ✅ النص ظاهر في mrcodeai.com
 
 ❌ فشل:
-  السبب: [التعديل فشل / النشر فشل / لم يظهر في الموقع]
+  السبب: [التعديل فشل / النشر فشل / النص غير ظاهر في الإنتاج]
 
-⚠️ أهم قاعدة: التعديل في dev فقط لا يكفي! يجب git_push ثم التحقق.
+⚠️ أهم قاعدة: التعديل في dev فقط لا يكفي! يجب git_push + verify_production.
 
 القواعد العامة:
 - رد بالعربية إذا المالك يتحدث بالعربية
@@ -1277,9 +1286,10 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
             }
 
             if (tool.name === "git_push" && parsedResult?.success) {
-              finalContent = `${result}\n\n✅ تم الدفع لـ GitHub بنجاح! CI/CD يعمل الآن.\n⏳ النشر على mrcodeai.com يستغرق ~3 دقائق.\n💡 نفّذ deploy_status بعد دقيقة للتحقق، ثم browse_page على https://mrcodeai.com للتأكد.`;
-              console.log(`[Agent] GIT_PUSH SUCCESS`);
-              await logAudit(agentKey, "git_push_success", tool.name, tool.input, result?.slice(0, 500), "high", "success", durationMs);
+              const bTag = parsedResult.backupTag || "unknown";
+              finalContent = `${result}\n\n✅ تم الدفع لـ GitHub بنجاح! CI/CD يعمل الآن.\n🏷️ Backup tag: ${bTag}\n⏳ النشر على mrcodeai.com يستغرق ~3 دقائق.\n💡 نفّذ deploy_status للتحقق، ثم verify_production مع النص المتوقع للتأكد من ظهوره.`;
+              console.log(`[Agent] GIT_PUSH SUCCESS — backup: ${bTag}`);
+              await logAudit(agentKey, "git_push_success", tool.name, { ...tool.input, backupTag: bTag }, result?.slice(0, 500), "high", "success", durationMs);
             } else if (tool.name === "git_push" && parsedResult?.success === false) {
               finalContent = `${result}\n\n❌ فشل الدفع لـ GitHub: ${parsedResult.error?.slice(0, 200)}`;
               console.log(`[Agent] GIT_PUSH FAILED: ${parsedResult.error?.slice(0, 200)}`);
@@ -1288,9 +1298,27 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
               finalContent = parsedResult.nothingToCommit
                 ? `${result}\n\n📝 لا توجد تغييرات جديدة. نفّذ git_push مباشرة.`
                 : `${result}\n\n✅ تم حفظ التغييرات محلياً. نفّذ git_push الآن لنشرها.`;
+            } else if (tool.name === "verify_production" && parsedResult) {
+              if (parsedResult.found) {
+                finalContent = `${result}\n\n✅ تم التحقق: النص موجود في الإنتاج (${parsedResult.url}).\nالتعديل ناجح ومنشور!`;
+                console.log(`[Agent] VERIFY_PRODUCTION: FOUND at ${parsedResult.url}`);
+                await logAudit(agentKey, "verify_production_success", tool.name, tool.input, { found: true, url: parsedResult.url }, "low", "success", durationMs);
+              } else {
+                finalContent = `${result}\n\n❌ التحقق فشل: النص غير موجود في ${parsedResult.url}.\nالتعديل لم يظهر في الإنتاج بعد. قد يحتاج CI/CD وقتاً إضافياً. جرّب مرة أخرى بعد دقيقتين.`;
+                console.log(`[Agent] VERIFY_PRODUCTION: NOT FOUND at ${parsedResult.url}`);
+                await logAudit(agentKey, "verify_production_failed", tool.name, tool.input, { found: false, url: parsedResult.url }, "medium", "failed", durationMs);
+              }
+            } else if (tool.name === "rollback_deploy" && parsedResult) {
+              if (parsedResult.success) {
+                finalContent = `${result}\n\n✅ تم التراجع والنشر بنجاح. الموقع سيعود للنسخة السابقة خلال ~3 دقائق.`;
+                await logAudit(agentKey, "rollback_success", tool.name, tool.input, result?.slice(0, 500), "high", "success", durationMs);
+              } else {
+                finalContent = `${result}\n\n❌ فشل التراجع: ${parsedResult.error?.slice(0, 200)}`;
+                await logAudit(agentKey, "rollback_failed", tool.name, tool.input, parsedResult.error?.slice(0, 500), "high", "failed", durationMs);
+              }
             }
 
-            const enrichedTools = ["edit_component", "write_file", "search_text", "run_sql", "git_push", "git_commit"];
+            const enrichedTools = ["edit_component", "write_file", "search_text", "run_sql", "git_push", "git_commit", "verify_production", "rollback_deploy"];
             const sseContent = enrichedTools.includes(tool.name) ? finalContent.slice(0, 5000) : result.slice(0, 5000);
             res.write(`data: ${JSON.stringify({ type: "tool_result", name: tool.name, result: sseContent })}\n\n`);
             toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: finalContent });
