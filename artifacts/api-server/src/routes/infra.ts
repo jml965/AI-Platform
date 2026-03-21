@@ -750,6 +750,62 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
     let fullReply = "";
     let tokensUsed = 0;
 
+    const PERM_TO_TOOLS: Record<string, string[]> = {
+      search_text: ["search_text"],
+      list_files: ["list_files"],
+      list_components: ["list_components"],
+      read_file: ["read_file"],
+      view_page_source: ["view_page_source"],
+      write_file: ["write_file"],
+      edit_component: ["edit_component"],
+      create_component: ["create_component"],
+      delete_file: ["exec_command"],
+      rename_file: ["exec_command"],
+      db_read: ["db_query", "db_tables"],
+      db_write: ["run_sql"],
+      db_admin: ["run_sql"],
+      db_tables: ["db_tables"],
+      run_command: ["run_command"],
+      exec_command: ["exec_command"],
+      get_env: ["get_env"],
+      set_env: ["set_env"],
+      system_status: ["system_status"],
+      install_package: ["exec_command"],
+      restart_service: ["exec_command"],
+      screenshot_page: ["screenshot_page"],
+      click_element: ["click_element"],
+      type_text: ["type_text"],
+      hover_element: ["hover_element"],
+      inspect_styles: ["inspect_styles"],
+      get_page_structure: ["get_page_structure"],
+      scroll_page: ["scroll_page"],
+      get_console_errors: ["get_console_errors"],
+      get_network_requests: ["get_network_requests"],
+      browse_page: ["browse_page"],
+      site_health: ["site_health"],
+      git_push: ["git_push"],
+      trigger_deploy: ["trigger_deploy"],
+      deploy_status: ["deploy_status"],
+      github_api: ["github_api"],
+      remote_server_api: ["remote_server_api"],
+      rollback_deploy: ["exec_command"],
+      manage_users: ["run_sql", "db_query"],
+      view_secrets: ["get_env"],
+      manage_agents: ["read_file", "write_file", "edit_component"],
+    };
+
+    const agentPerms = config.permissions || [];
+    let filteredTools = INFRA_TOOLS;
+    if (agentPerms.length > 0) {
+      const allowedToolNames = new Set<string>();
+      for (const perm of agentPerms) {
+        const toolNames = PERM_TO_TOOLS[perm];
+        if (toolNames) toolNames.forEach(t => allowedToolNames.add(t));
+      }
+      filteredTools = INFRA_TOOLS.filter((t: any) => allowedToolNames.has(t.name));
+      if (filteredTools.length === 0) filteredTools = [];
+    }
+
     const conversationMessages = [
       ...history.slice(-20),
       { role: "user" as const, content: message },
@@ -769,7 +825,7 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
           max_tokens: Math.min(slot.maxTokens || 32000, 64000),
           system: infraSystemPrompt,
           messages: chatMsgs,
-          tools: INFRA_TOOLS as any,
+          ...(filteredTools.length > 0 ? { tools: filteredTools as any } : {}),
           temperature: Math.min(parseFloat(String(config.creativity)) || 0.5, 1.0),
         });
 

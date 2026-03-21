@@ -6,7 +6,12 @@ import {
   ToggleLeft, ToggleRight, Settings, FileText, Brain, Shield,
   MessageSquare, BarChart2, Zap, GripVertical, ArrowUpDown,
   Activity, Clock, Coins, AlertTriangle, CheckCircle, XCircle,
-  Cpu, RefreshCw, Eye, Code, ScrollText
+  Cpu, RefreshCw, Eye, Code, ScrollText, Search, FolderOpen,
+  Terminal, Database, Camera, MousePointer, Type, Move,
+  Palette, LayoutList, ArrowDown, Bug, Wifi, Globe, Lock,
+  Key, GitBranch, Rocket, Server, Upload, Users, Info,
+  ShieldAlert, ShieldCheck, Package, RotateCcw, Pencil,
+  FilePlus, FileX, FileEdit
 } from "lucide-react";
 
 const API = "/api";
@@ -914,44 +919,130 @@ function MemoryTab({ agent, onUpdate, isRTL }: { agent: AgentConfig; onUpdate: (
 }
 
 function PermissionsTab({ agent, onUpdate, isRTL }: { agent: AgentConfig; onUpdate: (u: Partial<AgentConfig>) => void; isRTL: boolean }) {
-  const [newPerm, setNewPerm] = useState("");
-  const allPerms = [
-    "read_prompt", "generate_code", "create_files", "define_dependencies",
-    "read_code", "modify_code", "fix_issues", "report_issues", "score_quality",
-    "read_files", "write_files", "delete_files", "organize_structure",
-    "execute_commands", "manage_sandbox", "install_packages",
-    "trigger_review", "trigger_fix", "validate_output",
-    "plan_files", "estimate_complexity", "patch_files",
-    "read_content", "translate_content", "preserve_structure",
-    "read_html", "analyze_seo", "suggest_fixes",
-    "orchestrate", "route_builds", "manage_pipeline", "track_progress",
+  type RiskLevel = "low" | "medium" | "high" | "critical";
+  interface PermDef { key: string; nameAr: string; nameEn: string; descAr: string; descEn: string; risk: RiskLevel; icon: any; category: string; }
+
+  const cats = [
+    { key: "search", nameAr: "البحث والاستكشاف", nameEn: "Search & Discovery", icon: Search },
+    { key: "files", nameAr: "إدارة الملفات", nameEn: "File Management", icon: FileText },
+    { key: "database", nameAr: "قاعدة البيانات", nameEn: "Database", icon: Database },
+    { key: "system", nameAr: "النظام والأوامر", nameEn: "System & Commands", icon: Terminal },
+    { key: "browser", nameAr: "المتصفح والفحص", nameEn: "Browser & Inspection", icon: Globe },
+    { key: "deploy", nameAr: "النشر و Git", nameEn: "Deployment & Git", icon: Rocket },
+    { key: "security", nameAr: "الأمان والتحكم", nameEn: "Security & Control", icon: Lock },
   ];
+
+  const PERMS: PermDef[] = [
+    { key: "search_text", nameAr: "البحث في الملفات", nameEn: "Search Files", descAr: "البحث عن أي نص في كل ملفات المشروع — عربي، إنجليزي، كود. مثل grep. أهم أداة للوكيل لإيجاد الكود المطلوب تعديله.", descEn: "Search for any text across all project files. Like grep. Most important tool.", risk: "low", icon: Search, category: "search" },
+    { key: "list_files", nameAr: "تصفح المجلدات", nameEn: "List Files", descAr: "عرض محتويات أي مجلد في المشروع لمعرفة الملفات والمجلدات الموجودة.", descEn: "Browse directory contents to see files and folders.", risk: "low", icon: FolderOpen, category: "search" },
+    { key: "list_components", nameAr: "عرض شجرة المكونات", nameEn: "List Components", descAr: "عرض شجرة مكونات React في مجلد website-builder مع أحجام الملفات.", descEn: "Show React component tree with file sizes.", risk: "low", icon: LayoutList, category: "search" },
+    { key: "read_file", nameAr: "قراءة الملفات", nameEn: "Read File", descAr: "قراءة محتوى أي ملف في المشروع. ضروري لفهم الكود قبل تعديله.", descEn: "Read content of any file. Required before editing.", risk: "low", icon: Eye, category: "files" },
+    { key: "view_page_source", nameAr: "عرض كود المكون", nameEn: "View Page Source", descAr: "قراءة كود مكون React محدد من مجلد website-builder.", descEn: "Read a specific React component source code.", risk: "low", icon: Code, category: "files" },
+    { key: "write_file", nameAr: "كتابة الملفات", nameEn: "Write File", descAr: "إنشاء ملف جديد أو الكتابة فوق ملف موجود بالكامل. ⚠️ يمكن أن يمسح محتوى ملف كامل!", descEn: "Create new file or overwrite existing. Can erase entire file!", risk: "medium", icon: FilePlus, category: "files" },
+    { key: "edit_component", nameAr: "تعديل المكونات", nameEn: "Edit Component", descAr: "تعديل جزء محدد من ملف (find & replace). أكثر أماناً من write_file لأنه يغير فقط الجزء المطلوب.", descEn: "Surgical edit — find & replace specific text. Safer than write_file.", risk: "medium", icon: FileEdit, category: "files" },
+    { key: "create_component", nameAr: "إنشاء مكون جديد", nameEn: "Create Component", descAr: "إنشاء ملف مكون React جديد في مشروع website-builder.", descEn: "Create a new React component file.", risk: "medium", icon: FilePlus, category: "files" },
+    { key: "delete_file", nameAr: "حذف الملفات", nameEn: "Delete File", descAr: "حذف ملف نهائياً من المشروع. ⚠️ لا يمكن التراجع بدون Git!", descEn: "Permanently delete a file. Cannot be undone without Git!", risk: "high", icon: FileX, category: "files" },
+    { key: "rename_file", nameAr: "إعادة تسمية ملف", nameEn: "Rename File", descAr: "تغيير اسم أو نقل ملف من مكان لآخر.", descEn: "Rename or move a file.", risk: "medium", icon: Pencil, category: "files" },
+    { key: "db_read", nameAr: "قراءة قاعدة البيانات", nameEn: "DB Read (SELECT)", descAr: "تنفيذ استعلامات SELECT فقط — قراءة البيانات بدون تعديل. آمن تماماً.", descEn: "Execute SELECT queries only — read without modification.", risk: "low", icon: Database, category: "database" },
+    { key: "db_write", nameAr: "كتابة قاعدة البيانات", nameEn: "DB Write (INSERT/UPDATE/DELETE)", descAr: "إضافة وتعديل وحذف سجلات من الجداول. ⚠️ يمكن تعديل أو حذف بيانات المستخدمين!", descEn: "Insert, update, delete records. Can modify user data!", risk: "high", icon: Database, category: "database" },
+    { key: "db_admin", nameAr: "إدارة هيكل القاعدة", nameEn: "DB Admin (DROP/ALTER/CREATE)", descAr: "إنشاء/حذف/تعديل الجداول نفسها. 🔴 خطير جداً — يمكن حذف جدول كامل!", descEn: "Create/drop/alter tables. DANGEROUS — can drop entire tables!", risk: "critical", icon: Database, category: "database" },
+    { key: "db_tables", nameAr: "عرض الجداول", nameEn: "Show Tables", descAr: "عرض قائمة جداول قاعدة البيانات وأعمدتها. للاطلاع فقط.", descEn: "List database tables and columns. Read-only.", risk: "low", icon: Database, category: "database" },
+    { key: "run_command", nameAr: "تنفيذ أوامر Shell", nameEn: "Run Shell Command", descAr: "تنفيذ أي أمر في الطرفية (terminal). 🔴 خطير — يمكن تنفيذ أي شيء على السيرفر!", descEn: "Execute any shell command. DANGEROUS — can run anything!", risk: "critical", icon: Terminal, category: "system" },
+    { key: "exec_command", nameAr: "تنفيذ أوامر (بديل)", nameEn: "Exec Command (Alt)", descAr: "نفس run_command — تنفيذ أوامر shell على السيرفر.", descEn: "Same as run_command — execute shell commands.", risk: "critical", icon: Terminal, category: "system" },
+    { key: "get_env", nameAr: "قراءة متغيرات البيئة", nameEn: "Read Env Vars", descAr: "عرض متغيرات البيئة (NODE_ENV, PORT, إلخ). يمكن كشف معلومات حساسة.", descEn: "View environment variables. May reveal sensitive info.", risk: "medium", icon: Key, category: "system" },
+    { key: "set_env", nameAr: "تعيين متغيرات البيئة", nameEn: "Set Env Vars", descAr: "تعديل متغيرات البيئة. ⚠️ يمكن تغيير إعدادات حساسة مثل DATABASE_URL!", descEn: "Modify env vars. Can change sensitive settings!", risk: "high", icon: Key, category: "system" },
+    { key: "system_status", nameAr: "حالة النظام", nameEn: "System Status", descAr: "عرض حالة النظام — اتصال قاعدة البيانات، الذاكرة، وقت التشغيل، عدد المستخدمين.", descEn: "Show system status — DB, memory, uptime, users.", risk: "low", icon: Activity, category: "system" },
+    { key: "install_package", nameAr: "تثبيت حزم", nameEn: "Install Package", descAr: "تثبيت حزم npm/pnpm جديدة. ⚠️ يمكن تثبيت حزم ضارة!", descEn: "Install npm packages. Could install malicious packages!", risk: "high", icon: Package, category: "system" },
+    { key: "restart_service", nameAr: "إعادة تشغيل الخدمة", nameEn: "Restart Service", descAr: "إعادة تشغيل خدمات السيرفر. قد يسبب توقف مؤقت للموقع.", descEn: "Restart server services. May cause brief downtime.", risk: "medium", icon: RefreshCw, category: "system" },
+    { key: "screenshot_page", nameAr: "لقطة شاشة", nameEn: "Screenshot Page", descAr: "التقاط لقطة شاشة حقيقية لأي صفحة من الموقع باستخدام متصفح Chromium.", descEn: "Take a real screenshot of any page using Chromium.", risk: "low", icon: Camera, category: "browser" },
+    { key: "click_element", nameAr: "النقر على عنصر", nameEn: "Click Element", descAr: "النقر على زر أو رابط في الصفحة. يمكنه تنفيذ إجراءات مثل الحذف!", descEn: "Click a button/link. Can trigger actions like delete!", risk: "medium", icon: MousePointer, category: "browser" },
+    { key: "type_text", nameAr: "كتابة في حقل", nameEn: "Type Text", descAr: "كتابة نص في حقل إدخال في الصفحة.", descEn: "Type text into an input field.", risk: "medium", icon: Type, category: "browser" },
+    { key: "hover_element", nameAr: "تمرير الماوس", nameEn: "Hover Element", descAr: "تمرير الماوس فوق عنصر لإظهار القوائم المنسدلة أو التلميحات.", descEn: "Hover to reveal dropdowns or tooltips.", risk: "low", icon: Move, category: "browser" },
+    { key: "inspect_styles", nameAr: "فحص التصميم", nameEn: "Inspect Styles", descAr: "عرض CSS وتصميم أي عنصر — الألوان، الخطوط، الأبعاد.", descEn: "View CSS styles — colors, fonts, dimensions.", risk: "low", icon: Palette, category: "browser" },
+    { key: "get_page_structure", nameAr: "بنية الصفحة", nameEn: "Page Structure", descAr: "عرض هيكل HTML للصفحة — العناوين، الروابط، الأزرار.", descEn: "View page HTML structure.", risk: "low", icon: LayoutList, category: "browser" },
+    { key: "scroll_page", nameAr: "تمرير الصفحة", nameEn: "Scroll Page", descAr: "تمرير الصفحة لأعلى أو لأسفل والتقاط لقطة شاشة.", descEn: "Scroll page and take screenshot.", risk: "low", icon: ArrowDown, category: "browser" },
+    { key: "get_console_errors", nameAr: "أخطاء المتصفح", nameEn: "Console Errors", descAr: "عرض أخطاء JavaScript في console الصفحة.", descEn: "View JavaScript console errors.", risk: "low", icon: Bug, category: "browser" },
+    { key: "get_network_requests", nameAr: "طلبات الشبكة", nameEn: "Network Requests", descAr: "مراقبة طلبات HTTP — مفيد لتتبع الأخطاء.", descEn: "Monitor HTTP requests — useful for debugging.", risk: "low", icon: Wifi, category: "browser" },
+    { key: "browse_page", nameAr: "تصفح نصي", nameEn: "Browse Page", descAr: "عرض محتوى الصفحة كنص بدون صور.", descEn: "View page content as text.", risk: "low", icon: Globe, category: "browser" },
+    { key: "site_health", nameAr: "صحة الموقع", nameEn: "Site Health", descAr: "فحص سريع لمعرفة هل الموقع يعمل.", descEn: "Quick check if site is up.", risk: "low", icon: Activity, category: "browser" },
+    { key: "git_push", nameAr: "رفع GitHub", nameEn: "Git Push", descAr: "حفظ التغييرات ورفعها لـ GitHub. يبدأ عملية CI/CD للنشر التلقائي.", descEn: "Commit and push to GitHub. Triggers CI/CD.", risk: "high", icon: Upload, category: "deploy" },
+    { key: "trigger_deploy", nameAr: "نشر التطبيق", nameEn: "Trigger Deploy", descAr: "بدء عملية نشر جديدة على Google Cloud Run.", descEn: "Start new deployment to Cloud Run.", risk: "high", icon: Rocket, category: "deploy" },
+    { key: "deploy_status", nameAr: "حالة النشر", nameEn: "Deploy Status", descAr: "عرض حالة آخر عملية نشر — نجحت أو فشلت.", descEn: "View latest deployment status.", risk: "low", icon: Activity, category: "deploy" },
+    { key: "github_api", nameAr: "GitHub API", nameEn: "GitHub API", descAr: "تنفيذ أي طلب على GitHub API — issues, commits, branches.", descEn: "Execute any GitHub API request.", risk: "medium", icon: GitBranch, category: "deploy" },
+    { key: "remote_server_api", nameAr: "API الإنتاج", nameEn: "Production API", descAr: "إرسال طلبات HTTP لسيرفر الإنتاج. ⚠️ يمكن تعديل بيانات الإنتاج!", descEn: "Send HTTP requests to production. Can modify prod data!", risk: "high", icon: Server, category: "deploy" },
+    { key: "rollback_deploy", nameAr: "التراجع عن نشر", nameEn: "Rollback Deploy", descAr: "الرجوع لنسخة سابقة بعد نشر فاشل.", descEn: "Revert to previous version after failed deploy.", risk: "medium", icon: RotateCcw, category: "deploy" },
+    { key: "manage_users", nameAr: "إدارة المستخدمين", nameEn: "Manage Users", descAr: "إضافة/تعديل/حذف مستخدمين. 🔴 يتحكم بصلاحيات الآخرين!", descEn: "Add/edit/delete users. Controls others' access!", risk: "critical", icon: Users, category: "security" },
+    { key: "view_secrets", nameAr: "عرض المفاتيح السرية", nameEn: "View Secrets", descAr: "عرض القيم الحقيقية للمفاتيح السرية (API keys, passwords). 🔴 خطير جداً!", descEn: "Reveal actual secret values. VERY DANGEROUS!", risk: "critical", icon: ShieldAlert, category: "security" },
+    { key: "manage_agents", nameAr: "إدارة الوكلاء", nameEn: "Manage Agents", descAr: "تعديل إعدادات وصلاحيات الوكلاء الآخرين. ⚠️ يمكنه منح نفسه صلاحيات!", descEn: "Modify other agents' settings. Can self-escalate!", risk: "critical", icon: Bot, category: "security" },
+  ];
+
+  const rc: Record<RiskLevel, { bg: string; text: string; border: string; labelAr: string; labelEn: string }> = {
+    low: { bg: "bg-emerald-500/10", text: "text-emerald-400", border: "border-emerald-500/20", labelAr: "آمن", labelEn: "Safe" },
+    medium: { bg: "bg-amber-500/10", text: "text-amber-400", border: "border-amber-500/20", labelAr: "متوسط", labelEn: "Medium" },
+    high: { bg: "bg-orange-500/10", text: "text-orange-400", border: "border-orange-500/20", labelAr: "عالي", labelEn: "High" },
+    critical: { bg: "bg-red-500/10", text: "text-red-400", border: "border-red-500/20", labelAr: "خطير", labelEn: "Critical" },
+  };
+
   const currentPerms = agent.permissions || [];
+  const [expandedInfo, setExpandedInfo] = useState<string | null>(null);
+  const critCount = PERMS.filter(p => p.risk === "critical" && currentPerms.includes(p.key)).length;
 
   return (
-    <div className="max-w-2xl">
-      <p className="text-[12px] text-[#8b949e] mb-4">{isRTL ? "حدد الصلاحيات التي يمتلكها هذا الوكيل" : "Select the permissions this agent has"}</p>
-      <div className="grid grid-cols-2 gap-2">
-        {allPerms.map(perm => (
-          <button
-            key={perm}
-            onClick={() => {
-              const updated = currentPerms.includes(perm) ? currentPerms.filter(p => p !== perm) : [...currentPerms, perm];
-              onUpdate({ permissions: updated });
-            }}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-[12px] text-start transition-colors ${
-              currentPerms.includes(perm) ? "bg-[#7c3aed]/15 text-[#7c3aed] border border-[#7c3aed]/30" : "bg-[#0d1117] text-[#8b949e] border border-white/7 hover:border-white/15"
-            }`}
-          >
-            {currentPerms.includes(perm) ? <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" /> : <div className="w-3.5 h-3.5 rounded-full border border-white/20 flex-shrink-0" />}
-            <span className="font-mono">{perm}</span>
-          </button>
-        ))}
+    <div className="max-w-3xl">
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-[12px] text-[#8b949e]">{isRTL ? "كل صلاحية مرتبطة بأداة حقيقية — فعّلها أو عطّلها" : "Each permission controls a real tool"}</p>
+        <div className="flex items-center gap-3 text-[11px]">
+          <span className="text-[#8b949e]">{currentPerms.filter(p => PERMS.some(d => d.key === p)).length}/{PERMS.length}</span>
+          {critCount > 0 && <span className="text-red-400 flex items-center gap-1"><ShieldAlert className="w-3 h-3" />{critCount} {isRTL ? "خطير" : "critical"}</span>}
+        </div>
       </div>
-      <div className="flex gap-2 mt-4">
-        <input value={newPerm} onChange={e => setNewPerm(e.target.value)} className="flex-1 bg-[#0d1117] border border-white/10 rounded-lg px-3 py-2 text-[12px] font-mono" placeholder={isRTL ? "صلاحية مخصصة..." : "Custom permission..."} />
-        <button onClick={() => { if (newPerm.trim() && !currentPerms.includes(newPerm.trim())) { onUpdate({ permissions: [...currentPerms, newPerm.trim()] }); setNewPerm(""); } }} className="px-3 py-2 bg-[#7c3aed]/15 text-[#7c3aed] rounded-lg text-[12px]">+</button>
+      <div className="flex gap-2 mb-4 flex-wrap">
+        <button onClick={() => onUpdate({ permissions: PERMS.map(p => p.key) })} className="px-3 py-1.5 rounded-lg text-[11px] bg-[#7c3aed]/10 text-[#7c3aed] border border-[#7c3aed]/20 hover:bg-[#7c3aed]/20 transition-colors">{isRTL ? "تفعيل الكل" : "Enable All"}</button>
+        <button onClick={() => onUpdate({ permissions: PERMS.filter(p => p.risk !== "critical").map(p => p.key) })} className="px-3 py-1.5 rounded-lg text-[11px] bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors">{isRTL ? "الكل ماعدا الخطير" : "All except critical"}</button>
+        <button onClick={() => onUpdate({ permissions: PERMS.filter(p => p.risk === "low").map(p => p.key) })} className="px-3 py-1.5 rounded-lg text-[11px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors">{isRTL ? "الآمنة فقط" : "Safe only"}</button>
+        <button onClick={() => onUpdate({ permissions: [] })} className="px-3 py-1.5 rounded-lg text-[11px] bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-colors">{isRTL ? "تعطيل الكل" : "Disable All"}</button>
       </div>
+      {cats.map(cat => {
+        const catPerms = PERMS.filter(p => p.category === cat.key);
+        const enabledInCat = catPerms.filter(p => currentPerms.includes(p.key)).length;
+        return (
+          <div key={cat.key} className="mb-5">
+            <div className="flex items-center gap-2 mb-2 px-1">
+              <cat.icon className="w-4 h-4 text-[#7c3aed]" />
+              <span className="text-[12px] font-medium text-[#e2e8f0]">{isRTL ? cat.nameAr : cat.nameEn}</span>
+              <span className="text-[10px] text-[#8b949e]">({enabledInCat}/{catPerms.length})</span>
+              <button onClick={() => { const keys = catPerms.map(p => p.key); const allOn = keys.every(k => currentPerms.includes(k)); onUpdate({ permissions: allOn ? currentPerms.filter(p => !keys.includes(p)) : [...new Set([...currentPerms, ...keys])] }); }} className={`text-[10px] hover:text-[#7c3aed] transition-colors ${isRTL ? "mr-auto" : "ml-auto"}`} style={{ color: "#8b949e" }}>
+                {enabledInCat === catPerms.length ? (isRTL ? "تعطيل الفئة" : "Disable all") : (isRTL ? "تفعيل الفئة" : "Enable all")}
+              </button>
+            </div>
+            <div className="space-y-1.5">
+              {catPerms.map(perm => {
+                const active = currentPerms.includes(perm.key);
+                const r = rc[perm.risk];
+                const expanded = expandedInfo === perm.key;
+                return (
+                  <div key={perm.key} className="rounded-lg border transition-all" style={{ borderColor: active ? (perm.risk === "critical" ? "rgba(239,68,68,0.3)" : "rgba(124,58,237,0.3)") : "rgba(255,255,255,0.07)" }}>
+                    <div className={`flex items-center gap-2.5 px-3 py-2.5 cursor-pointer hover:bg-white/[0.02] transition-colors rounded-lg ${active ? (perm.risk === "critical" ? "bg-red-500/5" : "bg-[#7c3aed]/5") : "bg-[#0d1117]"}`}
+                      onClick={() => { const upd = active ? currentPerms.filter(p => p !== perm.key) : [...currentPerms, perm.key]; onUpdate({ permissions: upd }); }}>
+                      {active ? <CheckCircle className={`w-4 h-4 flex-shrink-0 ${perm.risk === "critical" ? "text-red-400" : "text-[#7c3aed]"}`} /> : <div className="w-4 h-4 rounded-full border border-white/20 flex-shrink-0" />}
+                      <perm.icon className={`w-4 h-4 flex-shrink-0 ${active ? r.text : "text-[#8b949e]"}`} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[12px] font-medium ${active ? "text-[#e2e8f0]" : "text-[#8b949e]"}`}>{isRTL ? perm.nameAr : perm.nameEn}</span>
+                          <span className="text-[9px] font-mono text-[#8b949e]/50">{perm.key}</span>
+                        </div>
+                      </div>
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded ${r.bg} ${r.text} border ${r.border}`}>{isRTL ? r.labelAr : r.labelEn}</span>
+                      <button onClick={(e) => { e.stopPropagation(); setExpandedInfo(expanded ? null : perm.key); }} className="p-1 hover:bg-white/5 rounded transition-colors"><Info className="w-3.5 h-3.5 text-[#8b949e]" /></button>
+                    </div>
+                    {expanded && <div className={`px-3 py-2.5 text-[11px] leading-relaxed border-t ${r.bg} ${r.text}`} style={{ borderColor: "rgba(255,255,255,0.05)", direction: isRTL ? "rtl" : "ltr" }}>{isRTL ? perm.descAr : perm.descEn}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
