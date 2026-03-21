@@ -1055,6 +1055,7 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
       };
 
       const userMsg = typeof message === "string" ? message : "";
+      const detectedLang = /[\u0600-\u06FF]/.test(userMsg) ? "ar" : "en";
 
       const decisionState = {
         domTextDetected: false,
@@ -1409,6 +1410,9 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
             continue;
           }
 
+          if (["get_page_structure", "browse_page"].includes(tool.name) && !(tool.input as any)?.lang) {
+            (tool.input as any).lang = detectedLang;
+          }
           res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n\n...*${tool.name}*...\n` })}\n\n`);
           fullReply += `\n\n...*${tool.name}*...\n`;
           const result = await executeInfraTool(tool.name, tool.input, "admin");

@@ -1772,7 +1772,7 @@ export async function executeInfraTool(toolName: string, input: any, callerRole?
         return JSON.stringify(result, null, 2);
       }
       case "get_page_structure": {
-        const result = await getPageStructure(input.path);
+        const result = await getPageStructure(input.path, input.lang);
         return result;
       }
       case "scroll_page": {
@@ -1798,7 +1798,7 @@ export async function executeInfraTool(toolName: string, input: any, callerRole?
         return JSON.stringify(result, null, 2);
       }
       case "browse_page": {
-        const structure = await getPageStructure(input.path);
+        const structure = await getPageStructure(input.path, input.lang);
         return `Page structure for ${input.path}:\n${structure}`;
       }
       case "site_health": {

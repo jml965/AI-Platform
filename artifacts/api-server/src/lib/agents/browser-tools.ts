@@ -285,13 +285,20 @@ export async function inspectStyles(
 }
 
 export async function getPageStructure(
-  pathOrUrl: string
+  pathOrUrl: string,
+  lang?: string
 ): Promise<string> {
   const browser = await getBrowser();
   const page = await browser.newPage();
   try {
     await page.setViewport({ width: 1280, height: 720 });
-    await page.goto(resolveUrl(pathOrUrl), {
+    const targetUrl = resolveUrl(pathOrUrl);
+    if (lang) {
+      await page.evaluateOnNewDocument((l: string) => {
+        localStorage.setItem("lang", l);
+      }, lang);
+    }
+    await page.goto(targetUrl, {
       waitUntil: "networkidle2",
       timeout: 20000,
     });
