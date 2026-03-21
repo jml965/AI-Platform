@@ -490,28 +490,32 @@ DATABASE:
 أجب بالعربية دائماً.`,
     instructions: `## محرك التنفيذ — التعليمات التشغيلية
 
-### ترتيب الأدوات الإلزامي:
-الأدوات الآمنة أولاً (لا تحتاج موافقة):
-1. search_text — البحث في الكود
-2. read_file — قراءة ملف محدد
-3. list_files — استعراض المجلدات
-4. get_page_structure — فحص DOM (للواجهة فقط)
-5. db_query — استعلام قاعدة البيانات (SELECT فقط)
+### قاعدة أساسية:
+إذا DOM يحتوي نص → افترض أنه موجود في الكود. لا تفترض DB أبداً إلا بعد فشل كل البحث.
 
-الأدوات التنفيذية (بعد القراءة):
-6. edit_component — تعديل ملف
-7. write_file — كتابة ملف جديد
-8. create_component — إنشاء مكون
+### استراتيجية البحث الإجبارية (UI_CHANGE):
+عند تعديل نص في الواجهة، اتبع هذا الترتيب بالضبط:
 
-الأدوات الخطرة (تحتاج موافقة):
-9. git_push — رفع للمستودع
-10. trigger_deploy — نشر
-11. run_sql — كتابة في قاعدة البيانات
-12. delete_file — حذف ملف
+الخطوة 1: get_page_structure → فحص DOM (إذا متاح)
+الخطوة 2: search_text بالنص المباشر → مثل: search_text("اوكي")
+الخطوة 3: إذا لم يُعثر → search_text بـ className من DOM → مثل: search_text("flex items-center")
+  - ابحث أيضاً عن: data-testid, aria-label
+الخطوة 4: إذا لم يُعثر → ابحث في ملفات التخطيط مباشرة:
+  - search_text في: Layout.tsx, Sidebar.tsx, Header.tsx, Navigation.tsx, Nav.tsx
+الخطوة 5: إذا لم يُعثر → ابحث في i18n: search_text("t(") في ملفات الترجمة
+الخطوة 6: إذا search_text وجد match → read_file فوراً (لا search جديد)
+الخطوة 7: edit_component بعد read_file
+الخطوة 8: screenshot_page للتحقق
 
-⛔ أدوات الطوارئ فقط (ممنوع للبحث/القراءة):
-- run_command
-- exec_command
+### ما يجب البحث عنه:
+- النص المباشر: "اوكي"
+- دوال الترجمة: t("key"), t('key')
+- خصائص JSX: label="..." title="..." name="..." placeholder="..."
+- children: <span>اوكي</span>, <button>اوكي</button>
+
+### ممنوع:
+- ممنوع قول "النص غير موجود في الكود" إلا بعد 3 عمليات بحث مختلفة (نص + class + component)
+- ممنوع افتراض DB إلا إذا النص يتغير لكل مستخدم (اسم user/project)
 
 ### البنية المعمارية:
 - الخلفية: artifacts/api-server/src/
@@ -522,10 +526,9 @@ DATABASE:
 
 ### مسار التنفيذ الصحيح:
 1. صنّف الطلب (UI / Backend / Read / DB)
-2. استخدم الأدوات الآمنة للفهم
-3. نفّذ التعديل بأداة واحدة
-4. تحقق من النتيجة
-5. أبلغ بالتفاصيل: ملف + قبل/بعد + النتيجة`,
+2. DOM → search (text) → search (class) → read_file → edit_component
+3. تحقق من النتيجة بـ screenshot_page
+4. أبلغ بالتفاصيل: ملف + قبل/بعد + النتيجة`,
     permissions: ["read_file", "search_text", "list_files", "list_components", "view_page_source", "get_page_structure", "browse_page", "screenshot_page", "scroll_page", "get_console_errors", "write_file", "edit_component", "create_component", "delete_file", "modify_styles", "db_read", "db_write", "db_tables", "manage_schema", "install_package", "restart_service", "deploy_status", "git_push", "trigger_deploy", "rollback_deploy", "verify_production", "set_env", "get_env", "system_status", "site_health", "manage_agents"],
     pipelineOrder: 6,
     receivesFrom: "infra_sysadmin",
@@ -968,9 +971,10 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
       let toolActionCount = 0;
       const searchQueriesSet = new Set<string>();
       const searchQueries: string[] = [];
-      const MAX_SEARCHES = 3;
-      const MAX_ACTIONS_WITHOUT_EDIT = 4;
+      const MAX_SEARCHES = 5;
+      const MAX_ACTIONS_WITHOUT_EDIT = 8;
       const MAX_DOM_BLOCKS = 3;
+      let searchWithNoResults = 0;
 
       const userDOMPatterns = [
         /class[=:]\s*["']([^"']+)["']/i,
@@ -991,12 +995,21 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
 
       for (let loop = 0; loop < maxLoops; loop++) {
 
+        if (searchWithNoResults >= 3 && !hasEdited) {
+          const guidanceMsg = `\n\n⚠️ 3 عمليات بحث بدون نتيجة — أحتاج توجيه.\n\nالعمليات السابقة: ${searchQueries.join(" → ")}\n\n💡 جرّب: أخبرني باسم الملف أو المكون الذي يحتوي النص، أو أرسل لي محتوى العنصر من المتصفح.\n`;
+          res.write(`data: ${JSON.stringify({ type: "chunk", text: guidanceMsg })}\n\n`);
+          fullReply += guidanceMsg;
+          console.log(`[Agent] STOPPED: 3 searches with no results. queries=${JSON.stringify(searchQueries)}`);
+          await logAudit(agentKey, "agent_stopped_no_results", "system", { searchWithNoResults, searchCount, searchQueries }, guidanceMsg, "medium", "stopped");
+          break;
+        }
+
         if (toolActionCount >= MAX_ACTIONS_WITHOUT_EDIT && !hasEdited) {
-          const failMsg = `\n\n❌ لم أتمكن من تحديد المكان بدقة — ${toolActionCount} خطوات بدون تعديل.\n`;
+          const failMsg = `\n\n❌ لم أتمكن من تحديد المكان بدقة — ${toolActionCount} خطوات بدون تعديل.\n\nالعمليات: ${searchQueries.join(" → ")}\n`;
           res.write(`data: ${JSON.stringify({ type: "chunk", text: failMsg })}\n\n`);
           fullReply += failMsg;
           console.log(`[Agent] STOPPED: ${toolActionCount} tool actions without edit. searchCount=${searchCount}, queries=${JSON.stringify(searchQueries)}`);
-          await logAudit(agentKey, "agent_stopped_no_edit", "system", { toolActionCount, searchCount, searchQueries }, failMsg, "medium", "stopped");
+          await logAudit(agentKey, "agent_stopped_no_edit", "system", { toolActionCount, searchCount, searchQueries, searchWithNoResults }, failMsg, "medium", "stopped");
           break;
         }
 
@@ -1101,23 +1114,15 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
             const normalizedQuery = query.trim().toLowerCase();
 
             if (searchQueriesSet.has(normalizedQuery)) {
-              const blocked = `⛔ REPEATED_SEARCH_BLOCKED — البحث عن "${query}" تم من قبل. النتائج السابقة لا تزال صالحة. اقرأ الملف باستخدام read_file ثم نفّذ edit_component.`;
-              console.log(`[Agent] BLOCKED: Repeated search query="${query}" (already searched: ${JSON.stringify(searchQueries)})`);
+              const blocked = `⛔ REPEATED_SEARCH_BLOCKED — البحث عن "${query}" تم من قبل. جرّب بحث مختلف (className, ملف محدد، أو i18n).`;
+              console.log(`[Agent] BLOCKED: Repeated search query="${query}"`);
               await logAudit(agentKey, "search_repeated_blocked", tool.name, tool.input, blocked, "low", "blocked");
               toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: blocked });
               continue;
             }
 
-            if (!hasReadAfterSearch && searchCount > 0) {
-              const blocked = `⛔ MUST_READ_FIRST — يجب أن تقرأ ملف أولاً (read_file) قبل بحث جديد. آخر بحث أعطاك نتائج — اقرأ الملف ونفّذ التعديل.`;
-              console.log(`[Agent] BLOCKED: Search without read_file after previous search. searchCount=${searchCount}`);
-              await logAudit(agentKey, "search_without_read_blocked", tool.name, tool.input, blocked, "low", "blocked");
-              toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: blocked });
-              continue;
-            }
-
             if (searchCount >= MAX_SEARCHES) {
-              const blocked = `⛔ SEARCH_LIMIT_REACHED — بحثت ${searchCount} مرات (الحد الأقصى ${MAX_SEARCHES}). ممنوع بحث إضافي. اقرأ الملف أو نفّذ التعديل مباشرة. عمليات البحث السابقة: ${searchQueries.join(", ")}`;
+              const blocked = `⛔ SEARCH_LIMIT_REACHED — بحثت ${searchCount} مرات. اقرأ الملف أو نفّذ التعديل. عمليات البحث: ${searchQueries.join(" → ")}`;
               console.log(`[Agent] BLOCKED: Search limit reached (${searchCount}/${MAX_SEARCHES})`);
               await logAudit(agentKey, "search_limit_reached", tool.name, { searchCount, queries: searchQueries }, blocked, "low", "blocked");
               toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: blocked });
@@ -1127,6 +1132,7 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
             searchCount++;
             searchQueriesSet.add(normalizedQuery);
             searchQueries.push(query);
+            hasReadAfterSearch = false;
             console.log(`[Agent] Search #${searchCount}/${MAX_SEARCHES}: "${query}"`);
           }
 
@@ -1226,11 +1232,14 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
 
           await logAudit(agentKey, "tool_executed", tool.name, tool.input, result?.slice(0, 1000), riskCfg.risk, "success", durationMs);
 
-          if (tool.name === "search_text" && result) {
-            const hasFileMatch = /\.(tsx|jsx|ts|js|css|html|vue|svelte)/.test(result) && result.length > 10;
+          if (tool.name === "search_text") {
+            const hasFileMatch = result && /\.(tsx|jsx|ts|js|css|html|vue|svelte)/.test(result) && result.length > 10;
             if (hasFileMatch) {
               searchFoundFile = true;
               console.log(`[Agent] search_text found file match — searchFoundFile=true, DOM alternative ✓`);
+            } else {
+              searchWithNoResults++;
+              console.log(`[Agent] search_text returned no useful results — searchWithNoResults=${searchWithNoResults}/3`);
             }
           }
 
