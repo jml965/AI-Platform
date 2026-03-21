@@ -60,7 +60,7 @@
   --secondary-foreground: 0 0% 98%;
   
   --muted: 210 50% 14%;
-  --muted-foreground: 200 30% 78%;
+  --muted-foreground: 200 15% 88%;
   
   --accent: 199 89% 58%;
   --accent-foreground: 210 40% 98%;
@@ -84,22 +84,26 @@
     @apply font-sans antialiased bg-background text-foreground;
     background: radial-gradient(ellipse at 20% 0%, hsl(210 80% 12%) 0%, hsl(210 60% 6%) 50%, hsl(215 70% 4%) 100%);
     min-height: 100vh;
-    font-weight: 500;
+    font-weight: 600;
     letter-spacing: 0.01em;
+    color: #ffffff;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   :lang(ar), [dir="rtl"], body {
     font-family: 'Cairo', sans-serif;
-    font-weight: 600;
+    font-weight: 700;
   }
 
   h1, h2, h3, h4, h5, h6 {
     font-family: 'Cairo', var(--font-display), sans-serif;
-    @apply font-bold tracking-tight;
-    font-weight: 700;
+    font-weight: 800 !important;
+    letter-spacing: -0.01em;
+    color: #ffffff;
   }
 
-  p, span, label, a, li, td, th, div {
+  p, span, label, a, li, td, th, button {
     font-weight: inherit;
   }
 }
@@ -143,21 +147,26 @@
 [style*="color: rgb(139, 148, 158)"],
 [style*="color:#8b949e"],
 [style*="color: #8b949e"] {
-  color: #b8c4d0 !important;
+  color: #dce3eb !important;
 }
 [style*="color: rgb(125, 133, 144)"],
 [style*="color:#7d8590"],
 [style*="color: #7d8590"] {
-  color: #adb8c6 !important;
+  color: #d0d8e2 !important;
+}
+[style*="color: rgb(176, 186, 197)"],
+[style*="color:#b0bac5"],
+[style*="color: #b0bac5"] {
+  color: #dce3eb !important;
 }
 
 /* Boost Tailwind muted text classes globally */
 .text-muted-foreground {
-  color: hsl(200 30% 78%) !important;
+  color: hsl(200 10% 88%) !important;
 }
 
 /* Font size floor for Arabic text */
 [dir="rtl"] *,
 :lang(ar) * {
-  font-size-adjust: 0.52;
+  font-size-adjust: 0.54;
 }
