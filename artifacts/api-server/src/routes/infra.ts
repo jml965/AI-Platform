@@ -1354,12 +1354,20 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
 
           await logAudit(agentKey, "tool_executed", tool.name, tool.input, result?.slice(0, 1000), riskCfg.risk, "success", durationMs);
 
-          if (["get_page_structure", "browse_page", "inspect_styles"].includes(tool.name) && !decisionState.domTextDetected && result) {
-            const toolDomText = extractDOMText(result);
-            if (toolDomText) {
-              decisionState.domTextDetected = true;
-              decisionState.domText = toolDomText;
-              console.log(`[Decision] DOM text extracted from ${tool.name}: "${toolDomText.slice(0, 50)}"`);
+          if (["get_page_structure", "browse_page", "inspect_styles"].includes(tool.name)) {
+            const isConnectionError = result && (result.includes("Connection closed") || result.includes("error") && result.includes("timeout"));
+            if (isConnectionError) {
+              hasDOMInspection = true;
+              domSource = "forced_override";
+              console.log(`[Agent] DOM tool failed (Connection closed) — bypassing DOM requirement, fallback to search`);
+              await logAudit(agentKey, "dom_tool_failed_bypass", tool.name, tool.input, result?.slice(0, 200), "low", "override");
+            } else if (!decisionState.domTextDetected && result) {
+              const toolDomText = extractDOMText(result);
+              if (toolDomText) {
+                decisionState.domTextDetected = true;
+                decisionState.domText = toolDomText;
+                console.log(`[Decision] DOM text extracted from ${tool.name}: "${toolDomText.slice(0, 50)}"`);
+              }
             }
           }
 
