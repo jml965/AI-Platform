@@ -2081,15 +2081,19 @@ export async function streamStrategicAgent(
         }
       }
 
+      console.log(`[Agent] Loop ${loopCount}: stopReason=${stopReason}, tools=${toolUseBlocks.map(t => t.name).join(",") || "none"}`);
+
       if (stopReason !== "tool_use" || toolUseBlocks.length === 0) break;
 
       chatMsgs.push({ role: "assistant", content: response.content });
 
       const toolResults: any[] = [];
       for (const tool of toolUseBlocks) {
+        console.log(`[Agent] Executing tool: ${tool.name}`, JSON.stringify(tool.input).slice(0, 500));
         onChunk(`\n\n...*${tool.name}*...\n`);
         fullReply += `\n\n...*${tool.name}*...\n`;
         const result = await executeInfraTool(tool.name, tool.input, callerRole);
+        console.log(`[Agent] Tool ${tool.name} result:`, result.slice(0, 500));
         if (onToolResult) onToolResult(tool.name, result);
 
         let parsedResult: any = null;
