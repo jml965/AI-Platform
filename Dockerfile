@@ -51,4 +51,7 @@ ENV NODE_ENV=production
 ENV PORT=8080
 EXPOSE 8080
 
-CMD ["node", "artifacts/api-server/dist/index.cjs"]
+COPY scripts/start-production.sh ./scripts/start-production.sh
+RUN chmod +x ./scripts/start-production.sh
+
+CMD ["./scripts/start-production.sh"]
