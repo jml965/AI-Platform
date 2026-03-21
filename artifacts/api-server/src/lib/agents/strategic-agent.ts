@@ -311,8 +311,14 @@ PRODUCTION SERVER TOOLS:
 4. If asked to delete a button → call edit_component with the exact code to remove. If asked to read a file → call read_file. If asked about DB → call db_query. NO EXCEPTIONS.
 5. When asked to see the site → call screenshot_page. When asked to click → call click_element. NEVER describe what you "see" without taking a real screenshot.
 6. You are a REAL executor. In DEVELOPMENT: changes take effect IMMEDIATELY via Vite HMR. In PRODUCTION: edit_component automatically rebuilds the frontend LIVE on the server AND pushes to GitHub. The tool response will confirm "liveRebuilt: true, githubPushed: true". Changes are INSTANT.
-7. FOR CODE EDITS: First read_file/view_page_source → then edit_component → confirm the tool response shows success (liveRebuilt: true). FOR DB/SERVER/ENV tasks: use the appropriate tool directly (db_query, exec_command, set_env, etc).
+7. FOR CODE EDITS — EXACTLY 2 STEPS, NO MORE:
+   - Step 1: read_file to read the target file
+   - Step 2: edit_component IMMEDIATELY to make the change
+   NEVER read more than one file before editing. NEVER say "let me check" then read multiple files without editing.
+   If you read a file, the NEXT action MUST be edit_component, NOT another read_file.
 8. If you cannot do something, say "لا أستطيع" (I cannot). NEVER fake it.
+9. When asked to DELETE something: read_file once → find the code → call edit_component with find=OLD_CODE and replace="" (empty to delete). Do NOT ask "do you want to delete?" — the user already asked. EXECUTE.
+10. FORBIDDEN reading loops: If you called read_file, your next tool call MUST be edit_component. Calling read_file twice in a row = FAILURE.
 
 Key infrastructure info:
 - GCP Project: oktamam-ai-platform, Region: me-central1
@@ -1245,11 +1251,26 @@ export async function executeInfraTool(toolName: string, input: any, callerRole?
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
         fs.writeFileSync(resolved, input.content, "utf-8");
         if (IS_PRODUCTION) {
-          const ghResult = await pushFileToGitHub(input.path, input.content, `Agent write: ${input.path}`);
-          if (!ghResult.success) {
-            return JSON.stringify({ success: true, path: input.path, size: Buffer.byteLength(input.content), localOnly: true, githubError: ghResult.error, note: "File written locally but GitHub push failed." });
+          let buildResult = "skipped";
+          if (input.path.startsWith("artifacts/website-builder/")) {
+            try {
+              execSync("pnpm --filter @workspace/website-builder run build", { cwd: PROJECT_ROOT, timeout: 120000, encoding: "utf-8", env: { ...process.env, NODE_ENV: "development" } });
+              buildResult = "success";
+            } catch (buildErr: any) {
+              buildResult = `failed: ${(buildErr?.stderr || buildErr?.message || "").slice(0, 500)}`;
+            }
           }
-          return JSON.stringify({ success: true, path: input.path, size: Buffer.byteLength(input.content), production: true, githubPushed: true, note: "Changes pushed to GitHub. Auto-deploy will apply changes in ~3 minutes." });
+          const ghResult = await pushFileToGitHub(input.path, input.content, `Agent write: ${input.path}`);
+          return JSON.stringify({
+            success: true,
+            path: input.path,
+            size: Buffer.byteLength(input.content),
+            production: true,
+            liveRebuilt: buildResult === "success",
+            buildResult,
+            githubPushed: ghResult.success,
+            githubError: ghResult.success ? undefined : ghResult.error,
+          });
         }
         return JSON.stringify({ success: true, path: input.path, size: Buffer.byteLength(input.content) });
       }
