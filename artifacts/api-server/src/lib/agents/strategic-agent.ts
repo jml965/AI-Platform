@@ -310,8 +310,8 @@ PRODUCTION SERVER TOOLS:
 3. NEVER say "I pressed the button" or "I deleted it" or "Done" WITHOUT actually calling a tool first. The user can SEE if you called a tool or not.
 4. If asked to delete a button → call edit_component with the exact code to remove. If asked to read a file → call read_file. If asked about DB → call db_query. NO EXCEPTIONS.
 5. When asked to see the site → call screenshot_page. When asked to click → call click_element. NEVER describe what you "see" without taking a real screenshot.
-6. You are a REAL executor. Changes via write_file/edit_component take effect IMMEDIATELY via Vite HMR.
-7. FOR CODE EDITS: First read_file/view_page_source → then edit_component → then screenshot_page to verify. FOR DB/SERVER/ENV tasks: use the appropriate tool directly (db_query, exec_command, set_env, etc).
+6. You are a REAL executor. In DEVELOPMENT: changes take effect IMMEDIATELY via Vite HMR. In PRODUCTION: changes are automatically pushed to GitHub and trigger a redeploy (~3 min). The tool response will confirm "githubPushed: true".
+7. FOR CODE EDITS: First read_file/view_page_source → then edit_component → confirm the tool response shows success. FOR DB/SERVER/ENV tasks: use the appropriate tool directly (db_query, exec_command, set_env, etc).
 8. If you cannot do something, say "لا أستطيع" (I cannot). NEVER fake it.
 
 Key infrastructure info:
@@ -1244,6 +1244,13 @@ export async function executeInfraTool(toolName: string, input: any, callerRole?
         const dir = path.dirname(resolved);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
         fs.writeFileSync(resolved, input.content, "utf-8");
+        if (IS_PRODUCTION) {
+          const ghResult = await pushFileToGitHub(input.path, input.content, `Agent write: ${input.path}`);
+          if (!ghResult.success) {
+            return JSON.stringify({ success: true, path: input.path, size: Buffer.byteLength(input.content), localOnly: true, githubError: ghResult.error, note: "File written locally but GitHub push failed." });
+          }
+          return JSON.stringify({ success: true, path: input.path, size: Buffer.byteLength(input.content), production: true, githubPushed: true, note: "Changes pushed to GitHub. Auto-deploy will apply changes in ~3 minutes." });
+        }
         return JSON.stringify({ success: true, path: input.path, size: Buffer.byteLength(input.content) });
       }
       case "db_query": {
@@ -1360,6 +1367,14 @@ export async function executeInfraTool(toolName: string, input: any, callerRole?
         const count = currentContent.split(input.old_text).length - 1;
         const newContent = currentContent.replace(input.old_text, input.new_text);
         fs.writeFileSync(resolved, newContent, "utf-8");
+        if (IS_PRODUCTION) {
+          const ghPath = `artifacts/website-builder/${input.componentPath}`;
+          const ghResult = await pushFileToGitHub(ghPath, newContent, `Agent edit: ${input.componentPath}`);
+          if (!ghResult.success) {
+            return JSON.stringify({ success: false, localEdit: true, githubPush: false, error: ghResult.error, path: input.componentPath, note: "File edited locally but GitHub push failed. Changes will be lost on redeploy." });
+          }
+          return JSON.stringify({ success: true, path: input.componentPath, matchesReplaced: count, newSize: Buffer.byteLength(newContent), production: true, githubPushed: true, note: "Changes pushed to GitHub. Auto-deploy will apply changes in ~3 minutes." });
+        }
         return JSON.stringify({ success: true, path: input.componentPath, matchesReplaced: count, newSize: Buffer.byteLength(newContent) });
       }
       case "create_component": {
@@ -1593,6 +1608,42 @@ export async function executeInfraTool(toolName: string, input: any, callerRole?
   } catch (e: any) {
     return JSON.stringify({ error: e?.message || "Tool execution failed" });
   }
+}
+
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
+async function pushFileToGitHub(filePath: string, newContent: string, commitMessage: string): Promise<{ success: boolean; error?: string }> {
+  const ghToken = await getGitHubToken();
+  if (!ghToken) return { success: false, error: "GitHub token not available" };
+  const repo = process.env.GITHUB_REPOSITORY || "jml965/ai-platform";
+
+  const getRes = await fetch(`https://api.github.com/repos/${repo}/contents/${filePath}?ref=main`, {
+    headers: { Authorization: `token ${ghToken}`, Accept: "application/vnd.github.v3+json" },
+  });
+  let sha: string | undefined;
+  if (getRes.ok) {
+    const data = await getRes.json();
+    sha = data.sha;
+  }
+
+  const body: any = {
+    message: commitMessage,
+    content: Buffer.from(newContent, "utf-8").toString("base64"),
+    branch: "main",
+  };
+  if (sha) body.sha = sha;
+
+  const putRes = await fetch(`https://api.github.com/repos/${repo}/contents/${filePath}`, {
+    method: "PUT",
+    headers: { Authorization: `token ${ghToken}`, Accept: "application/vnd.github.v3+json", "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (putRes.ok) {
+    return { success: true };
+  }
+  const errText = await putRes.text();
+  return { success: false, error: `GitHub API ${putRes.status}: ${errText.slice(0, 500)}` };
 }
 
 async function getGitHubToken(): Promise<string | null> {
