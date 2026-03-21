@@ -320,7 +320,19 @@ Key infrastructure info:
 - Cloud SQL: mrcodeai-db (34.18.137.40), DB: mrcodeai, User: postgres
 - Domain: mrcodeai.com, Load Balancer IP: 34.8.145.55
 - CI/CD: GitHub Actions → Cloud Run auto-deploy on push to main
-- GitHub Repo: jml965/ai-platform`;
+- GitHub Repo: jml965/ai-platform
+
+⚠️ FILE PATH STRUCTURE (CRITICAL — use these EXACT paths):
+- Project root: The working directory where tools execute
+- Frontend code: artifacts/website-builder/src/ (pages, components, etc.)
+- Backend code: artifacts/api-server/src/ (routes, lib, etc.)
+- Frontend pages: artifacts/website-builder/src/pages/
+- Frontend components: artifacts/website-builder/src/components/
+- API routes: artifacts/api-server/src/routes/
+- Shared packages: packages/
+- NEVER use /app/ prefix — that is production only. All paths are RELATIVE to project root.
+- Example: read_file({ path: "artifacts/website-builder/src/pages/Dashboard.tsx" })
+- Example: exec_command({ command: "ls artifacts/website-builder/src/pages/" })`;
 
 const STRATEGIC_JSON_PROMPT_SUFFIX = `
 

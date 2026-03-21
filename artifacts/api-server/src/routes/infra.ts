@@ -65,7 +65,17 @@ const DEFAULT_INFRA_AGENTS = [
 - وكيل التصميم (infra_ui): تحسين الواجهات
 - وكيل قاعدة البيانات (infra_db): إدارة البيانات والجداول
 - وكيل الأمان (infra_security): فحص وتعزيز الأمان
-- وكيل النشر (infra_deploy): النشر والتحديثات`,
+- وكيل النشر (infra_deploy): النشر والتحديثات
+
+⚠️ بنية المسارات (مهم جداً — استخدم هذه المسارات بالضبط):
+- الواجهة الأمامية: artifacts/website-builder/src/ (الصفحات، المكونات)
+- الخلفية: artifacts/api-server/src/ (الراوتات، المكتبات)
+- الصفحات: artifacts/website-builder/src/pages/
+- المكونات: artifacts/website-builder/src/components/
+- الراوتات: artifacts/api-server/src/routes/
+- ممنوع استخدام /app/ — هذا مسار الإنتاج فقط. كل المسارات نسبية من جذر المشروع.
+- مثال: read_file({ path: "artifacts/website-builder/src/pages/Dashboard.tsx" })
+- مثال: exec_command({ command: "ls artifacts/website-builder/src/pages/" })`,
     permissions: ["manage_agents", "read_all_files", "write_files", "restart_services", "database_read", "database_write", "deploy", "security_scan", "full_system_access"],
     pipelineOrder: 1,
     receivesFrom: "owner_input",
@@ -661,6 +671,22 @@ ${blueprint}
 - github_api: التعامل مع GitHub API
 
 استخدم أدواتك دائماً للحصول على بيانات حقيقية. لا تتخيل أو تفترض — نفّذ واعرض النتائج الفعلية.
+
+⚠️ بنية المسارات (مهم جداً — استخدم هذه المسارات بالضبط):
+- الواجهة الأمامية: artifacts/website-builder/src/ (الصفحات، المكونات)
+- الخلفية: artifacts/api-server/src/ (الراوتات، المكتبات)
+- الصفحات: artifacts/website-builder/src/pages/
+- المكونات: artifacts/website-builder/src/components/
+- الراوتات: artifacts/api-server/src/routes/
+- ممنوع استخدام /app/ — هذا مسار الإنتاج فقط. كل المسارات نسبية من جذر المشروع.
+- مثال: read_file({ path: "artifacts/website-builder/src/pages/Dashboard.tsx" })
+- مثال: exec_command({ command: "ls artifacts/website-builder/src/pages/" })
+
+⛔ قواعد مطلقة:
+1. لما يُطلب منك حذف/تعديل/إنشاء أي شيء → استدعِ الأداة فوراً. لا تكتب نص تشرح ماذا "ستفعل" أو "فعلت".
+2. ممنوع كتابة أوامر bash وهمية أو مخرجات مزيفة. استخدم أدواتك الحقيقية.
+3. ممنوع تقول "حذفته" أو "تم" بدون ما تستدعي أداة أولاً.
+4. إذا ما تقدر تسوي شيء، قل "لا أستطيع". ممنوع التظاهر.
 
 القواعد:
 - رد بالعربية إذا المالك يتحدث بالعربية، وبالإنجليزية إذا يتحدث بالإنجليزية
