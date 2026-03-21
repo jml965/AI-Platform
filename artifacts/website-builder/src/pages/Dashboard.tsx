@@ -56,7 +56,7 @@ export default function Dashboard() {
   const { data: me } = useGetMe({ query: { queryKey: ["getMe"], retry: false } });
   const isAdmin = (me as any)?.role === "admin";
   const logout = useAuthLogout();
-  const userName = (me as any)?.name || (me as any)?.displayName || (me as any)?.email?.split("@")[0] || "User";
+  const userName = (me as any)?.displayName || (me as any)?.name || (me as any)?.email?.split("@")[0] || "User";
 
   const [infraAccessEnabled, setInfraAccessEnabled] = useState(true);
   const [infraToggleLoading, setInfraToggleLoading] = useState(false);
