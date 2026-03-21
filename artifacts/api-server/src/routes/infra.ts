@@ -767,38 +767,59 @@ ${blueprint}
 
 1. ممنوع ترجع JSON مثل {"decisionType": "investigation", ...}. المالك يريد تنفيذ، مو تحليل.
 
-2. لما يُطلب تعديل/حذف/إيجاد أي نص → 3 خطوات فقط:
-   خطوة 1: search_text ← يعطيك الملف والسطر
-   خطوة 2: read_file ← تقرأ الملف وتفهم السياق
+2. لما يُطلب تعديل/حذف/إيجاد أي نص → 4 خطوات بالترتيب:
+   خطوة 1: search_text ← يعطيك الملفات والأسطر
+   خطوة 2: اختر أفضل ملف (ترتيب الأولوية أدناه) → read_file
    خطوة 3: edit_component ← تعدّل مباشرة
-   لا تزيد عن 3 خطوات! بحث → قراءة → تعديل → انتهى.
+   خطوة 4: read_file مرة ثانية ← تتحقق أن التعديل تم فعلاً
+   لا تزيد عن 4 خطوات! بحث → قراءة → تعديل → تحقق → انتهى.
 
-3. ⛔⛔ قاعدة حد البحث (مهمة جداً!) ⛔⛔
-   - ممنوع search_text أكثر من 3 مرات في المحادثة الواحدة.
-   - بعد أول نتيجة بحث ناجحة → يجب read_file فوراً. ممنوع بحث آخر قبل قراءة ملف.
-   - ممنوع تكرار نفس البحث مرتين. إذا بحثت عن "displayName" مرة → لا تبحث عنها ثانية.
-   - إذا وصلت 3 عمليات بحث ولم تنفذ edit → توقف واطلب توجيه المالك.
-   - النظام سيمنعك تلقائياً من تجاوز هذا الحد.
+3. ⛔⛔ اختيار أفضل ملف من نتائج البحث (Ranking) ⛔⛔
+   عندما search_text يرجع عدة نتائج، رتّبها هكذا:
+   الأولوية 1: ملف يحتوي النص المطلوب بالضبط (exact match)
+   الأولوية 2: ملف واجهة (tsx/jsx/css) > ملف خلفية (ts) > ملف config
+   الأولوية 3: اسم الملف يدل على المكان (Dashboard.tsx > utils.ts)
+   
+   قواعد الاختيار:
+   - خذ أول 3 نتائج فقط من search_text
+   - اختر الأعلى ترتيباً → read_file
+   - إذا لم تجد النص في الملف الأول → انتقل للثاني (fallback واحد فقط)
+   - ممنوع تجرب أكثر من ملفين
 
-4. ⛔ قاعدة التنفيذ الإجباري ⛔
-   - إذا مرت 5 خطوات (loops) بدون edit_component أو write_file → النظام يوقفك تلقائياً.
-   - لا تبحث أكثر ← اقرأ ← نفّذ ← أبلغ.
-   - بعد read_file إذا وجدت النص المطلوب → نفّذ edit_component فوراً.
+4. ⛔⛔ قاعدة حد البحث ⛔⛔
+   - ممنوع search_text أكثر من 3 مرات في المحادثة.
+   - بعد أول نتيجة ناجحة → يجب read_file فوراً. ممنوع بحث آخر قبل قراءة.
+   - ممنوع تكرار نفس البحث. النظام سيمنعك تلقائياً.
 
-5. مثال عملي:
-   المالك: "غيّر يوحنا إلى تمام"
-   ✅ الصحيح (3 خطوات):
-     → search_text({text: "يوحنا"}) → لقاها في i18n.tsx
-     → read_file({path: "artifacts/website-builder/src/lib/i18n.tsx"})
-     → edit_component({componentPath: "src/lib/i18n.tsx", old_text: '"يوحنا"', new_text: '"تمام"'})
-     → رد: "تم ✅"
-   ❌ الغلط: 10+ عمليات search بعبارات مختلفة بدون تعديل
+5. ⛔ قاعدة التنفيذ الإجباري ⛔
+   - إذا مرت 6 أدوات بدون edit → النظام يوقفك تلقائياً.
+   - بعد read_file إذا وجدت النص → نفّذ edit_component فوراً.
 
-6. إذا search_text ما لقت في الملفات → جرب db_query مرة واحدة فقط.
+6. ⛔⛔ التحقق بعد التعديل (إجباري!) ⛔⛔
+   بعد كل edit_component أو write_file:
+   - النظام يتحقق تلقائياً أن الملف تغيّر فعلاً
+   - إذا النتيجة "matchesReplaced": 0 → التعديل فشل. أبلغ المالك.
+   - إذا نجح → اعرض: الملف، النص قبل، النص بعد
+   - ممنوع تقول "تم ✅" إلا بعد تأكد أن matchesReplaced > 0
 
-7. ممنوع تقول "تم" بدون استدعاء أداة فعلاً.
+7. مثال عملي كامل:
+   المالك: "غيّر لون الزر"
+   ✅ الصحيح (4 خطوات):
+     → search_text({text: "button"}) → نتائج: Dashboard.tsx:120, Login.tsx:45, utils.ts:10
+     → ترتيب: Dashboard.tsx (tsx + exact) > Login.tsx (tsx) > utils.ts
+     → read_file({path: "artifacts/website-builder/src/pages/Dashboard.tsx"})
+     → edit_component({componentPath: "src/pages/Dashboard.tsx", old_text: 'bg-blue-500', new_text: 'bg-red-500'})
+     → (النظام يتحقق تلقائياً: matchesReplaced=1 ✅)
+     → رد: "تم تغيير لون الزر في Dashboard.tsx ✅"
+   ❌ الغلط: تعديل بدون تحقق أو قول "تم" بدون matchesReplaced > 0
 
-8. في الإنتاج: edit_component يبني الواجهة فوراً. التغييرات فورية!
+8. fallback ذكي:
+   - إذا edit_component فشل (matchesReplaced=0) → انتقل للملف الثاني من نتائج البحث
+   - جرّب مرة واحدة فقط. إذا فشل مرتين → أبلغ المالك
+
+9. إذا search_text ما لقت في الملفات → جرب db_query مرة واحدة فقط.
+
+10. في الإنتاج: edit_component يبني الواجهة فوراً. التغييرات فورية!
 
 ⚠️ بنية المسارات:
 - الواجهة: artifacts/website-builder/src/
@@ -996,6 +1017,10 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
 
           toolActionCount++;
 
+          if (tool.name === "search_text" || tool.name === "list_files" || tool.name === "list_components") {
+            console.log(`[Agent] Step ${toolActionCount}: ${tool.name}(${JSON.stringify(tool.input).slice(0, 100)})`);
+          }
+
           if (tool.name === "search_text") {
             const query = (tool.input as any)?.text || "";
             const normalizedQuery = query.trim().toLowerCase();
@@ -1027,7 +1052,6 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
             searchCount++;
             searchQueriesSet.add(normalizedQuery);
             searchQueries.push(query);
-            hasReadAfterSearch = false;
             console.log(`[Agent] Search #${searchCount}/${MAX_SEARCHES}: "${query}"`);
           }
 
@@ -1038,7 +1062,10 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
 
           if (tool.name === "edit_component" || tool.name === "write_file" || tool.name === "create_component") {
             hasEdited = true;
-            console.log(`[Agent] Edit executed — task progressing`);
+            const editPath = (tool.input as any)?.componentPath || (tool.input as any)?.path || "";
+            const oldText = (tool.input as any)?.old_text || "";
+            const newText = (tool.input as any)?.new_text || "";
+            console.log(`[Agent] Edit executed — file: ${editPath}, old_text: "${oldText.slice(0, 60)}", new_text: "${newText.slice(0, 60)}"`);
           }
 
           if (riskCfg.requiresApproval) {
@@ -1112,11 +1139,61 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
             });
           } else {
             let finalContent = result;
-            if (tool.name === "run_sql" && parsedResult && parsedResult.success === false) {
+
+            if (tool.name === "edit_component" && parsedResult) {
+              const matchesReplaced = parsedResult.matchesReplaced ?? 0;
+              const editPath = parsedResult.path || (tool.input as any)?.componentPath || "";
+              if (matchesReplaced === 0 || parsedResult.success === false) {
+                finalContent = `⚠️ EDIT_FAILED: التعديل لم يتم! matchesReplaced=${matchesReplaced}. الملف: ${editPath}. السبب المحتمل: old_text لا يطابق محتوى الملف بالضبط. جرّب read_file لقراءة الملف ونسخ النص الصحيح، أو انتقل للملف التالي في نتائج البحث.\n\n${result}`;
+                hasEdited = false;
+                console.log(`[Agent] EDIT FAILED: matchesReplaced=${matchesReplaced} in ${editPath}`);
+                await logAudit(agentKey, "edit_failed", tool.name, tool.input, { matchesReplaced, path: editPath }, "medium", "failed", durationMs);
+              } else {
+                const oldText = ((tool.input as any)?.old_text || "").slice(0, 80);
+                const newText = ((tool.input as any)?.new_text || "").slice(0, 80);
+                finalContent = `✅ EDIT_SUCCESS: تم التعديل بنجاح!\n📁 الملف: ${editPath}\n🔄 matchesReplaced: ${matchesReplaced}\n📝 قبل: "${oldText}"\n📝 بعد: "${newText}"\n\n${result}`;
+                console.log(`[Agent] EDIT SUCCESS: matchesReplaced=${matchesReplaced} in ${editPath} | before="${oldText}" → after="${newText}"`);
+                await logAudit(agentKey, "edit_success", tool.name, { path: editPath, oldText, newText, matchesReplaced }, result?.slice(0, 500), "medium", "success", durationMs);
+              }
+            } else if (tool.name === "write_file" && parsedResult) {
+              const writePath = parsedResult.path || (tool.input as any)?.path || "";
+              if (parsedResult.success === false) {
+                finalContent = `⚠️ WRITE_FAILED: كتابة الملف فشلت! الملف: ${writePath}.\n\n${result}`;
+                hasEdited = false;
+                console.log(`[Agent] WRITE FAILED: ${writePath}`);
+                await logAudit(agentKey, "write_failed", tool.name, tool.input, { path: writePath }, "medium", "failed", durationMs);
+              } else {
+                finalContent = `✅ WRITE_SUCCESS: تم كتابة الملف بنجاح!\n📁 الملف: ${writePath}\n📏 الحجم: ${parsedResult.size || parsedResult.newSize || "unknown"}\n\n${result}`;
+                console.log(`[Agent] WRITE SUCCESS: ${writePath}`);
+                await logAudit(agentKey, "write_success", tool.name, { path: writePath }, result?.slice(0, 500), "medium", "success", durationMs);
+              }
+            } else if (tool.name === "run_sql" && parsedResult && parsedResult.success === false) {
               finalContent = `⚠️ IMPORTANT: هذه العملية فشلت. يجب أن تُبلغ المستخدم بالفشل. ممنوع قول "تم بنجاح".\n\n${result}`;
               await logAudit(agentKey, "db_write_failed", tool.name, tool.input, result?.slice(0, 1000), "high", "failed", durationMs);
+            } else if (tool.name === "search_text" && parsedResult) {
+              const found = parsedResult.found;
+              const matchCount = parsedResult.matchCount || 0;
+              const results = parsedResult.results || [];
+              const seen = new Set<string>();
+              const topFiles: string[] = [];
+              for (const r of results) {
+                const filePath = (r as string).split(":")[0] || r;
+                if (!seen.has(filePath)) {
+                  seen.add(filePath);
+                  topFiles.push(filePath);
+                }
+                if (topFiles.length >= 3) break;
+              }
+              console.log(`[Agent] Search results: found=${found}, matchCount=${matchCount}, topFiles=${JSON.stringify(topFiles)}`);
+              if (found && topFiles.length > 0) {
+                hasReadAfterSearch = false;
+                finalContent = `${result}\n\n💡 ملفات مرشحة (أفضل 3 بدون تكرار): ${topFiles.join(", ")}\nاختر أفضل ملف حسب الأولوية: (1) exact match (2) ملف واجهة tsx/jsx (3) اسم يدل على المكان. ثم نفّذ read_file على الملف المختار.`;
+              }
             }
-            res.write(`data: ${JSON.stringify({ type: "tool_result", name: tool.name, result: result.slice(0, 5000) })}\n\n`);
+
+            const enrichedTools = ["edit_component", "write_file", "search_text", "run_sql"];
+            const sseContent = enrichedTools.includes(tool.name) ? finalContent.slice(0, 5000) : result.slice(0, 5000);
+            res.write(`data: ${JSON.stringify({ type: "tool_result", name: tool.name, result: sseContent })}\n\n`);
             toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: finalContent });
           }
         }
