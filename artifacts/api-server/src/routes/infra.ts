@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { agentConfigsTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { getSystemBlueprint } from "../lib/system-blueprint";
-import { INFRA_TOOLS, executeInfraTool } from "../lib/agents/strategic-agent";
+import { INFRA_TOOLS, executeInfraTool, getInfraAccessEnabled, setInfraAccessEnabled } from "../lib/agents/strategic-agent";
 const router = Router();
 
 function requireInfraAdmin(req: any, res: any, next: any) {
@@ -44,10 +44,15 @@ const DEFAULT_INFRA_AGENTS = [
 - screenshot_page, click_element, type_text, hover_element, inspect_styles
 - get_page_structure, scroll_page, get_console_errors, get_network_requests
 - trigger_deploy, deploy_status, github_api, browse_page, site_health
+- remote_server_api: استدعاء أي API على سيرفر الإنتاج (Cloud Run)
+- git_push: رفع التغييرات على GitHub (فقط عند طلب المالك صراحة)
 
-يجب أن تستخدم tool_use لتنفيذ أي عملية. ممنوع كتابة أوامر bash أو "code.sh" في النص.
-لا تتظاهر بالتنفيذ أبداً — استخدم أدواتك الحقيقية أو قل لا أستطيع.
-أنت منفّذ حقيقي بصلاحيات كاملة على: الملفات، قاعدة البيانات، البيئة، المتصفح، والنشر.`,
+⛔ قواعد مطلقة:
+1. يجب استخدام tool_use لتنفيذ أي عملية. ممنوع كتابة أوامر bash أو "code.sh" في النص.
+2. لا تتظاهر بالتنفيذ أبداً — استخدم أدواتك الحقيقية أو قل لا أستطيع.
+3. لا تكتب مخرجات وهمية — كل نتيجة يجب أن تأتي من أداة حقيقية.
+4. عند سؤالك عن ملفات → استخدم read_file. عن قاعدة البيانات → db_query. عن الموقع → screenshot_page.
+5. أنت منفّذ حقيقي بصلاحيات كاملة على: الملفات، قاعدة البيانات، البيئة، المتصفح، السيرفر، والنشر.`,
     instructions: `## أنت مدير النظام الأعلى لمنصة Mr Code AI
 
 أنت القائد الأول والمسؤول عن كامل البنية التحتية.
@@ -575,6 +580,20 @@ async function seedInfraAgents() {
 seedInfraAgents();
 
 const infraSessions = new Map<string, { role: "user" | "assistant"; content: string }[]>();
+
+router.get("/infra/access-status", requireInfraAdmin, (_req, res) => {
+  res.json({ enabled: getInfraAccessEnabled() });
+});
+
+router.post("/infra/access-toggle", requireInfraAdmin, (req, res) => {
+  const { enabled } = req.body as { enabled: boolean };
+  if (typeof enabled !== "boolean") {
+    return res.status(400).json({ error: { message: "enabled must be a boolean" } });
+  }
+  setInfraAccessEnabled(enabled);
+  console.log(`[Infra] Infrastructure access ${enabled ? "ENABLED" : "DISABLED"} by admin`);
+  res.json({ enabled: getInfraAccessEnabled(), message: enabled ? "Infrastructure access enabled" : "Infrastructure access disabled" });
+});
 
 router.get("/infra/agents", requireInfraAdmin, async (_req, res) => {
   try {

@@ -300,6 +300,10 @@ VISUAL/BROWSER TOOLS:
 - browse_page: Get text representation of page. Input: { path: "/" }
 - site_health: Check site health/availability. Input: { url: "/" }
 
+PRODUCTION SERVER TOOLS:
+- remote_server_api: Call any API on the PRODUCTION Cloud Run server. Input: { path: "/api/...", method: "GET", body: {} }
+- git_push: Git commit and push to GitHub (triggers CI/CD deploy). Input: { message: "..." } — ONLY when admin requests
+
 ABSOLUTE RULES:
 1. ALWAYS use tool_use to execute actions. NEVER write "code.sh" or bash commands in your text response.
 2. NEVER pretend to execute something — use your tools or say you cannot.
@@ -1153,11 +1157,50 @@ export const INFRA_TOOLS = [
       required: ["url"],
     },
   },
+  {
+    name: "remote_server_api",
+    description: "Call any API endpoint on the PRODUCTION server (Cloud Run). Use this to query/modify the live server, check health, run DB queries on prod, etc. The production base URL is https://mrcodeai-fabdybsasq-ww.a.run.app",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        path: { type: "string", description: "API path on production, e.g. /api/strategic/infra/status or /api/auth/me" },
+        method: { type: "string", description: "HTTP method: GET, POST, PUT, DELETE. Default: GET" },
+        body: { type: "object", description: "JSON body for POST/PUT requests" },
+        headers: { type: "object", description: "Additional headers" },
+      },
+      required: ["path"],
+    },
+  },
+  {
+    name: "git_push",
+    description: "Git commit and push changes to GitHub. IMPORTANT: Only use when explicitly requested by admin.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        message: { type: "string", description: "Commit message" },
+        branch: { type: "string", description: "Branch to push to. Default: main" },
+      },
+      required: ["message"],
+    },
+  },
 ];
 
 const PROJECT_ROOT = process.cwd();
 
+let _infraAccessEnabled = true;
+
+export function getInfraAccessEnabled(): boolean {
+  return _infraAccessEnabled;
+}
+
+export function setInfraAccessEnabled(enabled: boolean): void {
+  _infraAccessEnabled = enabled;
+}
+
 export async function executeInfraTool(toolName: string, input: any): Promise<string> {
+  if (!_infraAccessEnabled) {
+    return JSON.stringify({ error: "Infrastructure access is currently DISABLED by admin. Enable it from the dashboard toggle to allow tool execution." });
+  }
   try {
     switch (toolName) {
       case "read_file": {
@@ -1476,6 +1519,54 @@ export async function executeInfraTool(toolName: string, input: any): Promise<st
         } catch (err: any) {
           clearTimeout(timeout);
           return JSON.stringify({ url: checkUrl, error: err.message, responseTime: `${Date.now() - start}ms` });
+        }
+      }
+      case "remote_server_api": {
+        const prodBase = "https://mrcodeai-fabdybsasq-ww.a.run.app";
+        const apiPath = input.path.startsWith("/") ? input.path : `/${input.path}`;
+        const method = (input.method || "GET").toUpperCase();
+        const url = `${prodBase}${apiPath}`;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 20000);
+        try {
+          const opts: any = {
+            method,
+            signal: controller.signal,
+            headers: {
+              "Content-Type": "application/json",
+              "User-Agent": "MrCodeAI-Agent/1.0",
+              ...(input.headers || {}),
+            },
+          };
+          if (input.body && ["POST", "PUT", "PATCH"].includes(method)) {
+            opts.body = JSON.stringify(input.body);
+          }
+          const res = await fetch(url, opts);
+          clearTimeout(timeout);
+          const text = await res.text();
+          let body;
+          try { body = JSON.parse(text); } catch { body = text; }
+          return JSON.stringify({
+            url,
+            method,
+            status: res.status,
+            statusText: res.statusText,
+            body: typeof body === "object" ? JSON.stringify(body).slice(0, 50000) : (body as string).slice(0, 50000),
+          });
+        } catch (err: any) {
+          clearTimeout(timeout);
+          return JSON.stringify({ url, error: err.message });
+        }
+      }
+      case "git_push": {
+        const branch = input.branch || "main";
+        try {
+          execSync("git add -A", { cwd: PROJECT_ROOT, encoding: "utf-8" });
+          execSync(`git commit -m "${input.message.replace(/"/g, '\\"')}"`, { cwd: PROJECT_ROOT, encoding: "utf-8" });
+          const pushOut = execSync(`git push origin ${branch}`, { cwd: PROJECT_ROOT, encoding: "utf-8", timeout: 30000 });
+          return JSON.stringify({ success: true, message: `Pushed to ${branch}`, output: pushOut.slice(0, 5000) });
+        } catch (e: any) {
+          return JSON.stringify({ success: false, error: (e?.stderr || e?.message || "").slice(0, 5000) });
         }
       }
       default:

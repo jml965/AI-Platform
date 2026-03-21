@@ -56,6 +56,32 @@ export default function Dashboard() {
   const logout = useAuthLogout();
   const userName = (me as any)?.name || (me as any)?.displayName || (me as any)?.email?.split("@")[0] || "User";
 
+  const [infraAccessEnabled, setInfraAccessEnabled] = useState(true);
+  const [infraToggleLoading, setInfraToggleLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    fetch("/api/infra/access-status", { credentials: "include" })
+      .then(r => r.json())
+      .then(d => { if (typeof d.enabled === "boolean") setInfraAccessEnabled(d.enabled); })
+      .catch(() => {});
+  }, [isAdmin]);
+
+  const toggleInfraAccess = async () => {
+    setInfraToggleLoading(true);
+    try {
+      const res = await fetch("/api/infra/access-toggle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ enabled: !infraAccessEnabled }),
+      });
+      const data = await res.json();
+      if (typeof data.enabled === "boolean") setInfraAccessEnabled(data.enabled);
+    } catch {}
+    setInfraToggleLoading(false);
+  };
+
   const [, navigate] = useLocation();
   const createProjectMut = useCreateProject();
 
@@ -103,6 +129,27 @@ export default function Dashboard() {
             <ShieldCheck className="w-4 h-4" />
             {t.qa_title}
           </Link>
+          {isAdmin && (
+            <button
+              onClick={toggleInfraAccess}
+              disabled={infraToggleLoading}
+              className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium transition-all ${
+                infraAccessEnabled
+                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                  : "border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20"
+              }`}
+              title={infraAccessEnabled ? (lang === "ar" ? "البنية التحتية: مفعّلة — اضغط للإيقاف" : "Infrastructure: ON — Click to disable") : (lang === "ar" ? "البنية التحتية: متوقفة — اضغط للتفعيل" : "Infrastructure: OFF — Click to enable")}
+            >
+              {infraToggleLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Server className="w-4 h-4" />
+              )}
+              {infraAccessEnabled
+                ? (lang === "ar" ? "البنية: مفعّلة" : "Infra: ON")
+                : (lang === "ar" ? "البنية: متوقفة" : "Infra: OFF")}
+            </button>
+          )}
           {isAdmin && (
             <Link href="/monitoring" className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/10 text-sm text-muted-foreground hover:text-foreground hover:border-white/20 transition-all">
               <Activity className="w-4 h-4" />
