@@ -1048,6 +1048,12 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
       const MAX_DOM_BLOCKS = 3;
       let searchWithNoResults = 0;
 
+      const targetState = {
+        found: false,
+        file: null as string | null,
+        stepsAfterFound: 0,
+      };
+
       const userMsg = typeof message === "string" ? message : "";
 
       const decisionState = {
@@ -1227,6 +1233,16 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
 
           toolActionCount++;
 
+          if (targetState.found) {
+            targetState.stepsAfterFound++;
+            if (targetState.stepsAfterFound >= 3 && !["edit_component", "write_file"].includes(tool.name)) {
+              const nudge = `⚠️ TARGET_NUDGE — تم العثور على الملف "${targetState.file}" منذ ${targetState.stepsAfterFound} خطوات ولم تنفّذ التعديل بعد.\n\n🔧 نفّذ الآن:\n1. read_file path="${targetState.file}"\n2. edit_component مع old_text و new_text`;
+              console.log(`[Agent] NUDGE: ${targetState.stepsAfterFound} steps after target found, no edit yet`);
+              toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: nudge });
+              continue;
+            }
+          }
+
           if (tool.name === "search_text" || tool.name === "list_files" || tool.name === "list_components") {
             console.log(`[Agent] Step ${toolActionCount}: ${tool.name}(${JSON.stringify(tool.input).slice(0, 100)})`);
           }
@@ -1234,6 +1250,14 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
           if (tool.name === "search_text") {
             const query = (tool.input as any)?.text || "";
             const normalizedQuery = query.trim().toLowerCase();
+
+            if (targetState.found) {
+              const blocked = `⛔ TARGET_FOUND — تم العثور على الملف "${targetState.file}" — لا حاجة للبحث مرة أخرى.\n\n✅ الخطوة التالية:\n1. read_file للملف ${targetState.file}\n2. edit_component لتنفيذ التعديل مباشرة`;
+              console.log(`[Agent] BLOCKED: search after target found. file=${targetState.file}`);
+              await logAudit(agentKey, "search_blocked_target_found", tool.name, { targetFile: targetState.file, query }, blocked, "low", "blocked");
+              toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: blocked });
+              continue;
+            }
 
             if (searchQueriesSet.has(normalizedQuery)) {
               const blocked = `⛔ REPEATED_SEARCH_BLOCKED — البحث عن "${query}" تم من قبل. جرّب بحث مختلف (className, ملف محدد، أو i18n).`;
@@ -1376,6 +1400,14 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
             if (hasFileMatch) {
               searchFoundFile = true;
               console.log(`[Agent] search_text found file match — searchFoundFile=true, DOM alternative ✓`);
+
+              if (!targetState.found) {
+                const fileMatch = result.match(/([^\s]+\.(tsx|jsx|ts|js|css|html|vue|svelte))/);
+                targetState.found = true;
+                targetState.file = fileMatch ? fileMatch[1] : "unknown";
+                targetState.stepsAfterFound = 0;
+                console.log(`[Agent] TARGET_FOUND — file="${targetState.file}" — blocking future searches`);
+              }
             } else {
               searchWithNoResults++;
               console.log(`[Agent] search_text returned no useful results — searchWithNoResults=${searchWithNoResults}/3`);
