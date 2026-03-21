@@ -881,6 +881,7 @@ export default function InfraPanel() {
   const dbChangesRef = useRef<string[]>([]);
   const toolLogMsgIdRef = useRef<string | null>(null);
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
+  const activeStreamMsgIdRef = useRef<string | null>(null);
 
   const openSettings = async (agentKey: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1014,6 +1015,7 @@ export default function InfraPanel() {
       dbChangesRef.current = [];
       toolLogMsgIdRef.current = null;
 
+      activeStreamMsgIdRef.current = streamMsgId;
       setMessages(prev => [...prev, { id: streamMsgId, role: "assistant", content: "", timestamp: new Date() }]);
 
       const endpoint = "/api/infra/chat-stream";
@@ -1168,6 +1170,7 @@ export default function InfraPanel() {
     } finally {
       setLoading(false);
       abortRef.current = null;
+      activeStreamMsgIdRef.current = null;
     }
   };
 
@@ -1349,7 +1352,7 @@ export default function InfraPanel() {
                     </div>
                   );
                 }
-                if ((msg as any).role === "approval") {
+                if (msg.role === "approval") {
                   let data: any = {};
                   try { data = JSON.parse(msg.content); } catch {}
                   const riskAr: Record<string, string> = { low: "منخفضة", medium: "متوسطة", high: "عالية", critical: "حرجة" };
@@ -1387,13 +1390,75 @@ export default function InfraPanel() {
                     </div>
                   );
                 }
+                if (msg.role === "tool_log" && msg.toolLogs && msg.toolLogs.length > 0) {
+                  return (
+                    <div key={msg.id} className="py-1">
+                      <div className="rounded-lg bg-[#161b22] border border-[#30363d] p-2.5 max-w-md">
+                        <div className="text-[10px] text-[#484f58] mb-1.5 font-medium">
+                          {lang === "ar" ? "سجل الأدوات" : "Tool Log"}
+                        </div>
+                        <div className="space-y-1">
+                          {msg.toolLogs.map((log, i) => (
+                            <div key={i} className="flex items-center gap-2 text-[11px]">
+                              <span className={cn(
+                                "w-1.5 h-1.5 rounded-full flex-shrink-0",
+                                log.status === "success" ? "bg-emerald-400" :
+                                log.status === "failed" ? "bg-red-400" :
+                                log.status === "blocked" ? "bg-orange-400" :
+                                "bg-cyan-400 animate-pulse"
+                              )} />
+                              <span className="text-[#d4dae3] font-mono">{log.tool}</span>
+                              {log.file && <span className="text-[#484f58] truncate max-w-[150px]">{log.file.split("/").pop()}</span>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+                if (msg.role === "summary" && msg.summaryData) {
+                  const sd = msg.summaryData;
+                  return (
+                    <div key={msg.id} className="py-1">
+                      <div className={cn(
+                        "rounded-lg border p-3 max-w-md",
+                        sd.status === "success" ? "bg-emerald-500/5 border-emerald-500/20" :
+                        sd.status === "failed" ? "bg-red-500/5 border-red-500/20" :
+                        "bg-yellow-500/5 border-yellow-500/20"
+                      )}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-[12px] font-bold text-[#e1e4e8]">
+                            {sd.status === "success" ? "✅" : sd.status === "failed" ? "❌" : "⚠️"}
+                            {" "}
+                            {lang === "ar" ? "ملخص التنفيذ" : "Execution Summary"}
+                          </span>
+                        </div>
+                        {sd.filesChanged.length > 0 && (
+                          <div className="text-[11px] text-[#d4dae3] mb-1">
+                            <span className="text-[#484f58]">{lang === "ar" ? "الملفات:" : "Files:"}</span>{" "}
+                            {sd.filesChanged.map(f => f.split("/").pop()).join(", ")}
+                          </div>
+                        )}
+                        {sd.actionsDone.length > 0 && (
+                          <div className="text-[11px] text-[#d4dae3]">
+                            {sd.actionsDone.map((a, i) => <div key={i}>{a}</div>)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+                if (msg.role === "tool_log" || msg.role === "file_ref" || msg.role === "summary") {
+                  return null;
+                }
+                const isActiveStream = loading && msg.id === activeStreamMsgIdRef.current;
                 return (
                 <div key={msg.id} className={cn("py-1", msg.role === "user" ? "text-end" : "")}>
                   <div className={cn(
                     "inline-block text-start text-sm leading-relaxed max-w-full",
                     msg.role === "user" ? "text-cyan-400" : "text-[#c9d1d9]"
                   )}>
-                    {msg.role === "assistant" && !msg.content && loading && msg.id === messages[messages.length - 1]?.id ? (
+                    {msg.role === "assistant" && !msg.content && isActiveStream ? (
                       <div className="flex items-center gap-2 py-1">
                         <div className="flex items-center gap-1">
                           <div className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
@@ -1404,7 +1469,7 @@ export default function InfraPanel() {
                           {lang === "ar" ? "يحلل النظام..." : "Analyzing system..."}
                         </span>
                       </div>
-                    ) : (
+                    ) : msg.role === "assistant" && !msg.content ? null : (
                       <MessageContent content={msg.content} />
                     )}
                     {msg.tokensUsed && (

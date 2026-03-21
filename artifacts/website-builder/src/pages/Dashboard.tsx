@@ -906,8 +906,15 @@ function HomeSidebar({ t, lang, userName, isAdmin, onSelectInfraAgent, onToggleF
   ];
 
   return (
-    <div className="hidden lg:flex flex-col w-[200px] min-w-[200px] bg-[#161b22] border-r border-white/7 rtl:border-r-0 rtl:border-l">
-      <div className="flex items-center justify-between p-3 border-b border-white/7">
+    <div className="hidden lg:flex flex-col w-[200px] min-w-[200px] border-r border-white/10 rtl:border-r-0 rtl:border-l relative overflow-hidden" style={{ background: "linear-gradient(160deg, #0d1117 0%, #111827 40%, #0f172a 70%, #0d1117 100%)", boxShadow: "inset -1px 0 0 rgba(88,166,255,0.06), 4px 0 24px rgba(0,0,0,0.4)" }}>
+      {/* Luxury background glows */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-32 rounded-full opacity-20" style={{ background: "radial-gradient(circle, rgba(88,166,255,0.5) 0%, transparent 70%)", filter: "blur(20px)" }} />
+        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 w-24 h-24 rounded-full opacity-10" style={{ background: "radial-gradient(circle, rgba(139,92,246,0.6) 0%, transparent 70%)", filter: "blur(18px)" }} />
+        <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: "repeating-linear-gradient(0deg, transparent, transparent 24px, rgba(255,255,255,0.3) 24px, rgba(255,255,255,0.3) 25px)" }} />
+      </div>
+
+      <div className="flex items-center justify-between p-3 border-b border-white/8 relative z-10">
         <div className="flex items-center gap-2">
           <ReplitLogo />
           <ChevronDown className="w-3 h-3 text-[#d4dae3]" />
@@ -924,7 +931,7 @@ function HomeSidebar({ t, lang, userName, isAdmin, onSelectInfraAgent, onToggleF
         </div>
       </div>
 
-      <div className="flex items-center gap-2 mx-2 mt-2 p-2 rounded-md bg-white/5 cursor-pointer hover:bg-white/8 transition-colors">
+      <div className="flex items-center gap-2 mx-2 mt-2 p-2 rounded-md bg-white/5 cursor-pointer hover:bg-white/8 transition-colors relative z-10">
         <div className="w-5 h-5 rounded-full bg-[#2d7dd2] flex items-center justify-center text-[10px] font-semibold text-white flex-shrink-0">
           {userName.charAt(0).toUpperCase()}
         </div>
@@ -934,15 +941,32 @@ function HomeSidebar({ t, lang, userName, isAdmin, onSelectInfraAgent, onToggleF
         <ChevronDown className="w-3 h-3 text-[#d4dae3] flex-shrink-0" />
       </div>
 
-      <div className="p-2 flex flex-col gap-1">
-        <button className="flex items-center gap-2 w-full px-3 py-2 rounded-md text-[12px] font-medium text-[#c9d1d9] bg-white/7 border border-white/10 hover:bg-white/10 transition-colors text-start">
-          <Plus className="w-3.5 h-3.5 text-[#d4dae3]" />
-          {t.home_create_app}
+      <div className="p-2 flex flex-col gap-1 relative z-10">
+        <button
+          className="flex items-center gap-2 w-full px-3 py-2 rounded-md text-[12px] font-semibold text-white text-start relative overflow-hidden transition-all duration-200 hover:brightness-110 active:scale-[0.98] group/createbtn"
+          style={{
+            background: "linear-gradient(135deg, #1c2d4a 0%, #162236 50%, #1a2d45 100%)",
+            border: "1px solid rgba(88,166,255,0.35)",
+            boxShadow: "0 0 10px rgba(88,166,255,0.12), inset 0 1px 0 rgba(88,166,255,0.08)",
+          }}
+        >
+          {/* Subtle blue hover glow */}
+          <div
+            className="absolute inset-0 opacity-0 group-hover/createbtn:opacity-100 transition-opacity duration-300 pointer-events-none"
+            style={{
+              background: "linear-gradient(135deg, rgba(88,166,255,0.08) 0%, transparent 60%)",
+            }}
+          />
+          {/* Blue dot */}
+          <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: "#58a6ff", boxShadow: "0 0 5px rgba(88,166,255,0.7)" }} />
+          <span className="text-[#c9d1d9] group-hover/createbtn:text-white transition-colors">
+            {t.home_create_app}
+          </span>
+          <Plus className="w-3.5 h-3.5 text-[#58a6ff] ms-auto flex-shrink-0" />
         </button>
-
       </div>
 
-      <nav className="flex flex-col gap-0.5 px-2 py-3 flex-1 overflow-y-auto">
+      <nav className="flex flex-col gap-0.5 px-2 py-3 flex-1 overflow-y-auto relative z-10">
         {isAdmin && <InfraAgentsSection t={t} lang={lang} onSelectAgent={onSelectInfraAgent} />}
 
         {navItems.map((item, i) => (
@@ -972,7 +996,7 @@ function HomeSidebar({ t, lang, userName, isAdmin, onSelectInfraAgent, onToggleF
         {isAdmin && <AdminPanelSection t={t} onToggleFiles={onToggleFiles} />}
       </nav>
 
-      <div className="border-t border-white/7 p-2">
+      <div className="border-t border-white/10 p-2 relative z-10" style={{ background: "linear-gradient(to top, rgba(88,166,255,0.04) 0%, transparent 100%)" }}>
         {[
           { icon: BookOpen, label: t.home_learn },
           { icon: FileText, label: t.home_documentation },
