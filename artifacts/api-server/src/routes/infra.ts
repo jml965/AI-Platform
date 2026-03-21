@@ -1058,7 +1058,7 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
         failedSearchCount: 0,
       };
 
-      function extractDOMText(msg: string): string | null {
+      const extractDOMText = (msg: string): string | null => {
         const textMatch = msg.match(/النص:\s*["']?(.+?)["']?\s*\n/);
         if (textMatch) return textMatch[1].trim();
         const selectedMatch = msg.match(/العنصر المحدد[^:]*:\s*(.+)/);
@@ -1066,7 +1066,7 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
         const contentMatch = msg.match(/المحتوى:\s*["']?(.+?)["']?\s*\n/);
         if (contentMatch) return contentMatch[1].trim();
         return null;
-      }
+      };
 
       const domText = extractDOMText(userMsg);
       if (domText) {
