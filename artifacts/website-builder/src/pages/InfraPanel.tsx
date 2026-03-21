@@ -86,15 +86,61 @@ interface InfraAgent {
   primaryModel: { provider: string; model: string };
 }
 
+interface ToolLogEntry {
+  step: number;
+  tool: string;
+  status: "running" | "success" | "failed" | "blocked";
+  detail?: string;
+  file?: string;
+}
+
+interface FileRef {
+  name: string;
+  path: string;
+  type: string;
+}
+
+interface SummaryData {
+  actionsDone: string[];
+  filesChanged: string[];
+  dbChanges: string[];
+  status: "success" | "failed" | "incomplete";
+}
+
 interface ChatMessage {
   id: string;
-  role: "user" | "assistant" | "status";
+  role: "user" | "assistant" | "status" | "approval" | "tool_log" | "file_ref" | "summary";
   content: string;
   timestamp: Date;
   tokensUsed?: number;
   cost?: number;
   model?: string;
   models?: string[];
+  toolLogs?: ToolLogEntry[];
+  fileRefs?: FileRef[];
+  summaryData?: SummaryData;
+}
+
+const FILE_ICONS: Record<string, string> = {
+  ".tsx": "🧩",
+  ".jsx": "🧩",
+  ".js": "📜",
+  ".ts": "📘",
+  ".css": "🎨",
+  ".json": "🧾",
+  ".sql": "🗄️",
+  ".html": "🌐",
+  ".md": "📝",
+  ".py": "🐍",
+  ".sh": "⚙️",
+  ".yml": "📋",
+  ".yaml": "📋",
+  ".env": "🔒",
+};
+
+function getFileIcon(filename: string): string {
+  const ext = filename.includes(".") ? "." + filename.split(".").pop()!.toLowerCase() : "";
+  return FILE_ICONS[ext] || "📄";
 }
 
 const AGENT_ICONS: Record<string, React.ReactNode> = {
@@ -828,6 +874,13 @@ export default function InfraPanel() {
   const abortRef = useRef<AbortController | null>(null);
   const [settingsAgent, setSettingsAgent] = useState<string | null>(null);
   const [fullConfig, setFullConfig] = useState<FullAgentConfig | null>(null);
+  const toolLogRef = useRef<ToolLogEntry[]>([]);
+  const toolStepRef = useRef(0);
+  const filesChangedRef = useRef<Set<string>>(new Set());
+  const actionsRef = useRef<string[]>([]);
+  const dbChangesRef = useRef<string[]>([]);
+  const toolLogMsgIdRef = useRef<string | null>(null);
+  const [expandedFile, setExpandedFile] = useState<string | null>(null);
 
   const openSettings = async (agentKey: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -853,7 +906,14 @@ export default function InfraPanel() {
         return r.json();
       })
       .then(data => {
-        if (Array.isArray(data)) setAgents(data);
+        if (Array.isArray(data)) {
+          setAgents(data);
+          const lastAgentKey = localStorage.getItem("infra_last_agent");
+          if (lastAgentKey && !selectedAgent) {
+            const found = data.find((a: InfraAgent) => a.agentKey === lastAgentKey);
+            if (found) setSelectedAgent(found);
+          }
+        }
       })
       .catch(console.error);
   }, []);
@@ -871,6 +931,7 @@ export default function InfraPanel() {
     setSelectedAgent(agent);
     setMessages([]);
     setPrompt("");
+    localStorage.setItem("infra_last_agent", agent.agentKey);
   };
 
   const handleStop = () => {
@@ -946,6 +1007,13 @@ export default function InfraPanel() {
 
       controller.signal.addEventListener("abort", () => { typewriterStopped = true; });
 
+      toolLogRef.current = [];
+      toolStepRef.current = 0;
+      filesChangedRef.current = new Set();
+      actionsRef.current = [];
+      dbChangesRef.current = [];
+      toolLogMsgIdRef.current = null;
+
       setMessages(prev => [...prev, { id: streamMsgId, role: "assistant", content: "", timestamp: new Date() }]);
 
       const endpoint = "/api/infra/chat-stream";
@@ -993,6 +1061,67 @@ export default function InfraPanel() {
               } as any]);
               scrollToBottomIfNeeded();
             }
+            else if (event.type === "tool_result") {
+              toolStepRef.current++;
+              const toolName = event.name || "unknown";
+              const resultStr = typeof event.result === "string" ? event.result : JSON.stringify(event.result || "");
+              const isSuccess = resultStr.includes("EDIT_SUCCESS") || resultStr.includes("WRITE_SUCCESS") || resultStr.includes("✅");
+              const isFailed = resultStr.includes("EDIT_FAILED") || resultStr.includes("WRITE_FAILED") || resultStr.includes("⚠️") || resultStr.includes("BLOCKED");
+              const status: ToolLogEntry["status"] = isFailed ? "failed" : isSuccess ? "success" : "running";
+
+              const entry: ToolLogEntry = {
+                step: toolStepRef.current,
+                tool: toolName,
+                status,
+                detail: resultStr.slice(0, 120),
+              };
+
+              if (toolName === "edit_component" || toolName === "write_file" || toolName === "read_file" || toolName === "search_text") {
+                let filePath = "";
+                try {
+                  const parsed = JSON.parse(resultStr);
+                  filePath = parsed.path || "";
+                } catch {
+                  const pathMatch = resultStr.match(/(?:الملف|path|📁)[:\s]*([^\s\n,]+\.\w+)/);
+                  if (pathMatch) filePath = pathMatch[1];
+                }
+                if (filePath) {
+                  entry.file = filePath;
+                  const fileName = filePath.split("/").pop() || filePath;
+                  filesChangedRef.current.add(filePath);
+
+                  if (toolName === "edit_component" || toolName === "write_file") {
+                    actionsRef.current.push(`${isSuccess ? "✅" : "❌"} ${toolName}: ${fileName}`);
+                  }
+                }
+              }
+
+              if (toolName === "run_sql" || toolName === "db_query") {
+                const snippet = resultStr.slice(0, 80);
+                dbChangesRef.current.push(snippet);
+              }
+
+              toolLogRef.current = [...toolLogRef.current, entry];
+
+              if (!toolLogMsgIdRef.current) {
+                const logMsgId = crypto.randomUUID();
+                toolLogMsgIdRef.current = logMsgId;
+                setMessages(prev => [...prev, {
+                  id: logMsgId,
+                  role: "tool_log" as any,
+                  content: "",
+                  timestamp: new Date(),
+                  toolLogs: [...toolLogRef.current],
+                }]);
+              } else {
+                setMessages(prev => prev.map(m =>
+                  m.id === toolLogMsgIdRef.current
+                    ? { ...m, toolLogs: [...toolLogRef.current] }
+                    : m
+                ));
+              }
+              scrollToBottomIfNeeded();
+            }
             else if (event.type === "done") { streamMeta = { tokensUsed: event.tokensUsed, cost: event.cost, model: event.model, models: event.models }; }
             else if (event.type === "error") { streamedContent += event.message; typewriterFlush(); }
           } catch {}
@@ -1010,6 +1139,25 @@ export default function InfraPanel() {
       setMessages(prev => prev.map(m =>
         m.id === streamMsgId ? { ...m, content: streamedContent, ...streamMeta } : m
       ));
+
+      if (toolLogRef.current.length > 0) {
+        const hasEdit = actionsRef.current.length > 0;
+        const hasFail = toolLogRef.current.some(l => l.status === "failed");
+        const summaryData: SummaryData = {
+          actionsDone: actionsRef.current.length > 0 ? actionsRef.current : [`${toolLogRef.current.length} أداة`],
+          filesChanged: Array.from(filesChangedRef.current),
+          dbChanges: dbChangesRef.current,
+          status: hasFail && !hasEdit ? "failed" : hasEdit ? "success" : "incomplete",
+        };
+        setMessages(prev => [...prev, {
+          id: crypto.randomUUID(),
+          role: "summary" as any,
+          content: "",
+          timestamp: new Date(),
+          summaryData,
+        }]);
+        scrollToBottomIfNeeded();
+      }
     } catch (err: any) {
       if (err.name !== "AbortError") {
         setMessages(prev => [...prev, {
