@@ -1,0 +1,153 @@
+المطلوب: إضافة Decision Enforcement Layer داخل infra.ts
+
+========================================
+
+1. تعريف حالة القرار (Decision State)
+   ========================================
+
+أضف داخل session state:
+
+let decisionState = {
+domTextDetected: false,
+uiSearchAttempted: false,
+i18nSearchAttempted: false,
+componentSearchAttempted: false,
+dbAllowed: false
+}
+
+========================================
+2) التقاط النص من DOM (Source of Truth)
+=======================================
+
+إذا رسالة المستخدم تحتوي:
+
+* "العنصر المحدد"
+* "النص:"
+* أو tool get_page_structure
+
+نفّذ:
+
+decisionState.domTextDetected = true
+
+واستخرج النص:
+
+const domText = extractTextFromMessage(message)
+
+========================================
+3) تعديل ترتيب التنفيذ (Enforcement Rules)
+==========================================
+
+قبل أي tool call:
+
+function enforceDecisionFlow(tool, input) {
+
+// ❌ منع DB مبكراً
+if (tool === "run_sql" || tool === "db_query") {
+if (!decisionState.dbAllowed) {
+throw new Error("⛔ ممنوع استخدام DB قبل استنفاد البحث في UI")
+}
+}
+
+// ❌ منع القفز للتعديل بدون بحث
+if (tool === "edit_component") {
+if (!decisionState.componentSearchAttempted && !decisionState.i18nSearchAttempted) {
+throw new Error("⛔ يجب البحث أولاً قبل التعديل")
+}
+}
+
+return true
+}
+
+========================================
+4) تتبع مراحل البحث
+===================
+
+بعد كل tool:
+
+if (tool === "search_text") {
+
+// UI search
+if (input.text === domText || similar(input.text, domText)) {
+decisionState.uiSearchAttempted = true
+}
+
+// i18n search
+if (input.text.includes("t(") || input.path?.includes("i18n")) {
+decisionState.i18nSearchAttempted = true
+}
+
+// component search
+if (input.path?.includes("components") || input.path?.includes("Layout")) {
+decisionState.componentSearchAttempted = true
+}
+
+// إذا تم البحث في كل شيء → السماح بـ DB
+if (
+decisionState.uiSearchAttempted &&
+decisionState.i18nSearchAttempted &&
+decisionState.componentSearchAttempted
+) {
+decisionState.dbAllowed = true
+}
+}
+
+========================================
+5) تعديل System Prompt (إجباري)
+===============================
+
+أضف في system prompt:
+
+"قانون حاسم:
+
+إذا النص ظاهر في DOM:
+
+* افترض أنه UI
+* ابحث في الكود أولاً
+* ممنوع استخدام DB مباشرة
+
+ترتيب التنفيذ الإجباري:
+
+1. search_text (النص)
+2. search_text (i18n)
+3. search_text (component/Layout)
+4. read_file
+5. edit_component
+
+ممنوع:
+
+* استخدام DB قبل هذه الخطوات
+* قول 'ربما من قاعدة البيانات' بدون دليل
+  "
+
+========================================
+6) Fallback ذكي
+===============
+
+إذا فشل البحث 3 مرات:
+
+اسمح بـ DB:
+
+decisionState.dbAllowed = true
+
+لكن أضف log:
+
+"⚠️ تم السماح باستخدام DB بعد فشل البحث في UI"
+
+========================================
+7) Logging (مهم)
+================
+
+سجل:
+
+decisionState + tool usage
+
+في ai_audit_logs:
+
+{
+decisionFlow: decisionState,
+tool: tool,
+blocked: true/false
+}
+
+========================================
+ابدأ التنفيذ الآن
