@@ -1267,15 +1267,6 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
             hasDOMInspection = true;
             domSource = "tool";
             console.log(`[Agent] DOM inspection done via ${tool.name} — DOM_SOURCE=tool ✓`);
-
-            if (!decisionState.domTextDetected && result) {
-              const toolDomText = extractDOMText(result);
-              if (toolDomText) {
-                decisionState.domTextDetected = true;
-                decisionState.domText = toolDomText;
-                console.log(`[Decision] DOM text extracted from ${tool.name}: "${toolDomText.slice(0, 50)}"`);
-              }
-            }
           }
 
           if (tool.name === "edit_component" && !hasDOMInspection) {
@@ -1362,6 +1353,15 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
           const durationMs = Date.now() - toolStart;
 
           await logAudit(agentKey, "tool_executed", tool.name, tool.input, result?.slice(0, 1000), riskCfg.risk, "success", durationMs);
+
+          if (["get_page_structure", "browse_page", "inspect_styles"].includes(tool.name) && !decisionState.domTextDetected && result) {
+            const toolDomText = extractDOMText(result);
+            if (toolDomText) {
+              decisionState.domTextDetected = true;
+              decisionState.domText = toolDomText;
+              console.log(`[Decision] DOM text extracted from ${tool.name}: "${toolDomText.slice(0, 50)}"`);
+            }
+          }
 
           if (tool.name === "search_text") {
             const hasFileMatch = result && /\.(tsx|jsx|ts|js|css|html|vue|svelte)/.test(result) && result.length > 10;
