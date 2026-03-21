@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "nGTTFR2KqWs_EB3guIFM5"
+uri = "file://uploaded_files_list.txt"
+type = "text"
+title = "قائمة كل الملفات المرفوعة على GitHub (485 ملف)"
