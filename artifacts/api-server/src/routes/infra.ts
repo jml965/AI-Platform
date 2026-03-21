@@ -826,7 +826,11 @@ ${blueprint}
 - النظام يوقفك تلقائياً بعد 4 أدوات بدون تعديل.
 - نفس search لا يتكرر. نفس الهدف لا يُعاد تحليله.
 
-⛔⛔⛔ القانون السابع: ترتيب الملفات ⛔⛔⛔
+⛔⛔⛔ القانون السابع: ترتيب الملفات + البحث الذكي ⛔⛔⛔
+
+النظام يبحث تلقائياً بكل احتمالات الهمزة العربية (أوكي/اوكي/إوكي).
+إذا وُجد بشكل مختلف عن المطلوب → النتيجة تحتوي matchedVariant.
+استخدم matchedVariant في edit_component (ليس الشكل الأصلي).
 
 عندما search_text يرجع عدة نتائج:
   الأولوية 1: ملف يحتوي النص بالضبط (exact match)
@@ -835,6 +839,10 @@ ${blueprint}
   - خذ أفضل 3 نتائج فقط
   - اختر الأعلى → read_file → edit_component
   - fallback: ملف واحد فقط إذا الأول فشل
+
+مسار التنفيذ الإجباري (ممنوع الانحراف):
+  SEARCH (max 3) → SELECT best 3 files → FILTER files used in app → READ → FIND target → EDIT مباشرة
+  ممنوع: أكثر من 3 search، تكرار نفس query، قول "دعني أبحث"، قول "سأفعل"
 
 ⛔⛔ قاعدة قاعدة البيانات ⛔⛔
 
@@ -1270,7 +1278,9 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
                 }
                 if (topFiles.length >= 3) break;
               }
-              console.log(`[Agent] Search results: found=${found}, matchCount=${matchCount}, topFiles=${JSON.stringify(topFiles)}`);
+              const matchedVariant = parsedResult.matchedVariant || "";
+              const variantNote = parsedResult.note || "";
+              console.log(`[Agent] Search results: found=${found}, matchCount=${matchCount}, matchedVariant="${matchedVariant}", topFiles=${JSON.stringify(topFiles)}`);
               if (found && topFiles.length > 0) {
                 hasReadAfterSearch = false;
                 const safeFiles = ["i18n.tsx", "index.css", "App.tsx", "main.tsx", "index.tsx", "layout.tsx"];
@@ -1281,7 +1291,10 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
                   if (isSafe) note += " ✅ (مستخدم دائماً)";
                   return `  ${f} — ${note}`;
                 }).join("\n");
-                finalContent = `${result}\n\n💡 ملفات مرشحة (أفضل 3 بدون تكرار):\n${fileNotes}\n\n⚠️ تأكد أن الملف المختار مستورد (import) في صفحة أو layout قبل التعديل.\nالأولوية: (1) exact match (2) ملف واجهة tsx/jsx مستورد (3) اسم يدل على المكان.\nثم نفّذ read_file على الملف المختار.`;
+                const variantHint = matchedVariant && matchedVariant !== (tool.input as any)?.text
+                  ? `\n\n⚠️ هام: النص وُجد بالشكل "${matchedVariant}" — استخدم هذا الشكل بالضبط في old_text عند edit_component!`
+                  : "";
+                finalContent = `${result}\n\n💡 ملفات مرشحة (أفضل 3 بدون تكرار):\n${fileNotes}${variantHint}\n\n⚠️ تأكد أن الملف المختار مستورد (import) في صفحة أو layout قبل التعديل.\nالأولوية: (1) exact match (2) ملف واجهة tsx/jsx مستورد (3) اسم يدل على المكان.\nثم نفّذ read_file على الملف المختار.`;
               }
             }
 

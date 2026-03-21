@@ -1915,17 +1915,57 @@ export async function executeInfraTool(toolName: string, input: any, callerRole?
           const dir = input.directory ? path.resolve(PROJECT_ROOT, input.directory) : PROJECT_ROOT;
           if (!dir.startsWith(PROJECT_ROOT)) return JSON.stringify({ error: "Access denied" });
           const filePattern = input.filePattern || "";
-          let grepCmd = `grep -rn --include='${filePattern || "*"}' -l "${searchText.replace(/"/g, '\\"')}" "${dir}" 2>/dev/null | head -30`;
-          if (!filePattern) {
-            grepCmd = `grep -rn "${searchText.replace(/"/g, '\\"')}" "${dir}" --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=.git --exclude='*.lock' 2>/dev/null | head -50`;
+
+          function normalizeArabic(t: string): string {
+            return t
+              .replace(/[أإآ]/g, "ا")
+              .replace(/ة/g, "ه")
+              .replace(/ى/g, "ي")
+              .replace(/ؤ/g, "و")
+              .replace(/ئ/g, "ي");
           }
-          const result = execSync(grepCmd, { encoding: "utf-8", timeout: 10000, cwd: PROJECT_ROOT }).trim();
-          if (!result) return JSON.stringify({ found: false, message: `No matches found for "${searchText}"` });
-          const lines = result.split("\n").map((line: string) => {
-            const rel = line.replace(PROJECT_ROOT + "/", "");
-            return rel;
-          });
-          return JSON.stringify({ found: true, matchCount: lines.length, results: lines });
+          function generateVariants(word: string): string[] {
+            const variants = new Set<string>();
+            variants.add(word);
+            variants.add(normalizeArabic(word));
+            variants.add(word.replace(/[أإآ]/g, "ا"));
+            variants.add(word.replace(/ا/g, "أ"));
+            variants.add(word.replace(/ا/g, "إ"));
+            variants.add(word.replace(/ة/g, "ه"));
+            variants.add(word.replace(/ه/g, "ة"));
+            return [...variants].filter(v => v !== word || variants.size === 1);
+          }
+
+          const variants = generateVariants(searchText);
+          const allResults: string[] = [];
+          let matchedVariant = "";
+
+          for (const variant of variants) {
+            try {
+              const escaped = variant.replace(/"/g, '\\"');
+              let grepCmd: string;
+              if (filePattern) {
+                grepCmd = `grep -rn --include='${filePattern}' "${escaped}" "${dir}" --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=.git --exclude='*.lock' 2>/dev/null | head -50`;
+              } else {
+                grepCmd = `grep -rn "${escaped}" "${dir}" --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=.git --exclude='*.lock' 2>/dev/null | head -50`;
+              }
+              const result = execSync(grepCmd, { encoding: "utf-8", timeout: 10000, cwd: PROJECT_ROOT }).trim();
+              if (result) {
+                const lines = result.split("\n").map((line: string) => line.replace(PROJECT_ROOT + "/", ""));
+                for (const l of lines) {
+                  if (!allResults.includes(l)) allResults.push(l);
+                }
+                if (!matchedVariant) matchedVariant = variant;
+              }
+            } catch {}
+          }
+
+          if (allResults.length === 0) {
+            return JSON.stringify({ found: false, message: `No matches found for "${searchText}" (searched ${variants.length} variants: ${variants.join(", ")})` });
+          }
+
+          const variantNote = matchedVariant !== searchText ? `\n⚠️ وُجد بالشكل: "${matchedVariant}" (بدلاً من "${searchText}")` : "";
+          return JSON.stringify({ found: true, matchCount: allResults.length, results: allResults, matchedVariant, searchedVariants: variants, note: variantNote });
         } catch (e: any) {
           if (e?.status === 1) return JSON.stringify({ found: false, message: `No matches found for "${input.text}"` });
           return JSON.stringify({ error: e?.message || "Search failed" });
