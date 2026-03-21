@@ -655,6 +655,26 @@ export default function AdminFilesPanel({ onClose }: { onClose: () => void }) {
     showNotification("Path copied");
   }, [showNotification]);
 
+  const handleDownload = useCallback(async (filePath: string) => {
+    try {
+      const res = await fetch(`/api/infra/file-content?path=${encodeURIComponent(filePath)}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Download failed");
+      const data = await res.json();
+      const blob = new Blob([data.content], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filePath.split("/").pop() || "file";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showNotification("Download started");
+    } catch {
+      showNotification("Download failed", "error");
+    }
+  }, [showNotification]);
+
   const getContextActions = useCallback((): ContextMenuAction[] => {
     if (!contextMenu) return [];
     const { path: itemPath, nodeType } = contextMenu;
@@ -675,9 +695,10 @@ export default function AdminFilesPanel({ onClose }: { onClose: () => void }) {
       { label: "Rename", icon: <Type className="w-3.5 h-3.5" />, onClick: () => setRenamingPath(itemPath) },
       { label: "Open file", icon: <FileText className="w-3.5 h-3.5" />, onClick: () => setSelectedFile(itemPath), divider: true },
       { label: "Copy file path", icon: <ClipboardCopy className="w-3.5 h-3.5" />, onClick: () => handleCopyPath(itemPath), divider: true },
+      { label: "Download", icon: <Download className="w-3.5 h-3.5" />, onClick: () => handleDownload(itemPath) },
       { label: "Delete", icon: <Trash2 className="w-3.5 h-3.5" />, onClick: () => handleDelete(itemPath), danger: true, divider: true },
     ];
-  }, [contextMenu, handleCopyPath, handleDelete]);
+  }, [contextMenu, handleCopyPath, handleDelete, handleDownload]);
 
   return (
     <div className="flex flex-col h-full bg-[#0d1117]">
