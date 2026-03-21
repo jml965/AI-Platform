@@ -1,12 +1,82 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { agentConfigsTable } from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { agentConfigsTable, aiApprovalsTable, aiAuditLogsTable } from "@workspace/db/schema";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { getSystemBlueprint } from "../lib/system-blueprint";
 import { INFRA_TOOLS, executeInfraTool, getInfraAccessEnabled, setInfraAccessEnabled } from "../lib/agents/strategic-agent";
 import * as fs from "fs";
 import * as path from "path";
 const router = Router();
+
+const TOOL_RISK_CONFIG: Record<string, { risk: string; category: string; requiresApproval: boolean; sandboxed: boolean }> = {
+  search_text: { risk: "low", category: "search", requiresApproval: false, sandboxed: false },
+  list_files: { risk: "low", category: "search", requiresApproval: false, sandboxed: false },
+  list_components: { risk: "low", category: "search", requiresApproval: false, sandboxed: false },
+  read_file: { risk: "low", category: "files", requiresApproval: false, sandboxed: false },
+  view_page_source: { risk: "low", category: "files", requiresApproval: false, sandboxed: false },
+  write_file: { risk: "medium", category: "files", requiresApproval: false, sandboxed: false },
+  edit_component: { risk: "medium", category: "files", requiresApproval: false, sandboxed: false },
+  create_component: { risk: "medium", category: "files", requiresApproval: false, sandboxed: false },
+  delete_file: { risk: "high", category: "files", requiresApproval: true, sandboxed: false },
+  rename_file: { risk: "medium", category: "files", requiresApproval: false, sandboxed: false },
+  db_query: { risk: "low", category: "database", requiresApproval: false, sandboxed: false },
+  db_tables: { risk: "low", category: "database", requiresApproval: false, sandboxed: false },
+  run_sql: { risk: "high", category: "database", requiresApproval: true, sandboxed: false },
+  run_command: { risk: "critical", category: "system", requiresApproval: true, sandboxed: true },
+  exec_command: { risk: "critical", category: "system", requiresApproval: true, sandboxed: true },
+  get_env: { risk: "medium", category: "system", requiresApproval: false, sandboxed: false },
+  set_env: { risk: "high", category: "system", requiresApproval: true, sandboxed: false },
+  system_status: { risk: "low", category: "system", requiresApproval: false, sandboxed: false },
+  install_package: { risk: "high", category: "system", requiresApproval: true, sandboxed: false },
+  restart_service: { risk: "medium", category: "system", requiresApproval: false, sandboxed: false },
+  screenshot_page: { risk: "low", category: "browser", requiresApproval: false, sandboxed: false },
+  click_element: { risk: "medium", category: "browser", requiresApproval: false, sandboxed: false },
+  type_text: { risk: "medium", category: "browser", requiresApproval: false, sandboxed: false },
+  hover_element: { risk: "low", category: "browser", requiresApproval: false, sandboxed: false },
+  inspect_styles: { risk: "low", category: "browser", requiresApproval: false, sandboxed: false },
+  get_page_structure: { risk: "low", category: "browser", requiresApproval: false, sandboxed: false },
+  scroll_page: { risk: "low", category: "browser", requiresApproval: false, sandboxed: false },
+  get_console_errors: { risk: "low", category: "browser", requiresApproval: false, sandboxed: false },
+  get_network_requests: { risk: "low", category: "browser", requiresApproval: false, sandboxed: false },
+  browse_page: { risk: "low", category: "browser", requiresApproval: false, sandboxed: false },
+  site_health: { risk: "low", category: "browser", requiresApproval: false, sandboxed: false },
+  git_push: { risk: "high", category: "deploy", requiresApproval: true, sandboxed: false },
+  trigger_deploy: { risk: "critical", category: "deploy", requiresApproval: true, sandboxed: false },
+  deploy_status: { risk: "low", category: "deploy", requiresApproval: false, sandboxed: false },
+  github_api: { risk: "medium", category: "deploy", requiresApproval: false, sandboxed: false },
+  remote_server_api: { risk: "high", category: "deploy", requiresApproval: true, sandboxed: false },
+  rollback_deploy: { risk: "medium", category: "deploy", requiresApproval: true, sandboxed: false },
+};
+
+function isSafeSQL(query: string): { safe: boolean; reason?: string } {
+  const upper = query.toUpperCase().trim();
+  const dangerous = ["DROP ", "ALTER ", "TRUNCATE ", "CREATE TABLE", "CREATE INDEX", "GRANT ", "REVOKE "];
+  for (const d of dangerous) {
+    if (upper.includes(d)) return { safe: false, reason: `يحتوي على أمر خطير: ${d.trim()}` };
+  }
+  return { safe: true };
+}
+
+function isReadOnlySQL(query: string): boolean {
+  const upper = query.toUpperCase().trim();
+  return upper.startsWith("SELECT") || upper.startsWith("EXPLAIN") || upper.startsWith("SHOW") || upper.startsWith("WITH");
+}
+
+async function logAudit(agentKey: string, action: string, tool: string, input: any, result: any, risk: string, status: string, durationMs?: number, approvalId?: string) {
+  try {
+    await db.insert(aiAuditLogsTable).values({
+      agentKey,
+      action,
+      tool,
+      risk,
+      input: input ? JSON.parse(JSON.stringify(input)) : null,
+      result: typeof result === "string" ? { output: result.slice(0, 2000) } : result,
+      status,
+      durationMs,
+      approvalId: approvalId || undefined,
+    });
+  } catch (e) {}
+}
 
 function requireInfraAdmin(req: any, res: any, next: any) {
   if (!req.user || req.user.role !== "admin") {
@@ -598,12 +668,12 @@ router.get("/infra/access-status", requireInfraAdmin, (_req, res) => {
   res.json({ enabled: getInfraAccessEnabled() });
 });
 
-router.post("/infra/access-toggle", requireInfraAdmin, (req, res) => {
+router.post("/infra/access-toggle", requireInfraAdmin, async (req, res) => {
   const { enabled } = req.body as { enabled: boolean };
   if (typeof enabled !== "boolean") {
     return res.status(400).json({ error: { message: "enabled must be a boolean" } });
   }
-  setInfraAccessEnabled(enabled);
+  await setInfraAccessEnabled(enabled);
   console.log(`[Infra] Infrastructure access ${enabled ? "ENABLED" : "DISABLED"} by admin`);
   res.json({ enabled: getInfraAccessEnabled(), message: enabled ? "Infrastructure access enabled" : "Infrastructure access disabled" });
 });
@@ -846,9 +916,90 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
 
         const toolResults: any[] = [];
         for (const tool of toolUseBlocks) {
+          const riskCfg = TOOL_RISK_CONFIG[tool.name] || { risk: "medium", category: "unknown", requiresApproval: false, sandboxed: false };
+          const toolStart = Date.now();
+
+          if (agentPerms.length > 0) {
+            const allowedNames = new Set<string>();
+            for (const p of agentPerms) {
+              const mapped = PERM_TO_TOOLS[p];
+              if (mapped) mapped.forEach(t => allowedNames.add(t));
+            }
+            if (!allowedNames.has(tool.name)) {
+              const blocked = `⛔ الأداة ${tool.name} غير مصرّح بها لهذا الوكيل`;
+              res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n\n${blocked}\n` })}\n\n`);
+              fullReply += `\n\n${blocked}\n`;
+              await logAudit(agentKey, "blocked_permission", tool.name, tool.input, blocked, riskCfg.risk, "blocked");
+              toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: blocked });
+              continue;
+            }
+          }
+
+          if (tool.name === "db_query" || (tool.name === "run_sql" && agentPerms.includes("db_read") && !agentPerms.includes("db_write"))) {
+            const q = (tool.input as any)?.query || (tool.input as any)?.sql || "";
+            if (!isReadOnlySQL(q)) {
+              const blocked = `⛔ صلاحيتك db_read فقط — لا يمكن تنفيذ: ${q.slice(0, 50)}`;
+              res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n\n${blocked}\n` })}\n\n`);
+              await logAudit(agentKey, "blocked_db_write", tool.name, tool.input, blocked, "high", "blocked");
+              toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: blocked });
+              continue;
+            }
+          }
+
+          if (tool.name === "run_sql" || tool.name === "db_query") {
+            const q = (tool.input as any)?.query || (tool.input as any)?.sql || "";
+            const sqlCheck = isSafeSQL(q);
+            if (!sqlCheck.safe && !agentPerms.includes("db_admin")) {
+              const blocked = `⛔ ${sqlCheck.reason} — تحتاج صلاحية db_admin`;
+              res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n\n${blocked}\n` })}\n\n`);
+              await logAudit(agentKey, "blocked_dangerous_sql", tool.name, tool.input, blocked, "critical", "blocked");
+              toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: blocked });
+              continue;
+            }
+          }
+
+          if (riskCfg.requiresApproval) {
+            const categoryAr: Record<string, string> = { files: "ملفات", database: "قاعدة بيانات", system: "نظام", deploy: "نشر", security: "أمان" };
+            const riskAr: Record<string, string> = { low: "منخفضة", medium: "متوسطة", high: "عالية", critical: "حرجة" };
+            const inputSummary = JSON.stringify(tool.input || {}).slice(0, 200);
+
+            const [approval] = await db.insert(aiApprovalsTable).values({
+              agentKey,
+              userId: userId || "system",
+              tool: tool.name,
+              input: tool.input as any,
+              explanation: `الوكيل ${agentKey} يريد تنفيذ ${tool.name}`,
+              risk: riskCfg.risk,
+              category: riskCfg.category,
+              impact: inputSummary,
+              reversible: !["trigger_deploy", "delete_file", "run_sql"].includes(tool.name),
+              status: "pending",
+            }).returning();
+
+            const approvalMsg = `\n\n🔴 **طلب موافقة**\n\n` +
+              `**العملية:** ${tool.name}\n` +
+              `**النوع:** ${categoryAr[riskCfg.category] || riskCfg.category}\n` +
+              `**الخطورة:** ${riskAr[riskCfg.risk] || riskCfg.risk}\n\n` +
+              `**الشرح:**\n${inputSummary}\n\n` +
+              `**إمكانية التراجع:** ${!["trigger_deploy", "delete_file"].includes(tool.name) ? "نعم" : "لا"}\n\n` +
+              `⏳ *في انتظار موافقتك...*\n` +
+              `\`approval:${approval.id}\`\n`;
+
+            res.write(`data: ${JSON.stringify({ type: "chunk", text: approvalMsg })}\n\n`);
+            res.write(`data: ${JSON.stringify({ type: "approval_request", id: approval.id, tool: tool.name, risk: riskCfg.risk, category: riskCfg.category, input: tool.input })}\n\n`);
+            fullReply += approvalMsg;
+
+            await logAudit(agentKey, "approval_requested", tool.name, tool.input, { approvalId: approval.id }, riskCfg.risk, "pending");
+            toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: `⏳ العملية ${tool.name} تنتظر موافقة المالك. رقم الطلب: ${approval.id}` });
+            continue;
+          }
+
           res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n\n...*${tool.name}*...\n` })}\n\n`);
           fullReply += `\n\n...*${tool.name}*...\n`;
           const result = await executeInfraTool(tool.name, tool.input, "admin");
+          const durationMs = Date.now() - toolStart;
+
+          await logAudit(agentKey, "tool_executed", tool.name, tool.input, result?.slice(0, 1000), riskCfg.risk, "success", durationMs);
 
           let parsedResult: any = null;
           try { parsedResult = JSON.parse(result); } catch {}
@@ -949,6 +1100,88 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
       res.end();
     }
   }
+});
+
+router.get("/ai/approvals", requireInfraAdmin, async (_req, res) => {
+  try {
+    const approvals = await db.select().from(aiApprovalsTable).orderBy(desc(aiApprovalsTable.createdAt)).limit(100);
+    res.json({ approvals });
+  } catch (e: any) {
+    res.status(500).json({ error: { message: e.message } });
+  }
+});
+
+router.get("/ai/approvals/pending", requireInfraAdmin, async (_req, res) => {
+  try {
+    const pending = await db.select().from(aiApprovalsTable).where(eq(aiApprovalsTable.status, "pending")).orderBy(desc(aiApprovalsTable.createdAt));
+    res.json({ approvals: pending });
+  } catch (e: any) {
+    res.status(500).json({ error: { message: e.message } });
+  }
+});
+
+router.post("/ai/approve/:id", requireInfraAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [approval] = await db.select().from(aiApprovalsTable).where(eq(aiApprovalsTable.id, id));
+    if (!approval) return res.status(404).json({ error: { message: "طلب غير موجود" } });
+    if (approval.status !== "pending") return res.status(400).json({ error: { message: `الطلب ${approval.status} بالفعل` } });
+
+    const result = await executeInfraTool(approval.tool, approval.input as any, "admin");
+
+    await db.update(aiApprovalsTable).set({
+      status: "approved",
+      decidedBy: (req as any).user?.email || "admin",
+      decidedAt: new Date(),
+      executionResult: { output: result?.slice(0, 2000) },
+    }).where(eq(aiApprovalsTable.id, id));
+
+    await logAudit(approval.agentKey, "approval_executed", approval.tool, approval.input, result?.slice(0, 1000), approval.risk, "approved", undefined, id);
+    res.json({ status: "approved", result: result?.slice(0, 5000) });
+  } catch (e: any) {
+    res.status(500).json({ error: { message: e.message } });
+  }
+});
+
+router.post("/ai/reject/:id", requireInfraAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [approval] = await db.select().from(aiApprovalsTable).where(eq(aiApprovalsTable.id, id));
+    if (!approval) return res.status(404).json({ error: { message: "طلب غير موجود" } });
+    if (approval.status !== "pending") return res.status(400).json({ error: { message: `الطلب ${approval.status} بالفعل` } });
+
+    await db.update(aiApprovalsTable).set({
+      status: "rejected",
+      decidedBy: (req as any).user?.email || "admin",
+      decidedAt: new Date(),
+    }).where(eq(aiApprovalsTable.id, id));
+
+    await logAudit(approval.agentKey, "approval_rejected", approval.tool, approval.input, "rejected by admin", approval.risk, "rejected", undefined, id);
+    res.json({ status: "rejected" });
+  } catch (e: any) {
+    res.status(500).json({ error: { message: e.message } });
+  }
+});
+
+router.get("/ai/audit-logs", requireInfraAdmin, async (req, res) => {
+  try {
+    const limit = parseInt(String(req.query.limit)) || 100;
+    const logs = await db.select().from(aiAuditLogsTable).orderBy(desc(aiAuditLogsTable.createdAt)).limit(limit);
+    res.json({ logs });
+  } catch (e: any) {
+    res.status(500).json({ error: { message: e.message } });
+  }
+});
+
+router.get("/ai/kill-switch", requireInfraAdmin, async (_req, res) => {
+  res.json({ enabled: getInfraAccessEnabled() });
+});
+
+router.post("/ai/kill-switch", requireInfraAdmin, async (req, res) => {
+  const { enabled } = req.body;
+  await setInfraAccessEnabled(!!enabled);
+  await logAudit("system", enabled ? "kill_switch_off" : "kill_switch_on", "system", { enabled }, null, "critical", "success");
+  res.json({ enabled: getInfraAccessEnabled() });
 });
 
 router.post("/infra/director-stream", requireInfraAdmin, async (req, res) => {

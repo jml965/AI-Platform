@@ -314,6 +314,8 @@ export default function AgentManagement() {
     { key: "code", icon: Code, label: isRTL ? "الكود المصدري" : "Source Code" },
     { key: "logs", icon: ScrollText, label: isRTL ? "السجلات" : "Logs" },
     { key: "stats", icon: BarChart2, label: isRTL ? "الإحصائيات" : "Statistics" },
+    { key: "approvals", icon: ShieldCheck, label: isRTL ? "الموافقات" : "Approvals" },
+    { key: "audit", icon: ScrollText, label: isRTL ? "سجل التدقيق" : "Audit Log" },
   ];
 
   return (
@@ -460,6 +462,8 @@ export default function AgentManagement() {
               {activeTab === "code" && <CodeTab agent={currentAgent} onUpdate={(u) => updateAgent(currentAgent.agentKey, u)} isRTL={isRTL} />}
               {activeTab === "logs" && <LogsTab agent={currentAgent} isRTL={isRTL} />}
               {activeTab === "stats" && <StatsTab agent={currentAgent} stats={stats[currentAgent.agentKey]} isRTL={isRTL} />}
+              {activeTab === "approvals" && <ApprovalsTab isRTL={isRTL} />}
+              {activeTab === "audit" && <AuditLogTab isRTL={isRTL} />}
             </div>
           </>
         ) : (
@@ -1465,6 +1469,186 @@ function StatsTab({ agent, stats, isRTL }: { agent: AgentConfig; stats?: AgentSt
               </div>
             ))}
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ApprovalsTab({ isRTL }: { isRTL: boolean }) {
+  const [approvals, setApprovals] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<"all" | "pending" | "approved" | "rejected">("all");
+  const [killSwitch, setKillSwitch] = useState(true);
+
+  const fetchApprovals = async () => {
+    try {
+      const r = await fetch(`${API}/ai/approvals`);
+      const d = await r.json();
+      setApprovals(d.approvals || []);
+    } catch {} finally { setLoading(false); }
+  };
+
+  const fetchKillSwitch = async () => {
+    try {
+      const r = await fetch(`${API}/ai/kill-switch`);
+      const d = await r.json();
+      setKillSwitch(d.enabled);
+    } catch {}
+  };
+
+  useEffect(() => { fetchApprovals(); fetchKillSwitch(); }, []);
+
+  const handleApprove = async (id: string) => {
+    await fetch(`${API}/ai/approve/${id}`, { method: "POST" });
+    fetchApprovals();
+  };
+
+  const handleReject = async (id: string) => {
+    await fetch(`${API}/ai/reject/${id}`, { method: "POST" });
+    fetchApprovals();
+  };
+
+  const toggleKillSwitch = async () => {
+    const next = !killSwitch;
+    await fetch(`${API}/ai/kill-switch`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: next }) });
+    setKillSwitch(next);
+  };
+
+  const filtered = filter === "all" ? approvals : approvals.filter(a => a.status === filter);
+  const pendingCount = approvals.filter(a => a.status === "pending").length;
+
+  const riskBadge = (risk: string) => {
+    const map: Record<string, { bg: string; text: string; label: string }> = {
+      low: { bg: "bg-emerald-500/10", text: "text-emerald-400", label: isRTL ? "آمن" : "Safe" },
+      medium: { bg: "bg-amber-500/10", text: "text-amber-400", label: isRTL ? "متوسط" : "Medium" },
+      high: { bg: "bg-orange-500/10", text: "text-orange-400", label: isRTL ? "عالي" : "High" },
+      critical: { bg: "bg-red-500/10", text: "text-red-400", label: isRTL ? "حرج" : "Critical" },
+    };
+    const s = map[risk] || map.medium;
+    return <span className={`text-[9px] px-1.5 py-0.5 rounded ${s.bg} ${s.text}`}>{s.label}</span>;
+  };
+
+  const statusBadge = (status: string) => {
+    const map: Record<string, { bg: string; text: string; label: string }> = {
+      pending: { bg: "bg-yellow-500/10", text: "text-yellow-400", label: isRTL ? "في الانتظار" : "Pending" },
+      approved: { bg: "bg-emerald-500/10", text: "text-emerald-400", label: isRTL ? "تمت الموافقة" : "Approved" },
+      rejected: { bg: "bg-red-500/10", text: "text-red-400", label: isRTL ? "مرفوض" : "Rejected" },
+    };
+    const s = map[status] || map.pending;
+    return <span className={`text-[10px] px-2 py-0.5 rounded ${s.bg} ${s.text}`}>{s.label}</span>;
+  };
+
+  return (
+    <div className="max-w-4xl">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <h3 className="text-sm font-medium">{isRTL ? "طلبات الموافقة" : "Approval Requests"}</h3>
+          {pendingCount > 0 && <span className="bg-red-500/20 text-red-400 text-[10px] px-2 py-0.5 rounded-full">{pendingCount} {isRTL ? "في الانتظار" : "pending"}</span>}
+        </div>
+        <div className="flex items-center gap-3">
+          <button onClick={toggleKillSwitch} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[11px] border transition-colors ${killSwitch ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-red-500/10 text-red-400 border-red-500/20"}`}>
+            {killSwitch ? <ShieldCheck className="w-3.5 h-3.5" /> : <ShieldAlert className="w-3.5 h-3.5" />}
+            {killSwitch ? (isRTL ? "النظام مفعّل" : "System ON") : (isRTL ? "النظام متوقف" : "System OFF")}
+          </button>
+          <button onClick={fetchApprovals} className="p-1.5 hover:bg-white/5 rounded transition-colors"><RefreshCw className="w-4 h-4 text-[#8b949e]" /></button>
+        </div>
+      </div>
+
+      <div className="flex gap-2 mb-4">
+        {(["all", "pending", "approved", "rejected"] as const).map(f => (
+          <button key={f} onClick={() => setFilter(f)} className={`px-3 py-1.5 rounded-lg text-[11px] transition-colors ${filter === f ? "bg-[#7c3aed]/15 text-[#7c3aed] border border-[#7c3aed]/30" : "bg-[#0d1117] text-[#8b949e] border border-white/7"}`}>
+            {f === "all" ? (isRTL ? "الكل" : "All") : f === "pending" ? (isRTL ? "في الانتظار" : "Pending") : f === "approved" ? (isRTL ? "موافق عليها" : "Approved") : (isRTL ? "مرفوضة" : "Rejected")}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-12"><RefreshCw className="w-6 h-6 animate-spin text-[#7c3aed]" /></div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-12 text-[#8b949e] text-sm">{isRTL ? "لا توجد طلبات" : "No requests"}</div>
+      ) : (
+        <div className="space-y-2">
+          {filtered.map((a: any) => (
+            <div key={a.id} className={`rounded-xl border p-4 transition-colors ${a.status === "pending" ? "bg-yellow-500/5 border-yellow-500/20" : "bg-[#161b22] border-white/7"}`}>
+              <div className="flex items-center gap-2 mb-2">
+                <Terminal className="w-4 h-4 text-[#7c3aed]" />
+                <span className="text-[12px] font-mono font-medium">{a.tool}</span>
+                {riskBadge(a.risk)}
+                {statusBadge(a.status)}
+                <span className="text-[10px] text-[#8b949e] ml-auto">{new Date(a.createdAt).toLocaleString("ar-SA")}</span>
+              </div>
+              <div className="text-[11px] text-[#8b949e] mb-2 font-mono bg-[#0d1117] rounded-lg px-3 py-2 max-h-20 overflow-auto">
+                {JSON.stringify(a.input, null, 1)?.slice(0, 300)}
+              </div>
+              {a.explanation && <p className="text-[11px] text-[#8b949e] mb-2">{a.explanation}</p>}
+              {a.status === "pending" && (
+                <div className="flex gap-2 mt-2">
+                  <button onClick={() => handleApprove(a.id)} className="flex items-center gap-1.5 px-4 py-1.5 bg-emerald-500/15 text-emerald-400 rounded-lg text-[11px] hover:bg-emerald-500/25 transition-colors border border-emerald-500/20">
+                    <CheckCircle className="w-3.5 h-3.5" />{isRTL ? "موافق" : "Approve"}
+                  </button>
+                  <button onClick={() => handleReject(a.id)} className="flex items-center gap-1.5 px-4 py-1.5 bg-red-500/15 text-red-400 rounded-lg text-[11px] hover:bg-red-500/25 transition-colors border border-red-500/20">
+                    <XCircle className="w-3.5 h-3.5" />{isRTL ? "رفض" : "Reject"}
+                  </button>
+                </div>
+              )}
+              {a.status === "approved" && a.executionResult && (
+                <div className="mt-2 text-[10px] text-emerald-400 bg-emerald-500/5 rounded-lg px-3 py-2 font-mono max-h-20 overflow-auto">
+                  {JSON.stringify(a.executionResult)?.slice(0, 300)}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AuditLogTab({ isRTL }: { isRTL: boolean }) {
+  const [logs, setLogs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch(`${API}/ai/audit-logs?limit=200`);
+        const d = await r.json();
+        setLogs(d.logs || []);
+      } catch {} finally { setLoading(false); }
+    })();
+  }, []);
+
+  const actionColor = (action: string) => {
+    if (action.includes("blocked")) return "text-red-400";
+    if (action.includes("rejected")) return "text-orange-400";
+    if (action.includes("approved") || action === "tool_executed") return "text-emerald-400";
+    if (action.includes("pending")) return "text-yellow-400";
+    return "text-[#8b949e]";
+  };
+
+  return (
+    <div className="max-w-4xl">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-medium">{isRTL ? "سجل التدقيق الأمني" : "Security Audit Log"}</h3>
+        <span className="text-[10px] text-[#8b949e]">{logs.length} {isRTL ? "سجل" : "entries"}</span>
+      </div>
+      {loading ? (
+        <div className="flex justify-center py-12"><RefreshCw className="w-6 h-6 animate-spin text-[#7c3aed]" /></div>
+      ) : logs.length === 0 ? (
+        <div className="text-center py-12 text-[#8b949e] text-sm">{isRTL ? "لا توجد سجلات" : "No audit logs"}</div>
+      ) : (
+        <div className="space-y-1">
+          {logs.map((log: any) => (
+            <div key={log.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#161b22] border border-white/5 text-[11px]">
+              <span className="text-[9px] text-[#8b949e] w-[140px] flex-shrink-0">{new Date(log.createdAt).toLocaleString("ar-SA")}</span>
+              <span className="font-mono text-[#7c3aed] w-[100px] flex-shrink-0">{log.agentKey}</span>
+              <span className={`font-medium w-[140px] flex-shrink-0 ${actionColor(log.action)}`}>{log.action}</span>
+              <span className="font-mono text-[#8b949e] w-[120px] flex-shrink-0">{log.tool || "-"}</span>
+              <span className="text-[9px] text-[#8b949e] flex-1 truncate">{log.input ? JSON.stringify(log.input).slice(0, 80) : ""}</span>
+              {log.durationMs && <span className="text-[9px] text-[#8b949e]">{log.durationMs}ms</span>}
+            </div>
+          ))}
         </div>
       )}
     </div>

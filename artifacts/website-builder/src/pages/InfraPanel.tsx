@@ -984,6 +984,15 @@ export default function InfraPanel() {
               setMessages(prev => [...prev, { id: crypto.randomUUID(), role: "status", content: event.message || event.messageEn, timestamp: new Date() }]);
               scrollToBottomIfNeeded();
             }
+            else if (event.type === "approval_request") {
+              setMessages(prev => [...prev, {
+                id: crypto.randomUUID(),
+                role: "approval",
+                content: JSON.stringify(event),
+                timestamp: new Date(),
+              } as any]);
+              scrollToBottomIfNeeded();
+            }
             else if (event.type === "done") { streamMeta = { tokensUsed: event.tokensUsed, cost: event.cost, model: event.model, models: event.models }; }
             else if (event.type === "error") { streamedContent += event.message; typewriterFlush(); }
           } catch {}
@@ -1188,6 +1197,44 @@ export default function InfraPanel() {
                       <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-[#161b22] border border-[#30363d]">
                         <div className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse" />
                         <span className="text-[11px] text-[#8b949e]">{msg.content}</span>
+                      </div>
+                    </div>
+                  );
+                }
+                if ((msg as any).role === "approval") {
+                  let data: any = {};
+                  try { data = JSON.parse(msg.content); } catch {}
+                  const riskAr: Record<string, string> = { low: "منخفضة", medium: "متوسطة", high: "عالية", critical: "حرجة" };
+                  const catAr: Record<string, string> = { files: "ملفات", database: "قاعدة بيانات", system: "نظام", deploy: "نشر", security: "أمان" };
+                  const handleApproval = async (approve: boolean) => {
+                    try {
+                      await fetch(`/api/ai/${approve ? "approve" : "reject"}/${data.id}`, { method: "POST" });
+                      setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, content: JSON.stringify({ ...data, decided: approve ? "approved" : "rejected" }) } : m));
+                    } catch {}
+                  };
+                  return (
+                    <div key={msg.id} className="py-2">
+                      <div className="rounded-xl border-2 border-red-500/30 bg-red-500/5 p-4 max-w-lg">
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                          <span className="text-[13px] font-bold text-red-400">طلب موافقة</span>
+                        </div>
+                        <div className="space-y-1.5 text-[12px]">
+                          <div><span className="text-[#8b949e]">العملية:</span> <span className="text-white font-mono">{data.tool}</span></div>
+                          <div><span className="text-[#8b949e]">النوع:</span> <span className="text-white">{catAr[data.category] || data.category}</span></div>
+                          <div><span className="text-[#8b949e]">الخطورة:</span> <span className={`font-bold ${data.risk === "critical" ? "text-red-400" : data.risk === "high" ? "text-orange-400" : "text-amber-400"}`}>{riskAr[data.risk] || data.risk}</span></div>
+                          {data.input && <div className="mt-2 font-mono text-[10px] text-[#8b949e] bg-[#0d1117] rounded-lg px-3 py-2 max-h-16 overflow-auto">{JSON.stringify(data.input).slice(0, 200)}</div>}
+                        </div>
+                        {data.decided ? (
+                          <div className={`mt-3 text-[12px] font-bold ${data.decided === "approved" ? "text-emerald-400" : "text-red-400"}`}>
+                            {data.decided === "approved" ? "تمت الموافقة ✅" : "تم الرفض ❌"}
+                          </div>
+                        ) : (
+                          <div className="flex gap-2 mt-3">
+                            <button onClick={() => handleApproval(true)} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-500/15 text-emerald-400 rounded-lg text-[12px] hover:bg-emerald-500/25 transition-colors border border-emerald-500/20 font-medium">موافق</button>
+                            <button onClick={() => handleApproval(false)} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-red-500/15 text-red-400 rounded-lg text-[12px] hover:bg-red-500/25 transition-colors border border-red-500/20 font-medium">رفض</button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   );

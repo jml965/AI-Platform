@@ -1,0 +1,234 @@
+المطلوب: ترقية نظام الوكلاء الحالي إلى وضع إنتاجي آمن (Controlled AI Runtime)
+
+الأهداف:
+
+* تطبيق نموذج: AI مقيّد → يقترح → يطلب موافقة بالعربية → ينفّذ
+* منع أي تنفيذ مباشر للعمليات الحساسة
+* إضافة طبقة Approval + Sandbox + DB Control + Logs
+
+========================================
+
+1. Approval Engine (إجباري)
+   ========================================
+
+إنشاء جدول في قاعدة البيانات:
+
+CREATE TABLE ai_approvals (
+id UUID PRIMARY KEY,
+tool TEXT,
+input JSONB,
+explanation TEXT,
+risk TEXT,
+status TEXT DEFAULT 'pending', -- pending / approved / rejected
+created_at TIMESTAMP DEFAULT NOW(),
+decided_at TIMESTAMP
+);
+
+إنشاء API:
+
+POST /api/ai/approve/:id
+POST /api/ai/reject/:id
+
+تعديل orchestrator (infra.ts):
+
+IF tool IN [
+db_write, db_admin, delete_file,
+run_command, exec_command,
+install_package, set_env,
+git_push, trigger_deploy
+]
+THEN:
+
+* لا تنفّذ
+* أنشئ سجل ai_approvals
+* أعد رسالة "AWAITING_APPROVAL"
+
+عند الموافقة:
+
+* نفّذ الأداة
+* حدّث status = approved
+
+========================================
+2) صيغة طلب الموافقة (عربي إلزامي)
+==================================
+
+أي طلب موافقة يجب أن يكون بهذا الشكل:
+
+🔴 طلب موافقة
+
+العملية: {tool}
+النوع: {files / db / system / deploy}
+الخطورة: {low / medium / high / critical}
+
+الشرح:
+{شرح مبسط بالعربي}
+
+التأثير:
+{ماذا سيتغير}
+
+إمكانية التراجع:
+{نعم / لا}
+
+الخيارات:
+
+* موافق
+* تعديل
+* إلغاء
+
+========================================
+3) Sandbox Execution
+====================
+
+أي أداة خطرة لا تعمل على السيرفر مباشرة.
+
+إنشاء:
+
+* /tmp/ai-workspaces/{sessionId}
+
+تشغيل:
+
+* أوامر shell داخل هذا المجلد فقط
+* منع الوصول للجذر /
+* منع الوصول إلى ENV الحقيقي
+
+(يفضل container إن أمكن، وإن لم يكن فاعزل المسارات)
+
+========================================
+4) Database Control (مهم جدًا)
+==============================
+
+إلغاء أي SQL مباشر من AI.
+
+إنشاء طبقة DB API:
+
+* db_read(query محدود SELECT فقط)
+* db_write(operation محدد مسبقًا)
+
+ممنوع:
+
+* DROP
+* ALTER
+* RAW SQL
+
+db_write لا ينفذ إلا بعد موافقة.
+
+========================================
+5) Tool Registry + Risk Levels
+==============================
+
+إنشاء تعريف مركزي:
+
+const TOOL_CONFIG = {
+read_file: { risk: "low" },
+write_file: { risk: "medium" },
+delete_file: { risk: "high" },
+db_read: { risk: "low" },
+db_write: { risk: "high" },
+run_command: { risk: "critical" },
+install_package: { risk: "high" },
+trigger_deploy: { risk: "critical" }
+};
+
+أي tool:
+
+* يُفلتر حسب permissions
+* يُوقف إذا risk عالي بدون approval
+
+========================================
+6) Audit Logs (إجباري)
+======================
+
+إنشاء جدول:
+
+CREATE TABLE ai_logs (
+id UUID,
+action TEXT,
+tool TEXT,
+input JSONB,
+result JSONB,
+created_at TIMESTAMP DEFAULT NOW()
+);
+
+تسجيل:
+
+* كل طلب
+* كل أداة
+* كل نتيجة
+
+========================================
+7) Kill Switch
+==============
+
+إضافة flag في DB:
+
+ai_system_enabled BOOLEAN
+
+إذا false:
+
+* أوقف كل الوكلاء فورًا
+
+========================================
+8) Backup قبل العمليات الكبيرة
+==============================
+
+قبل:
+
+* db_write
+* delete_file
+* deploy
+
+نفّذ:
+
+* snapshot / backup
+
+========================================
+9) Staging Environment
+======================
+
+أي عملية تعديل:
+
+* تُنفذ أولاً على staging
+* production فقط بعد موافقة
+
+========================================
+10) UI Integration
+==================
+
+في AgentManagement:
+
+* تبويب "الموافقات"
+* عرض العمليات pending
+* أزرار:
+
+  * موافق
+  * رفض
+
+في InfraPanel:
+
+* عرض طلب الموافقة بالعربية
+* انتظار رد المستخدم
+
+========================================
+مخرجات مطلوبة:
+==============
+
+1. عرض الملفات التي تم تعديلها
+2. عرض الكود قبل وبعد لكل جزء مهم
+3. شرح مختصر (سطرين لكل نقطة)
+4. تشغيل النظام والتأكد:
+
+   * لا يوجد تنفيذ بدون approval
+   * الصلاحيات تعمل فعلاً
+   * sandbox فعال
+   * DB آمنة
+
+========================================
+مهم جدًا:
+=========
+
+* لا تكتب شرح نظري
+* نفّذ التعديلات فعليًا في الكود
+* تأكد أن النظام يعمل بعد التعديل
+* أي ميزة غير قابلة للتنفيذ لا تضفها
+
+ابدأ التنفيذ الآن.

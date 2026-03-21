@@ -1,6 +1,6 @@
 import { getAnthropicClient, getOpenAIClient, getGoogleClient } from "./ai-clients";
 import { db } from "@workspace/db";
-import { agentConfigsTable, projectFilesTable, agentLogsTable } from "@workspace/db/schema";
+import { agentConfigsTable, projectFilesTable, agentLogsTable, aiSystemSettingsTable } from "@workspace/db/schema";
 import { eq, sql } from "drizzle-orm";
 import type { AgentConfig } from "@workspace/db/schema";
 import * as fs from "fs";
@@ -1285,13 +1285,31 @@ function findWorkspaceRoot(): string {
 const PROJECT_ROOT = findWorkspaceRoot();
 
 let _infraAccessEnabled = true;
+let _killSwitchLoaded = false;
+
+async function loadKillSwitchFromDB() {
+  if (_killSwitchLoaded) return;
+  try {
+    const row = await db.select().from(aiSystemSettingsTable).where(eq(aiSystemSettingsTable.key, "infra_access_enabled")).limit(1);
+    if (row.length > 0) _infraAccessEnabled = row[0].value === true;
+    _killSwitchLoaded = true;
+  } catch {}
+}
+
+loadKillSwitchFromDB();
 
 export function getInfraAccessEnabled(): boolean {
   return _infraAccessEnabled;
 }
 
-export function setInfraAccessEnabled(enabled: boolean): void {
+export async function setInfraAccessEnabled(enabled: boolean): Promise<void> {
   _infraAccessEnabled = enabled;
+  try {
+    await db.insert(aiSystemSettingsTable).values({ key: "infra_access_enabled", value: enabled, updatedAt: new Date() })
+      .onConflictDoUpdate({ target: aiSystemSettingsTable.key, set: { value: enabled, updatedAt: new Date() } });
+  } catch (e) {
+    console.error("[KillSwitch] Failed to persist to DB:", e);
+  }
 }
 
 export async function executeInfraTool(toolName: string, input: any, callerRole?: string): Promise<string> {
