@@ -625,6 +625,48 @@ seedInfraAgents();
 
 const infraSessions = new Map<string, { role: "user" | "assistant"; content: string }[]>();
 
+router.get("/infra/system-defaults", requireInfraAdmin, async (_req, res) => {
+  try {
+    const { SYSTEM_DEFAULTS } = await import("../config/system-defaults");
+    res.json({ success: true, defaults: SYSTEM_DEFAULTS });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post("/infra/reset-defaults", requireInfraAdmin, async (_req, res) => {
+  try {
+    const { SYSTEM_DEFAULTS } = await import("../config/system-defaults");
+    for (const agent of DEFAULT_INFRA_AGENTS) {
+      await db.update(agentConfigsTable).set({
+        agentLayer: "infra",
+        displayNameEn: agent.displayNameEn,
+        displayNameAr: agent.displayNameAr,
+        description: agent.description,
+        enabled: true,
+        primaryModel: agent.primaryModel,
+        systemPrompt: agent.systemPrompt,
+        instructions: agent.instructions,
+        permissions: agent.permissions,
+        pipelineOrder: agent.pipelineOrder,
+        receivesFrom: agent.receivesFrom,
+        sendsTo: agent.sendsTo,
+        roleOnReceive: agent.roleOnReceive,
+        roleOnSend: agent.roleOnSend,
+        tokenLimit: agent.tokenLimit,
+        batchSize: agent.batchSize,
+        creativity: agent.creativity,
+        sourceFiles: agent.sourceFiles,
+      }).where(eq(agentConfigsTable.agentKey, agent.agentKey));
+    }
+    console.log("[Infra] System reset to defaults v" + SYSTEM_DEFAULTS.version);
+    res.json({ success: true, message: "تم إعادة النظام للإعدادات الافتراضية", version: SYSTEM_DEFAULTS.version });
+  } catch (err: any) {
+    console.error("[Infra] Reset defaults error:", err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 router.get("/infra/access-status", requireInfraAdmin, (_req, res) => {
   res.json({ enabled: getInfraAccessEnabled() });
 });
