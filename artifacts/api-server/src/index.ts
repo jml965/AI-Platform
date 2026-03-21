@@ -1,3 +1,11 @@
+process.on("uncaughtException", (err) => {
+  if (err.message?.includes("before initialization")) {
+    console.error("[TDZ ERROR]", err.message, err.stack?.split("\n").slice(0, 5).join("\n"));
+  } else {
+    console.error("[UNCAUGHT]", err.message);
+  }
+});
+
 import { createServer } from "http";
 import app from "./app";
 import { seedRolesAndPermissions } from "./lib/seedRoles";

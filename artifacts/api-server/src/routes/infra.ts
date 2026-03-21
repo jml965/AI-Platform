@@ -1048,6 +1048,8 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
       const MAX_DOM_BLOCKS = 3;
       let searchWithNoResults = 0;
 
+      const userMsg = typeof message === "string" ? message : "";
+
       const decisionState = {
         domTextDetected: false,
         domText: null as string | null,
@@ -1084,7 +1086,6 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
         /النوع:\s*<\w+>/,
         /العنصر المحدد/,
       ];
-      const userMsg = typeof message === "string" ? message : "";
       const hasUserDOMInfo = userDOMPatterns.some(p => p.test(userMsg));
       if (hasUserDOMInfo) {
         hasDOMInspection = true;
