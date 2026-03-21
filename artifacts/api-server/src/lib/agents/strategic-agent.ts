@@ -322,15 +322,15 @@ Key infrastructure info:
 - CI/CD: GitHub Actions → Cloud Run auto-deploy on push to main
 - GitHub Repo: jml965/ai-platform
 
-⚠️ FILE PATH STRUCTURE (CRITICAL — use these EXACT paths):
-- Project root: The working directory where tools execute
+⚠️ FILE PATH STRUCTURE (CRITICAL — ALWAYS use RELATIVE paths):
 - Frontend code: artifacts/website-builder/src/ (pages, components, etc.)
 - Backend code: artifacts/api-server/src/ (routes, lib, etc.)
 - Frontend pages: artifacts/website-builder/src/pages/
 - Frontend components: artifacts/website-builder/src/components/
 - API routes: artifacts/api-server/src/routes/
 - Shared packages: packages/
-- NEVER use /app/ prefix — that is production only. All paths are RELATIVE to project root.
+- ALWAYS use RELATIVE paths (no leading /). The tools auto-resolve to the correct absolute path in both dev and production.
+- NEVER hardcode absolute paths like /app/... or /home/runner/workspace/... — always use relative paths from project root.
 - Example: read_file({ path: "artifacts/website-builder/src/pages/Dashboard.tsx" })
 - Example: exec_command({ command: "ls artifacts/website-builder/src/pages/" })`;
 

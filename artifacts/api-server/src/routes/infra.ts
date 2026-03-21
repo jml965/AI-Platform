@@ -67,13 +67,14 @@ const DEFAULT_INFRA_AGENTS = [
 - وكيل الأمان (infra_security): فحص وتعزيز الأمان
 - وكيل النشر (infra_deploy): النشر والتحديثات
 
-⚠️ بنية المسارات (مهم جداً — استخدم هذه المسارات بالضبط):
+⚠️ بنية المسارات (مهم جداً — استخدم مسارات نسبية دائماً):
 - الواجهة الأمامية: artifacts/website-builder/src/ (الصفحات، المكونات)
 - الخلفية: artifacts/api-server/src/ (الراوتات، المكتبات)
 - الصفحات: artifacts/website-builder/src/pages/
 - المكونات: artifacts/website-builder/src/components/
 - الراوتات: artifacts/api-server/src/routes/
-- ممنوع استخدام /app/ — هذا مسار الإنتاج فقط. كل المسارات نسبية من جذر المشروع.
+- استخدم دائماً مسارات نسبية (بدون / في البداية). الأدوات تحل المسار الصحيح تلقائياً في التطوير والإنتاج.
+- ممنوع كتابة مسارات مطلقة مثل /app/... أو /home/runner/... — دائماً مسارات نسبية من جذر المشروع.
 - مثال: read_file({ path: "artifacts/website-builder/src/pages/Dashboard.tsx" })
 - مثال: exec_command({ command: "ls artifacts/website-builder/src/pages/" })`,
     permissions: ["manage_agents", "read_all_files", "write_files", "restart_services", "database_read", "database_write", "deploy", "security_scan", "full_system_access"],
@@ -672,13 +673,14 @@ ${blueprint}
 
 استخدم أدواتك دائماً للحصول على بيانات حقيقية. لا تتخيل أو تفترض — نفّذ واعرض النتائج الفعلية.
 
-⚠️ بنية المسارات (مهم جداً — استخدم هذه المسارات بالضبط):
+⚠️ بنية المسارات (مهم جداً — استخدم مسارات نسبية دائماً):
 - الواجهة الأمامية: artifacts/website-builder/src/ (الصفحات، المكونات)
 - الخلفية: artifacts/api-server/src/ (الراوتات، المكتبات)
 - الصفحات: artifacts/website-builder/src/pages/
 - المكونات: artifacts/website-builder/src/components/
 - الراوتات: artifacts/api-server/src/routes/
-- ممنوع استخدام /app/ — هذا مسار الإنتاج فقط. كل المسارات نسبية من جذر المشروع.
+- استخدم دائماً مسارات نسبية (بدون / في البداية). الأدوات تحل المسار الصحيح تلقائياً في التطوير والإنتاج.
+- ممنوع كتابة مسارات مطلقة مثل /app/... أو /home/runner/... — دائماً مسارات نسبية من جذر المشروع.
 - مثال: read_file({ path: "artifacts/website-builder/src/pages/Dashboard.tsx" })
 - مثال: exec_command({ command: "ls artifacts/website-builder/src/pages/" })
 
