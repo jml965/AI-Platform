@@ -1562,11 +1562,9 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
                   const PROJECT_ROOT = process.cwd().replace(/\/artifacts\/api-server$/, "");
                   const resolvedPath = path.resolve(PROJECT_ROOT, extractedFile);
                   console.log(`[Agent] 🔥 DIRECT_EDIT: cwd=${process.cwd()}, PROJECT_ROOT=${PROJECT_ROOT}, resolvedPath=${resolvedPath}`);
-                  res.write(`data: ${JSON.stringify({ type: "chunk", text: `📂 ${resolvedPath}\n` })}\n\n`);
 
                   const fileContent = fs.readFileSync(resolvedPath, "utf-8");
                   console.log(`[Agent] 🔥 DIRECT_EDIT: file read OK (${fileContent.length} chars)`);
-                  res.write(`data: ${JSON.stringify({ type: "chunk", text: `📖 قراءة الملف (${fileContent.length} حرف)\n` })}\n\n`);
 
                   if (!fileContent.includes(directOldText!)) {
                     throw new Error(`old_text "${directOldText!.slice(0, 40)}" not found in file`);
@@ -1575,11 +1573,9 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
                   const newContent = fileContent.replace(directOldText!, directNewText!);
                   fs.writeFileSync(resolvedPath, newContent, "utf-8");
                   console.log(`[Agent] 🔥 DIRECT_EDIT: file written`);
-                  res.write(`data: ${JSON.stringify({ type: "chunk", text: `📝 تم كتابة الملف\n` })}\n\n`);
 
                   const ghResult = await pushFileToGitHub(extractedFile, newContent, `Direct edit: ${directOldText!.slice(0, 30)} → ${directNewText!.slice(0, 30)}`);
                   console.log(`[Agent] 🔥 DIRECT_EDIT: github=${ghResult.success}`);
-                  res.write(`data: ${JSON.stringify({ type: "chunk", text: `📦 GitHub: ${ghResult.success ? "✅" : "❌ " + (ghResult.error || "").slice(0, 80)}\n` })}\n\n`);
 
                   hasEdited = true;
                   toolActionCount += 2;
