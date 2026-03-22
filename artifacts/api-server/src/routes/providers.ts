@@ -479,7 +479,7 @@ router.put("/providers/:key", requireAdmin, async (req, res) => {
       }
     }
 
-    res.json(updated);
+    res.json(maskProvider(updated));
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
