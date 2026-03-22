@@ -1478,20 +1478,59 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
 
               // ═══════════════════════════════════════
               // 🔥 DIRECT EXECUTION — تنفيذ مباشر بدون Claude
+              // يستخدم AI لفهم نية المستخدم تلقائياً
               // ═══════════════════════════════════════
-              const replacePatterns = [
-                /(?:غير|بدّل|بدل|استبدل|حوّل|حول|غيّر|عدّل|عدل)\s+(?:كلمة\s+)?["""]?(.+?)["""]?\s+(?:في .+?\s+)?(?:من .+?\s+)?(?:الى|إلى|ل|لـ|بـ|الي)\s+(?:كلمة\s+)?["""]?(.+?)["""]?\s*$/,
-                /(?:غير|بدّل|بدل|استبدل|حوّل|حول|غيّر|عدّل|عدل)\s+(.+?)\s+(?:الى|إلى|الي)\s+(.+?)$/,
-              ];
               let directOldText: string | null = null;
               let directNewText: string | null = null;
-              for (const pat of replacePatterns) {
-                const m = userMsg.match(pat);
-                if (m) {
-                  directOldText = m[1].trim().replace(/^["'"""]+|["'"""]+$/g, "");
-                  directNewText = m[2].trim().replace(/^["'"""]+|["'"""]+$/g, "");
-                  break;
+
+              try {
+                const searchResultTexts: string[] = [];
+                try {
+                  const parsed = JSON.parse(result);
+                  if (parsed.results) {
+                    for (const r of parsed.results) {
+                      const quotedMatch = r.match(/"([^"]+)"/);
+                      if (quotedMatch) searchResultTexts.push(quotedMatch[1]);
+                    }
+                  }
+                } catch {}
+
+                const intentPrompt = `أنت محلل نوايا. المستخدم يريد تعديل نص في موقعه.
+
+رسالة المستخدم: "${userMsg}"
+
+النصوص الموجودة في الكود حالياً:
+${searchResultTexts.map(t => `- "${t}"`).join("\n")}
+
+هل المستخدم يريد استبدال نص بنص آخر؟
+
+إذا نعم، أجب بـ JSON فقط:
+{"old": "النص القديم", "new": "النص الجديد"}
+
+إذا لا (الطلب ليس استبدال بسيط)، أجب:
+{"old": null, "new": null}
+
+أجب بـ JSON فقط بدون أي شرح.`;
+
+                const intentRes = await client.messages.create({
+                  model: "claude-sonnet-4-20250514",
+                  max_tokens: 150,
+                  temperature: 0,
+                  messages: [{ role: "user", content: intentPrompt }],
+                });
+
+                const intentText = intentRes.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
+                const intentMatch = intentText.match(/\{[\s\S]*?\}/);
+                if (intentMatch) {
+                  const intent = JSON.parse(intentMatch[0]);
+                  if (intent.old && intent.new) {
+                    directOldText = intent.old;
+                    directNewText = intent.new;
+                    console.log(`[Agent] 🧠 AI_INTENT: "${directOldText}" → "${directNewText}" (cost: ~${intentRes.usage?.input_tokens || 0}+${intentRes.usage?.output_tokens || 0} tokens)`);
+                  }
                 }
+              } catch (intentErr: any) {
+                console.log(`[Agent] AI_INTENT failed, skipping direct edit: ${intentErr?.message?.slice(0, 100)}`);
               }
 
               if (directOldText && directNewText && extractedFile !== "unknown") {
