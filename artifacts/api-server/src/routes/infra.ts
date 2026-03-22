@@ -1483,6 +1483,93 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
           if (tool.name === "search_text") {
             const noResultIndicators = ["لم يتم", "no results", "not found", "0 matches", "لا يوجد", "no match"];
             const isActuallyEmpty = !result || result.trim().length < 5 || noResultIndicators.some(ind => (result || "").toLowerCase().includes(ind));
+
+            if (isActuallyEmpty) {
+              const replacePatterns = [
+                /(?:غي[ّر]|بد[ّل]|استبدل|حو[ّل])\s+(?:كلمة\s+|نص\s+|عبارة\s+)?["«]?(.+?)["»]?\s+(?:في\s+.+?\s+)?(?:ال[ىي]|بـ?|لـ?|يصير|تصير|يكون)\s+["«]?(.+?)["»]?\s*$/i,
+                /(?:غي[ّر]|بد[ّل]|استبدل|حو[ّل])\s+(?:كلمة\s+|نص\s+|عبارة\s+)?["«]?(.+?)["»]?\s+(?:ال[ىي]|بـ?|لـ?|يصير|تصير|يكون)\s+["«]?(.+?)["»]?\s*$/i,
+                /(?:خلي|اجعل|سوي)\s+["«]?(.+?)["»]?\s+(?:يقول|تقول|يكتب|تكتب|يصير|تصير)\s+["«]?(.+?)["»]?\s*$/i,
+                /["«](.+?)["»]\s*(?:→|->|=>|الى|إلى)\s*["«](.+?)["»]/i,
+              ];
+              let dbOldText: string | null = null;
+              let dbNewText: string | null = null;
+              for (const pat of replacePatterns) {
+                const m = userMsg.match(pat);
+                if (m && m[1]?.trim() && m[2]?.trim()) {
+                  dbOldText = m[1].trim();
+                  dbNewText = m[2].trim();
+                  break;
+                }
+              }
+
+              if (dbOldText && dbNewText) {
+                const detectedLang = /[\u0600-\u06FF]/.test(dbOldText) ? "ar" : "en";
+                try {
+                  const existingOverrides = await db.select().from(uiTextOverridesTable).where(eq(uiTextOverridesTable.lang, detectedLang));
+                  const matchedOverride = existingOverrides.find((o: any) => o.value === dbOldText);
+
+                  if (matchedOverride) {
+                    console.log(`[Agent] 🔥 DB_OVERRIDE_EDIT: found key="${matchedOverride.key}" value="${matchedOverride.value}" → "${dbNewText}"`);
+                    res.write(`data: ${JSON.stringify({ type: "chunk", text: `✅ فهمت: "${dbOldText}" → "${dbNewText}"\n` })}\n\n`);
+                    res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n⏳ جاري التعديل...\n` })}\n\n`);
+
+                    await db.update(uiTextOverridesTable)
+                      .set({ value: dbNewText, updatedAt: new Date() })
+                      .where(eq(uiTextOverridesTable.id, matchedOverride.id));
+
+                    const successMsg = `✅ تم التعديل فوراً!\n\n🔑 المفتاح: ${matchedOverride.key}\n✏️ من: "${dbOldText}"\n➡️ إلى: "${dbNewText}"\n\n🔄 أعد تحميل الصفحة لترى التغيير.`;
+                    res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n${successMsg}\n` })}\n\n`);
+                    fullReply += `\n\n${successMsg}\n`;
+
+                    try { await logAudit(agentKey, "db_override_edit", "edit_component", { key: matchedOverride.key, old: dbOldText, new: dbNewText, lang: detectedLang }, { method: "db_override_update" }, "medium", "success"); } catch {}
+
+                    res.write(`data: ${JSON.stringify({ type: "done", tokensUsed: 0, cost: "0.000000", model: "direct_engine" })}\n\n`);
+                    try {
+                      await db.insert(messagesTable).values({ conversationId: conv.id, role: "user", content: message });
+                      await db.insert(messagesTable).values({ conversationId: conv.id, role: "assistant", content: successMsg, tokenCount: 0, costUsd: "0" });
+                    } catch {}
+                    res.end();
+                    return;
+                  } else {
+                    const i18nFilePath = path.resolve(PROJECT_ROOT, "artifacts/website-builder/src/lib/i18n.tsx");
+                    const i18nContent = fs.readFileSync(i18nFilePath, "utf-8");
+                    const escapedOld = dbOldText!.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                    const keyRegex = new RegExp(`(\\w+):\\s*["']${escapedOld}["']`);
+                    const i18nRegexMatch = i18nContent.match(keyRegex);
+                    if (i18nRegexMatch) {
+                      const foundKey = i18nRegexMatch[1];
+                      console.log(`[Agent] 🔥 I18N_STATIC_MATCH: key="${foundKey}" value="${dbOldText}" → "${dbNewText}"`);
+                      res.write(`data: ${JSON.stringify({ type: "chunk", text: `✅ فهمت: "${dbOldText}" → "${dbNewText}"\n` })}\n\n`);
+                      res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n⏳ جاري التعديل...\n` })}\n\n`);
+
+                      await db.insert(uiTextOverridesTable)
+                        .values({ key: foundKey, value: dbNewText, lang: detectedLang })
+                        .onConflictDoUpdate({
+                          target: [uiTextOverridesTable.key, uiTextOverridesTable.lang],
+                          set: { value: dbNewText, updatedAt: new Date() },
+                        });
+
+                      const successMsg = `✅ تم التعديل فوراً!\n\n🔑 المفتاح: ${foundKey}\n✏️ من: "${dbOldText}"\n➡️ إلى: "${dbNewText}"\n\n🔄 أعد تحميل الصفحة لترى التغيير.`;
+                      res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n${successMsg}\n` })}\n\n`);
+                      fullReply += `\n\n${successMsg}\n`;
+
+                      try { await logAudit(agentKey, "i18n_static_edit", "edit_component", { key: foundKey, old: dbOldText, new: dbNewText, lang: detectedLang }, { method: "db_override_insert" }, "medium", "success"); } catch {}
+
+                      res.write(`data: ${JSON.stringify({ type: "done", tokensUsed: 0, cost: "0.000000", model: "direct_engine" })}\n\n`);
+                      try {
+                        await db.insert(messagesTable).values({ conversationId: conv.id, role: "user", content: message });
+                        await db.insert(messagesTable).values({ conversationId: conv.id, role: "assistant", content: successMsg, tokenCount: 0, costUsd: "0" });
+                      } catch {}
+                      res.end();
+                      return;
+                    }
+                  }
+                } catch (dbSearchErr: any) {
+                  console.error(`[Agent] DB_OVERRIDE_SEARCH failed: ${dbSearchErr?.message?.slice(0, 200)}`);
+                }
+              }
+            }
+
             const hasFileMatch = !isActuallyEmpty && result && /\.(tsx|jsx|ts|js|css|html|vue|svelte)/.test(result) && result.length > 10;
             if (hasFileMatch && !targetState.found) {
               let extractedFile = "unknown";
