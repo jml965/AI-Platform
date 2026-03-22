@@ -76,9 +76,19 @@ app.use("/api", router);
 
 if (process.env.NODE_ENV === "production") {
   const frontendDist = path.resolve(process.cwd(), "artifacts/website-builder/dist");
+  const frontendDistPublic = path.resolve(process.cwd(), "artifacts/website-builder/dist/public");
+  const fs = require("fs");
+  if (fs.existsSync(frontendDistPublic)) {
+    app.use(express.static(frontendDistPublic));
+  }
   app.use(express.static(frontendDist));
   app.get("/{*splat}", (req, res) => {
-    res.sendFile(path.join(frontendDist, "index.html"));
+    const publicIndex = path.join(frontendDistPublic, "index.html");
+    if (fs.existsSync(publicIndex)) {
+      res.sendFile(publicIndex);
+    } else {
+      res.sendFile(path.join(frontendDist, "index.html"));
+    }
   });
 }
 
