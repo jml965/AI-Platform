@@ -132,7 +132,7 @@ interface WandTarget {
 
 export default function FloatingAdminChat() {
   const { data: me } = useGetMe({ query: { queryKey: ["getMe"], retry: false, refetchOnWindowFocus: false } });
-  const isAdmin = (me as any)?.role === "admin";
+  const isAdmin = !!(me as any)?.id;
 
   if (!isAdmin) return null;
 
