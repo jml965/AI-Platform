@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { agentConfigsTable, aiApprovalsTable, aiAuditLogsTable, aiSystemSettingsTable, usersTable, uiTextOverridesTable, uiStyleOverridesTable } from "@workspace/db/schema";
+import { agentConfigsTable, aiApprovalsTable, aiAuditLogsTable, aiSystemSettingsTable, usersTable, uiTextOverridesTable, uiStyleOverridesTable, uiEditHistoryTable } from "@workspace/db/schema";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
 import { getSystemBlueprint } from "../lib/system-blueprint";
 import { INFRA_TOOLS, executeInfraTool, getInfraAccessEnabled, setInfraAccessEnabled, pushFileToGitHub } from "../lib/agents/strategic-agent";
@@ -52,6 +52,89 @@ const TOOL_RISK_CONFIG: Record<string, { risk: string; category: string; require
   get_project_logs: { risk: "low", category: "monitoring", requiresApproval: false, sandboxed: false },
   list_project_files: { risk: "low", category: "monitoring", requiresApproval: false, sandboxed: false },
 };
+
+async function translateText(text: string, fromLang: "ar" | "en", toLang: "ar" | "en"): Promise<string> {
+  try {
+    const { getAnthropicClient } = await import("../lib/agents/ai-clients");
+    const client = await getAnthropicClient();
+    if (!client) return text;
+    const langNames = { ar: "Arabic", en: "English" };
+    const resp = await client.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 200,
+      messages: [{ role: "user", content: `Translate the following ${langNames[fromLang]} UI text to ${langNames[toLang]}. Return ONLY the translated text, nothing else. Keep it short and suitable for a button/label:\n\n${text}` }],
+    });
+    const block = resp.content[0];
+    if (block.type === "text") return block.text.trim();
+    return text;
+  } catch (e: any) {
+    console.error(`[Translate] Error: ${e?.message?.slice(0, 200)}`);
+    return text;
+  }
+}
+
+async function saveBilingualOverride(key: string, newValue: string, primaryLang: "ar" | "en"): Promise<{ otherLang: string; translatedValue: string }> {
+  const otherLang = primaryLang === "ar" ? "en" : "ar";
+
+  const existingPrimary = await db.select().from(uiTextOverridesTable).where(and(eq(uiTextOverridesTable.key, key), eq(uiTextOverridesTable.lang, primaryLang)));
+  const oldPrimaryValue = existingPrimary.length > 0 ? existingPrimary[0].value : null;
+
+  await db.insert(uiTextOverridesTable)
+    .values({ key, value: newValue, lang: primaryLang })
+    .onConflictDoUpdate({
+      target: [uiTextOverridesTable.key, uiTextOverridesTable.lang],
+      set: { value: newValue, updatedAt: new Date() },
+    });
+
+  await db.insert(uiEditHistoryTable).values({
+    tableName: "ui_text_overrides",
+    recordKey: key,
+    field: "value",
+    oldValue: oldPrimaryValue,
+    newValue: newValue,
+    lang: primaryLang,
+    editedBy: "ai_engine",
+  });
+
+  const translatedValue = await translateText(newValue, primaryLang, otherLang as "ar" | "en");
+
+  const existingOther = await db.select().from(uiTextOverridesTable).where(and(eq(uiTextOverridesTable.key, key), eq(uiTextOverridesTable.lang, otherLang)));
+  const oldOtherValue = existingOther.length > 0 ? existingOther[0].value : null;
+
+  await db.insert(uiTextOverridesTable)
+    .values({ key, value: translatedValue, lang: otherLang })
+    .onConflictDoUpdate({
+      target: [uiTextOverridesTable.key, uiTextOverridesTable.lang],
+      set: { value: translatedValue, updatedAt: new Date() },
+    });
+
+  await db.insert(uiEditHistoryTable).values({
+    tableName: "ui_text_overrides",
+    recordKey: key,
+    field: "value",
+    oldValue: oldOtherValue,
+    newValue: translatedValue,
+    lang: otherLang,
+    editedBy: "ai_engine",
+  });
+
+  console.log(`[Bilingual] key=${key}: ${primaryLang}="${newValue}" → ${otherLang}="${translatedValue}"`);
+  return { otherLang, translatedValue };
+}
+
+async function recordStyleHistory(selector: string, property: string, oldValue: string | null, newValue: string) {
+  try {
+    await db.insert(uiEditHistoryTable).values({
+      tableName: "ui_style_overrides",
+      recordKey: `${selector}::${property}`,
+      field: "value",
+      oldValue,
+      newValue,
+      lang: "*",
+      editedBy: "ai_engine",
+    });
+  } catch {}
+}
 
 function isSafeSQL(query: string): { safe: boolean; reason?: string } {
   const upper = query.toUpperCase().trim();
@@ -700,6 +783,144 @@ router.delete("/ui-styles/:id", async (req, res) => {
   }
 });
 
+router.get("/edit-history", async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 50;
+    const tableName = req.query.table as string;
+    let query = db.select().from(uiEditHistoryTable).orderBy(desc(uiEditHistoryTable.createdAt)).limit(limit);
+    if (tableName) {
+      query = db.select().from(uiEditHistoryTable).where(eq(uiEditHistoryTable.tableName, tableName)).orderBy(desc(uiEditHistoryTable.createdAt)).limit(limit);
+    }
+    const history = await query;
+    res.json({ history });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/edit-history/rollback/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [record] = await db.select().from(uiEditHistoryTable).where(eq(uiEditHistoryTable.id, id));
+    if (!record) return res.status(404).json({ error: "Record not found" });
+
+    if (record.tableName === "ui_text_overrides") {
+      if (record.oldValue === null) {
+        await db.delete(uiTextOverridesTable).where(
+          and(eq(uiTextOverridesTable.key, record.recordKey), eq(uiTextOverridesTable.lang, record.lang || "ar"))
+        );
+      } else {
+        await db.insert(uiTextOverridesTable)
+          .values({ key: record.recordKey, value: record.oldValue, lang: record.lang || "ar" })
+          .onConflictDoUpdate({
+            target: [uiTextOverridesTable.key, uiTextOverridesTable.lang],
+            set: { value: record.oldValue, updatedAt: new Date() },
+          });
+      }
+
+      await db.insert(uiEditHistoryTable).values({
+        tableName: "ui_text_overrides",
+        recordKey: record.recordKey,
+        field: "value",
+        oldValue: record.newValue,
+        newValue: record.oldValue || "(deleted)",
+        lang: record.lang,
+        editedBy: "rollback",
+      });
+    } else if (record.tableName === "ui_style_overrides") {
+      const [selectorPart, propertyPart] = record.recordKey.split("::");
+      if (record.oldValue === null) {
+        await db.delete(uiStyleOverridesTable).where(
+          and(eq(uiStyleOverridesTable.selector, selectorPart), eq(uiStyleOverridesTable.property, propertyPart))
+        );
+      } else {
+        await db.insert(uiStyleOverridesTable)
+          .values({ selector: selectorPart, property: propertyPart, value: record.oldValue })
+          .onConflictDoUpdate({
+            target: [uiStyleOverridesTable.selector, uiStyleOverridesTable.property],
+            set: { value: record.oldValue, updatedAt: new Date() },
+          });
+      }
+
+      await db.insert(uiEditHistoryTable).values({
+        tableName: "ui_style_overrides",
+        recordKey: record.recordKey,
+        field: "value",
+        oldValue: record.newValue,
+        newValue: record.oldValue || "(deleted)",
+        lang: "*",
+        editedBy: "rollback",
+      });
+    }
+
+    res.json({ success: true, rolledBack: { key: record.recordKey, from: record.newValue, to: record.oldValue } });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/edit-history/rollback-to-date", async (req, res) => {
+  try {
+    const { before } = req.body;
+    if (!before) return res.status(400).json({ error: "before date required" });
+    const beforeDate = new Date(before);
+
+    const editsAfter = await db.select().from(uiEditHistoryTable)
+      .where(sql`${uiEditHistoryTable.createdAt} > ${beforeDate}`)
+      .orderBy(desc(uiEditHistoryTable.createdAt));
+
+    let rolledBackCount = 0;
+    for (const record of editsAfter) {
+      if (record.editedBy === "rollback") continue;
+
+      if (record.tableName === "ui_text_overrides") {
+        if (record.oldValue === null) {
+          await db.delete(uiTextOverridesTable).where(
+            and(eq(uiTextOverridesTable.key, record.recordKey), eq(uiTextOverridesTable.lang, record.lang || "ar"))
+          );
+        } else {
+          await db.insert(uiTextOverridesTable)
+            .values({ key: record.recordKey, value: record.oldValue, lang: record.lang || "ar" })
+            .onConflictDoUpdate({
+              target: [uiTextOverridesTable.key, uiTextOverridesTable.lang],
+              set: { value: record.oldValue, updatedAt: new Date() },
+            });
+        }
+        rolledBackCount++;
+      } else if (record.tableName === "ui_style_overrides") {
+        const [selectorPart, propertyPart] = record.recordKey.split("::");
+        if (record.oldValue === null) {
+          await db.delete(uiStyleOverridesTable).where(
+            and(eq(uiStyleOverridesTable.selector, selectorPart), eq(uiStyleOverridesTable.property, propertyPart))
+          );
+        } else {
+          await db.insert(uiStyleOverridesTable)
+            .values({ selector: selectorPart, property: propertyPart, value: record.oldValue })
+            .onConflictDoUpdate({
+              target: [uiStyleOverridesTable.selector, uiStyleOverridesTable.property],
+              set: { value: record.oldValue, updatedAt: new Date() },
+            });
+        }
+        rolledBackCount++;
+      }
+    }
+
+    await db.insert(uiEditHistoryTable).values({
+      tableName: "system",
+      recordKey: "rollback_to_date",
+      field: "bulk",
+      oldValue: null,
+      newValue: `Rolled back ${rolledBackCount} edits before ${before}`,
+      lang: "*",
+      editedBy: "rollback",
+    });
+
+    res.json({ success: true, rolledBackCount, beforeDate: before });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get("/infra/system-defaults", requireInfraAdmin, async (_req, res) => {
   try {
     const { SYSTEM_DEFAULTS } = await import("../config/system-defaults");
@@ -883,6 +1104,28 @@ ${blueprint}
 - الترجمات: artifacts/website-builder/src/lib/i18n.tsx
 - edit_component المسار نسبي لـ website-builder/ (مثلاً: src/lib/i18n.tsx)
 - read_file المسار من جذر المشروع (مثلاً: artifacts/website-builder/src/lib/i18n.tsx)
+
+🔍 تشخيص مشاكل شاشة المعاينة (Preview Diagnostics):
+
+إذا المالك ذكر مشكلة في المعاينة أو شاشة بيضاء أو خطأ في موقع مولّد:
+1. استخدم get_console_errors لجمع الأخطاء من الكونسول
+2. استخدم get_page_structure لفحص بنية الصفحة
+3. استخدم screenshot_page لالتقاط صورة للصفحة
+4. استخدم get_network_requests لفحص طلبات الشبكة الفاشلة
+5. حلل الأخطاء واقترح الحل المناسب — مثلاً:
+   - شاشة بيضاء = خطأ JavaScript أو مكون مفقود
+   - خطأ 404 = مسار أو ملف غير موجود
+   - خطأ CORS = مشكلة في إعدادات الخادم
+   - timeout = مشكلة في الاتصال أو API
+6. إذا قدرت تصلح المشكلة (ملف ناقص، خطأ في الكود) → صلحها مباشرة بـ edit_component
+
+🌍 قاعدة اللغة الثنائية (Bilingual Rule):
+
+أنت تعمل في بيئة ثنائية اللغة (عربي + إنجليزي).
+- المالك يتحدث بالعربي → شاهد الصفحة بالعربي (lang=ar)
+- كل تعديل نص يتم تلقائياً بالعربي والإنجليزي (النظام يترجم تلقائياً)
+- عند استخدام browse_page أو screenshot_page → أرسل lang من context المستخدم
+- لا تحتاج تسأل "أي لغة" — النظام يعرف من الـ context
 
 ⛔ ممنوع ترجع JSON مثل {"decisionType": ...}. المالك يريد تنفيذ.
 
@@ -1578,17 +1821,15 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
                   if (matchedOverride) {
                     console.log(`[Agent] 🔥 DB_OVERRIDE_EDIT: found key="${matchedOverride.key}" value="${matchedOverride.value}" → "${dbNewText}"`);
                     res.write(`data: ${JSON.stringify({ type: "chunk", text: `✅ فهمت: "${dbOldText}" → "${dbNewText}"\n` })}\n\n`);
-                    res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n⏳ جاري التعديل...\n` })}\n\n`);
+                    res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n⏳ جاري التعديل (عربي + إنجليزي)...\n` })}\n\n`);
 
-                    await db.update(uiTextOverridesTable)
-                      .set({ value: dbNewText, updatedAt: new Date() })
-                      .where(eq(uiTextOverridesTable.id, matchedOverride.id));
+                    const { otherLang, translatedValue } = await saveBilingualOverride(matchedOverride.key, dbNewText, detectedLang as "ar" | "en");
 
-                    const successMsg = `✅ تم التعديل فوراً!\n\n🔑 المفتاح: ${matchedOverride.key}\n✏️ من: "${dbOldText}"\n➡️ إلى: "${dbNewText}"\n\n🔄 أعد تحميل الصفحة لترى التغيير.`;
+                    const successMsg = `✅ تم التعديل فوراً!\n\n🔑 المفتاح: ${matchedOverride.key}\n✏️ من: "${dbOldText}"\n➡️ ${detectedLang === "ar" ? "عربي" : "English"}: "${dbNewText}"\n➡️ ${otherLang === "ar" ? "عربي" : "English"}: "${translatedValue}"`;
                     res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n${successMsg}\n` })}\n\n`);
                     fullReply += `\n\n${successMsg}\n`;
 
-                    try { await logAudit(agentKey, "db_override_edit", "edit_component", { key: matchedOverride.key, old: dbOldText, new: dbNewText, lang: detectedLang }, { method: "db_override_update" }, "medium", "success"); } catch {}
+                    try { await logAudit(agentKey, "db_override_edit", "edit_component", { key: matchedOverride.key, old: dbOldText, new: dbNewText, lang: detectedLang, translated: translatedValue, otherLang }, { method: "db_bilingual_update" }, "medium", "success"); } catch {}
 
                     res.write(`data: ${JSON.stringify({ type: "done", tokensUsed: 0, cost: "0.000000", model: "direct_engine" })}\n\n`);
                     try {
@@ -1607,20 +1848,15 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
                       const foundKey = i18nRegexMatch[1];
                       console.log(`[Agent] 🔥 I18N_STATIC_MATCH: key="${foundKey}" value="${dbOldText}" → "${dbNewText}"`);
                       res.write(`data: ${JSON.stringify({ type: "chunk", text: `✅ فهمت: "${dbOldText}" → "${dbNewText}"\n` })}\n\n`);
-                      res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n⏳ جاري التعديل...\n` })}\n\n`);
+                      res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n⏳ جاري التعديل (عربي + إنجليزي)...\n` })}\n\n`);
 
-                      await db.insert(uiTextOverridesTable)
-                        .values({ key: foundKey, value: dbNewText, lang: detectedLang })
-                        .onConflictDoUpdate({
-                          target: [uiTextOverridesTable.key, uiTextOverridesTable.lang],
-                          set: { value: dbNewText, updatedAt: new Date() },
-                        });
+                      const { otherLang: otherLang2, translatedValue: translatedValue2 } = await saveBilingualOverride(foundKey, dbNewText, detectedLang as "ar" | "en");
 
-                      const successMsg = `✅ تم التعديل فوراً!\n\n🔑 المفتاح: ${foundKey}\n✏️ من: "${dbOldText}"\n➡️ إلى: "${dbNewText}"\n\n🔄 أعد تحميل الصفحة لترى التغيير.`;
+                      const successMsg = `✅ تم التعديل فوراً!\n\n🔑 المفتاح: ${foundKey}\n✏️ من: "${dbOldText}"\n➡️ ${detectedLang === "ar" ? "عربي" : "English"}: "${dbNewText}"\n➡️ ${otherLang2 === "ar" ? "عربي" : "English"}: "${translatedValue2}"`;
                       res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n${successMsg}\n` })}\n\n`);
                       fullReply += `\n\n${successMsg}\n`;
 
-                      try { await logAudit(agentKey, "i18n_static_edit", "edit_component", { key: foundKey, old: dbOldText, new: dbNewText, lang: detectedLang }, { method: "db_override_insert" }, "medium", "success"); } catch {}
+                      try { await logAudit(agentKey, "i18n_static_edit", "edit_component", { key: foundKey, old: dbOldText, new: dbNewText, lang: detectedLang, translated: translatedValue2, otherLang: otherLang2 }, { method: "db_bilingual_insert" }, "medium", "success"); } catch {}
 
                       res.write(`data: ${JSON.stringify({ type: "done", tokensUsed: 0, cost: "0.000000", model: "direct_engine" })}\n\n`);
                       try {
@@ -1765,25 +2001,23 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
                   const detectedLang = /[\u0600-\u06FF]/.test(directNewText!) ? "ar" : "en";
 
                   if (i18nKey) {
-                    await db.insert(uiTextOverridesTable)
-                      .values({ key: i18nKey, value: directNewText!, lang: detectedLang })
-                      .onConflictDoUpdate({
-                        target: [uiTextOverridesTable.key, uiTextOverridesTable.lang],
-                        set: { value: directNewText!, updatedAt: new Date() },
-                      });
-                    console.log(`[Agent] 🔥 DIRECT_EDIT: DB updated key=${i18nKey} lang=${detectedLang}`);
+                    res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n⏳ جاري الترجمة التلقائية (عربي + إنجليزي)...\n` })}\n\n`);
+                    const { otherLang: otherLang3, translatedValue: translatedValue3 } = await saveBilingualOverride(i18nKey, directNewText!, detectedLang as "ar" | "en");
+                    console.log(`[Agent] 🔥 DIRECT_EDIT: DB bilingual updated key=${i18nKey} ${detectedLang}="${directNewText}" ${otherLang3}="${translatedValue3}"`);
                   } else {
                     throw new Error(`Could not determine i18n key for "${directOldText!.slice(0, 40)}"`);
                   }
 
                   hasEdited = true;
                   toolActionCount += 2;
-                  const successMsg = `✅ تم التعديل فوراً!\n\n🔑 المفتاح: ${i18nKey}\n✏️ من: "${directOldText}"\n➡️ إلى: "${directNewText}"\n\n🔄 أعد تحميل الصفحة لترى التغيير.`;
+                  const detectedLang3 = detectedLang;
+                  const i18nKey3 = i18nKey;
+                  const successMsg = `✅ تم التعديل فوراً!\n\n🔑 المفتاح: ${i18nKey3}\n✏️ من: "${directOldText}"\n➡️ ${detectedLang3 === "ar" ? "عربي" : "English"}: "${directNewText}"\n➡️ تم ترجمته تلقائياً للغة الأخرى`;
 
                   res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n${successMsg}\n` })}\n\n`);
                   fullReply += `\n\n${successMsg}\n`;
 
-                  try { await logAudit(agentKey, "direct_edit_executed", "edit_component", { key: i18nKey, old: directOldText, new: directNewText, lang: detectedLang }, { method: "db_override" }, "medium", "success"); } catch {}
+                  try { await logAudit(agentKey, "direct_edit_executed", "edit_component", { key: i18nKey3, old: directOldText, new: directNewText, lang: detectedLang3 }, { method: "db_bilingual_override" }, "medium", "success"); } catch {}
 
                   res.write(`data: ${JSON.stringify({ type: "done", tokensUsed: 0, cost: "0.000000", model: "direct_engine" })}\n\n`);
                   try {

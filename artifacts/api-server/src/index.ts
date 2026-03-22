@@ -73,6 +73,24 @@ db.execute(sql`
   console.error("[DB] Failed to create ui_style_overrides:", err.message);
 });
 
+db.execute(sql`
+  CREATE TABLE IF NOT EXISTS ui_edit_history (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    table_name TEXT NOT NULL,
+    record_key TEXT NOT NULL,
+    field TEXT NOT NULL,
+    old_value TEXT,
+    new_value TEXT NOT NULL,
+    lang TEXT DEFAULT 'ar',
+    edited_by TEXT DEFAULT 'ai_engine',
+    created_at TIMESTAMP DEFAULT NOW() NOT NULL
+  )
+`).then(() => {
+  console.log("[DB] ui_edit_history table ready");
+}).catch((err: any) => {
+  console.error("[DB] Failed to create ui_edit_history:", err.message);
+});
+
 const server = createServer(app);
 
 server.on("upgrade", (req, socket, head) => {

@@ -34,3 +34,4 @@ export * from "./ai-audit-logs";
 export * from "./ai-system-settings";
 export * from "./ui-text-overrides";
 export * from "./ui-style-overrides";
+export * from "./ui-edit-history";

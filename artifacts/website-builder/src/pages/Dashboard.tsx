@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Link, useLocation } from "wouter";
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, LayoutTemplate, Trash2, Loader2, Coins, LogOut, CreditCard, Users, ShieldCheck, Activity, Globe, ExternalLink, Square, RefreshCw, Rocket, Bell, Palette, Home, Smartphone, Play, BarChart2, Gamepad2, FileText, Settings, BookOpen, Gift, Search, ChevronDown, Upload, UploadCloud, Download, Cpu, Wand2, Camera, ArrowRight, Check, X, Bot, FolderGit2, Plug, ChevronRight, Shield, Crown, Lock, Database, Crosshair, FlaskConical, Send, Copy, Server, Maximize2, Minimize2, MousePointer2 } from "lucide-react";
+import { Plus, LayoutTemplate, Trash2, Loader2, Coins, LogOut, CreditCard, Users, ShieldCheck, Activity, Globe, ExternalLink, Square, RefreshCw, Rocket, Bell, Palette, Home, Smartphone, Play, BarChart2, Gamepad2, FileText, Settings, BookOpen, Gift, Search, ChevronDown, Upload, UploadCloud, Download, Cpu, Wand2, Camera, ArrowRight, Check, X, Bot, FolderGit2, Plug, ChevronRight, Shield, Crown, Lock, Database, Crosshair, FlaskConical, Send, Copy, Server, Maximize2, Minimize2, MousePointer2, History } from "lucide-react";
 import AdminFilesPanel from "@/components/AdminFilesPanel";
 import { useI18n } from "@/lib/i18n";
 import { isProductionSite } from "@/lib/utils";
@@ -851,6 +851,7 @@ function InfraAgentsSection({ t, lang, onSelectAgent }: { t: any; lang: string; 
 }
 
 function AdminPanelSection({ t, onToggleFiles }: { t: any; onToggleFiles: () => void }) {
+  const { lang } = useI18n();
   const [expanded, setExpanded] = useState(true);
   const adminItems = [
     { icon: Bot, label: t.home_nav_agents, href: "/agents" },
@@ -858,6 +859,7 @@ function AdminPanelSection({ t, onToggleFiles }: { t: any; onToggleFiles: () => 
     { icon: Shield, label: t.home_nav_admin_dashboard, href: "/admin" },
     { icon: FolderGit2, label: t.home_nav_repository, href: "#", onClick: onToggleFiles },
     { icon: Plug, label: t.home_nav_integration, href: "#" },
+    { icon: History, label: lang === "ar" ? "سجل التعديلات" : "Edit History", href: "/edit-history" },
   ];
 
   return (

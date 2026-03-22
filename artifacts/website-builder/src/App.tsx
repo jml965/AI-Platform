@@ -15,6 +15,7 @@ import NotificationSettings from "@/pages/NotificationSettings";
 import Templates from "@/pages/Templates";
 import AdminDashboard from "@/pages/AdminDashboard";
 import AgentManagement from "@/pages/AgentManagement";
+import EditHistory from "@/pages/EditHistory";
 import AIControlCenter from "@/pages/AIControlCenter";
 import StrategicAgent from "@/pages/StrategicAgent";
 import InfraPanel from "@/pages/InfraPanel";
@@ -93,6 +94,7 @@ function Router() {
       <Route path="/monitoring"><AuthGuard><Monitoring /></AuthGuard></Route>
       <Route path="/notifications"><AuthGuard><NotificationSettings /></AuthGuard></Route>
       <Route path="/agents"><AdminGuard><AgentManagement /></AdminGuard></Route>
+      <Route path="/edit-history"><AdminGuard><EditHistory /></AdminGuard></Route>
       <Route path="/control-center"><AdminGuard><AIControlCenter /></AdminGuard></Route>
       <Route path="/strategic"><AuthGuard><StrategicAgent /></AuthGuard></Route>
       <Route path="/infra"><AdminGuard><InfraPanel /></AdminGuard></Route>
