@@ -719,7 +719,7 @@ router.get("/infra/agents", requireInfraAdmin, async (_req, res) => {
 router.post("/infra/chat-stream", requireInfraAdmin, async (req, res) => {
   try {
     const userId = req.user!.id;
-    const { agentKey, message, context } = req.body as { agentKey: string; message: string; context?: { currentPage?: string; projectId?: string | null; mode?: string } };
+    const { agentKey, message, context } = req.body as { agentKey: string; message: string; context?: { currentPage?: string; fullUrl?: string; projectId?: string | null; mode?: string; lang?: string } };
 
     if (!message?.trim()) {
       res.status(400).json({ error: { message: "Message is required" } });
@@ -1010,12 +1010,17 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
     const EMERGENCY_ONLY_TOOLS = new Set(["run_command", "exec_command"]);
     filteredTools = filteredTools.filter((t: any) => !EMERGENCY_ONLY_TOOLS.has(t.name));
 
+    const userLang = context?.lang || detectedLang;
+    const userCurrentPage = context?.currentPage || "/dashboard";
+
     let enrichedMessage = message;
     if (context?.currentPage) {
       const ctxLines: string[] = [`📍 السياق:`];
       ctxLines.push(`• الصفحة: ${context.currentPage}`);
       if (context.projectId) ctxLines.push(`• المشروع: ${context.projectId}`);
       ctxLines.push(`• الوضع: ${context.mode || "unknown"}`);
+      ctxLines.push(`• اللغة: ${userLang}`);
+      ctxLines.push(`\n⚠️ عند استخدام browse_page أو get_page_structure — استخدم الصفحة الحالية "${context.currentPage}" مع lang="${userLang}"`);
       enrichedMessage = `${ctxLines.join("\n")}\n\n📝 رسالة المستخدم:\n${message}`;
     }
 
@@ -1426,8 +1431,14 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
             continue;
           }
 
-          if (["get_page_structure", "browse_page"].includes(tool.name) && !(tool.input as any)?.lang) {
-            (tool.input as any).lang = detectedLang;
+          if (["get_page_structure", "browse_page", "screenshot_page", "scroll_page"].includes(tool.name)) {
+            if (!(tool.input as any)?.lang) {
+              (tool.input as any).lang = userLang;
+            }
+            if (!(tool.input as any)?.url && !(tool.input as any)?.path) {
+              (tool.input as any).url = userCurrentPage;
+              console.log(`[Agent] AUTO_CONTEXT: browse tool "${tool.name}" → using user's current page "${userCurrentPage}" lang="${userLang}"`);
+            }
           }
           res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n\n...*${tool.name}*...\n` })}\n\n`);
           fullReply += `\n\n...*${tool.name}*...\n`;

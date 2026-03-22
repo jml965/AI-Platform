@@ -757,10 +757,14 @@ function FloatingChatInner() {
         };
       } else {
         endpoint = `${BASE}api/infra/chat-stream`;
+        const htmlLang = document.documentElement.lang || document.documentElement.dir;
+        const currentLang = htmlLang === "rtl" || document.documentElement.dir === "rtl" ? "ar" : (localStorage.getItem("lang") || "en");
         const pageContext = {
-          currentPage: window.location.pathname,
+          currentPage: window.location.pathname + window.location.search,
+          fullUrl: window.location.href,
           projectId: window.location.pathname.match(/\/project\/([^/]+)/)?.[1] || null,
           mode: window.location.pathname.startsWith("/project/") ? "builder" : window.location.pathname.startsWith("/infra") ? "infra" : "dashboard",
+          lang: currentLang,
         };
         body = { agentKey: selectedAgent.agentKey, message: currentPrompt, context: pageContext };
       }
