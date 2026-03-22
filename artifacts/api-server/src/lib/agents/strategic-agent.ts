@@ -2473,7 +2473,7 @@ export async function executeInfraTool(toolName: string, input: any, callerRole?
 
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
-async function pushFileToGitHub(filePath: string, newContent: string, commitMessage: string): Promise<{ success: boolean; error?: string }> {
+export async function pushFileToGitHub(filePath: string, newContent: string, commitMessage: string): Promise<{ success: boolean; error?: string }> {
   const ghToken = await getGitHubToken();
   if (!ghToken) return { success: false, error: "GitHub token not available" };
   const repo = process.env.GITHUB_REPOSITORY || "jml965/ai-platform";

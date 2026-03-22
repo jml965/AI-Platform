@@ -1561,55 +1561,59 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
                 res.write(`data: ${JSON.stringify({ type: "tool_result", name: "search_text", result: `✅ وُجد في ${extractedFile}` })}\n\n`);
 
                 try {
-                  console.log(`[Agent] 🔥 DIRECT_EDIT: calling edit_component...`);
-                  await logAudit(agentKey, "direct_edit_calling_tool", "edit_component", { file: extractedFile, old: directOldText, new: directNewText }, null, "medium", "started");
+                  console.log(`[Agent] 🔥 DIRECT_EDIT: fast path — file edit + GitHub push (no build wait)`);
                   res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n⏳ جاري التعديل...\n` })}\n\n`);
 
-                  const keepalive = setInterval(() => {
-                    try { res.write(`: keepalive\n\n`); } catch {}
-                  }, 5000);
+                  const fs = await import("fs");
+                  const path = await import("path");
+                  const PROJECT_ROOT = process.cwd().replace(/\/artifacts\/api-server$/, "");
+                  const resolvedPath = path.default.resolve(PROJECT_ROOT, extractedFile);
+                  const fileContent = fs.default.readFileSync(resolvedPath, "utf-8");
 
-                  let editResult: string;
-                  try {
-                    editResult = await executeInfraTool("edit_component", {
-                      componentPath: extractedFile.replace("artifacts/website-builder/", ""),
-                      old_text: directOldText,
-                      new_text: directNewText,
-                    }, "admin");
-                  } finally {
-                    clearInterval(keepalive);
+                  if (!fileContent.includes(directOldText!)) {
+                    throw new Error(`old_text "${directOldText!.slice(0, 40)}" not found in file`);
                   }
 
-                  const editParsed = JSON.parse(editResult);
+                  const newContent = fileContent.replace(directOldText!, directNewText!);
+                  fs.default.writeFileSync(resolvedPath, newContent, "utf-8");
+                  console.log(`[Agent] 🔥 DIRECT_EDIT: file written`);
+
+                  const { pushFileToGitHub } = await import("../lib/agents/strategic-agent");
+                  const ghPath = extractedFile;
+                  const ghResult = await pushFileToGitHub(ghPath, newContent, `Direct edit: ${directOldText!.slice(0, 30)} → ${directNewText!.slice(0, 30)}`);
+                  console.log(`[Agent] 🔥 DIRECT_EDIT: github=${ghResult.success}`);
+
+                  let buildNote = "";
+                  const IS_PROD = process.env.NODE_ENV === "production" || !!process.env.K_SERVICE;
+                  if (IS_PROD) {
+                    try {
+                      const { execSync } = await import("child_process");
+                      execSync("pnpm --filter @workspace/website-builder run build", { cwd: PROJECT_ROOT, timeout: 90000, encoding: "utf-8", env: { ...process.env, NODE_ENV: "development" } });
+                      buildNote = "🔄 تم إعادة بناء الموقع — التغيير ظاهر الآن.";
+                    } catch (buildErr: any) {
+                      buildNote = `⚠️ البناء فشل — التغيير سيظهر بعد deploy تلقائي.\n${(buildErr?.stderr || buildErr?.message || "").slice(0, 200)}`;
+                    }
+                  }
+
                   hasEdited = true;
                   toolActionCount += 2;
+                  const successMsg = `✅ تم التعديل مباشرة!\n\n📄 الملف: ${extractedFile}\n✏️ من: "${directOldText}"\n➡️ إلى: "${directNewText}"\n\n${buildNote}\n${ghResult.success ? "📦 تم حفظ التغيير في GitHub." : `⚠️ GitHub: ${ghResult.error}`}`;
 
                   res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n\n...*edit_component*...\n` })}\n\n`);
-                  fullReply += `\n\n...*edit_component*...\n`;
-                  res.write(`data: ${JSON.stringify({ type: "tool_result", name: "edit_component", result: editResult.slice(0, 3000) })}\n\n`);
-
-                  await logAudit(agentKey, "direct_edit_executed", "edit_component", { file: extractedFile, old: directOldText, new: directNewText }, editResult?.slice(0, 500), "medium", editParsed?.success ? "success" : "failed");
-
-                  const successMsg = editParsed?.success
-                    ? `✅ تم التعديل مباشرة!\n\n📄 الملف: ${extractedFile}\n✏️ من: "${directOldText}"\n➡️ إلى: "${directNewText}"\n\n${editParsed.liveRebuilt ? "🔄 تم إعادة بناء الموقع — التغيير ظاهر الآن." : "⚠️ إعادة البناء: " + (editParsed.buildResult || "unknown")}${editParsed.githubPushed ? "\n📦 تم حفظ التغيير في GitHub." : ""}`
-                    : `⚠️ التعديل المباشر لم ينجح — ${editParsed?.error || "خطأ غير معروف"}. سأحاول بالطريقة العادية.`;
-
+                  res.write(`data: ${JSON.stringify({ type: "tool_result", name: "edit_component", result: `✅ تم: "${directOldText}" → "${directNewText}"` })}\n\n`);
                   res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n\n${successMsg}\n` })}\n\n`);
                   fullReply += `\n\n${successMsg}\n`;
 
-                  if (editParsed?.success) {
-                    console.log(`[Agent] 🔥 DIRECT_EDIT SUCCESS: ${extractedFile}, rebuilt=${editParsed.liveRebuilt}, github=${editParsed.githubPushed}`);
-                    res.write(`data: ${JSON.stringify({ type: "done", tokensUsed: 0, cost: "0.000000", model: "direct_engine" })}\n\n`);
+                  await logAudit(agentKey, "direct_edit_executed", "edit_component", { file: extractedFile, old: directOldText, new: directNewText }, { github: ghResult.success, build: buildNote.slice(0, 100) }, "medium", "success");
 
-                    const assistantContent = `${successMsg}`;
-                    await db.insert(messagesTable).values({ conversationId: conv.id, role: "user", content: message });
-                    await db.insert(messagesTable).values({ conversationId: conv.id, role: "assistant", content: assistantContent, tokenCount: 0, costUsd: "0" });
-                    await logAudit(agentKey, "session_complete_direct", "system", { file: extractedFile, old: directOldText, new: directNewText }, "direct_edit", "medium", "success");
-                    res.end();
-                    return;
-                  }
+                  res.write(`data: ${JSON.stringify({ type: "done", tokensUsed: 0, cost: "0.000000", model: "direct_engine" })}\n\n`);
+                  await db.insert(messagesTable).values({ conversationId: conv.id, role: "user", content: message });
+                  await db.insert(messagesTable).values({ conversationId: conv.id, role: "assistant", content: successMsg, tokenCount: 0, costUsd: "0" });
+                  await logAudit(agentKey, "session_complete_direct", "system", { file: extractedFile, old: directOldText, new: directNewText }, "direct_edit", "medium", "success");
+                  res.end();
+                  return;
                 } catch (directErr: any) {
-                  console.log(`[Agent] DIRECT_EDIT failed, falling back to Claude: ${directErr?.message?.slice(0, 100)}`);
+                  console.log(`[Agent] DIRECT_EDIT failed, falling back to Claude: ${directErr?.message?.slice(0, 200)}`);
                   await logAudit(agentKey, "direct_edit_failed_fallback", "edit_component", { file: extractedFile, old: directOldText, new: directNewText, error: directErr?.message?.slice(0, 200) }, null, "medium", "failed");
                 }
               }
