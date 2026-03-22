@@ -21,7 +21,23 @@ const CHROMIUM_PATH = findChromiumPath();
 let browserInstance: Browser | null = null;
 
 async function getBrowser(): Promise<Browser> {
-  if (browserInstance && browserInstance.connected) return browserInstance;
+  if (browserInstance && browserInstance.connected) {
+    try {
+      const pages = await browserInstance.pages();
+      if (pages.length > 5) {
+        for (const p of pages.slice(0, pages.length - 2)) {
+          try { await p.close(); } catch {}
+        }
+      }
+      return browserInstance;
+    } catch {
+      browserInstance = null;
+    }
+  }
+  if (browserInstance) {
+    try { await browserInstance.close(); } catch {}
+    browserInstance = null;
+  }
   browserInstance = await puppeteer.launch({
     executablePath: CHROMIUM_PATH,
     headless: true,
@@ -32,7 +48,6 @@ async function getBrowser(): Promise<Browser> {
       "--disable-gpu",
       "--no-first-run",
       "--no-zygote",
-      "--single-process",
       "--disable-extensions",
     ],
   });
@@ -137,27 +152,40 @@ export async function screenshotPage(
 ): Promise<{ base64: string; width: number; height: number }> {
   const w = opts?.width || 1280;
   const h = opts?.height || 720;
-  const { page } = await prepareBrowserPage(pathOrUrl, "screenshotPage", { width: w, height: h });
-  try {
-    let screenshotBuffer: Buffer;
-    if (opts?.selector) {
-      const el = await page.$(opts.selector);
-      if (!el) throw new Error(`Selector "${opts.selector}" not found on page`);
-      screenshotBuffer = (await el.screenshot({ type: "png" })) as Buffer;
-    } else {
-      screenshotBuffer = (await page.screenshot({
-        type: "png",
-        fullPage: opts?.fullPage || false,
-      })) as Buffer;
+  const MAX_RETRIES = 2;
+  let lastErr: any = null;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    let page: Page | null = null;
+    try {
+      if (attempt > 0) {
+        if (browserInstance) {
+          try { await browserInstance.close(); } catch {}
+          browserInstance = null;
+        }
+        console.log(`[Browser] screenshot retry #${attempt}`);
+      }
+      const result = await prepareBrowserPage(pathOrUrl, "screenshotPage", { width: w, height: h });
+      page = result.page;
+      let screenshotBuffer: Buffer;
+      if (opts?.selector) {
+        const el = await page.$(opts.selector);
+        if (!el) throw new Error(`Selector "${opts.selector}" not found on page`);
+        screenshotBuffer = (await el.screenshot({ type: "png" })) as Buffer;
+      } else {
+        screenshotBuffer = (await page.screenshot({
+          type: "png",
+          fullPage: opts?.fullPage || false,
+        })) as Buffer;
+      }
+      return { base64: screenshotBuffer.toString("base64"), width: w, height: h };
+    } catch (err: any) {
+      lastErr = err;
+      console.error(`[Browser] screenshot attempt ${attempt} failed: ${err?.message?.slice(0, 200)}`);
+    } finally {
+      if (page) try { await page.close(); } catch {}
     }
-    return {
-      base64: screenshotBuffer.toString("base64"),
-      width: w,
-      height: h,
-    };
-  } finally {
-    await page.close();
   }
+  throw lastErr || new Error("Screenshot failed after retries");
 }
 
 export async function clickElement(

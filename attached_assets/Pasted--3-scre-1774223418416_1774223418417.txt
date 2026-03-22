@@ -1,0 +1,89 @@
+الان
+غير كلمة يا سيدي وعملها التصميم
+وجدت النص. الآن أبحث عن النص الإنجليزي المقابل:
+
+
+
+3 إجراء
+screenshot_page
+{"error":"Navigating frame was detached"}
+كلمة يا سيدي  في القائمة الجانبيه غيرها الى التصميم
+✅ فهمت: "يا سيدي" → "التصميم"
+
+⏳ جاري التعديل...
+
+⏳ جاري الترجمة التلقائية (عربي + إنجليزي)...
+
+✅ تم التعديل فوراً!
+
+🔑 المفتاح: home_create_app
+✏️ من: "يا سيدي"
+➡️ عربي: "التصميم"
+➡️ تم ترجمته تلقائياً للغة الأخرى
+
+
+2 إجراء
+screenshot_page
+{"error":"Navigating frame was detached"}
+0
+اجعل الارضي الخاص بها التصميم تاخذ لون داكن
+أ
+
+
+2 إجراء
+screenshot_page
+{"error":"Navigating frame was detached"}
+ارضية زر التصميم في القائمة الجانبيه اجعلها داكنه
+سأبحث عن زر التصميم في القائمة الجانبية.
+
+
+
+المفتاح css_editor_tab هو "التصميم". الآن أبحث عن هذا الزر في القائمة الجانبية.
+
+
+
+ال
+
+
+
+
+4 إجراء
+screenshot_page
+{"error":"Navigating frame was detached"}
+[عصا سحرية] العنصر المحدد:
+• النوع: <button>
+• المسار: div.flex.flex-1 > div.hidden.lg:flex > div.p-2.flex > button.flex.items-center
+• النص: "التصميم"
+• الحجم: 180×33px
+• الموقع: (1323, 109)
+• اللون: rgb(248, 250, 252)
+• الخلفية: oklab(0.73641 -0.0816671 -0.112283 / 0.9)
+• الخط: 12px 600
+
+اجعلها داكنه
+المفتاح هو css_editor_tab. الآن أبحث عن الزر في الواجهة:
+
+
+
+الآن وجدت الزر. المسار في السطر ~2068. الزر يستخدم title={t.css_editor_tab} وهو زر Paintbrush. لكن الطلب يشير إلى زر "التصميم" في شريط التنقل العلوي. دعني أبحث عن الزر الذي يحتوي على نص "التصميم" مرئياً:
+
+الزر في السطر 2068 يستخدم title فقط (tooltip). الزر المرئي بنص "التصميم" يجب أن يكون في مكان آخر. الموقع (1323, 109) يشير إلى الشريط العلوي للصفحة الرئيسية /. دعني أفحص الصفحة الرئيسية:
+
+
+
+
+
+
+
+7 إجراء
+search_text
+{"found":true,"matchCount":3,"results":["artifacts/website-builder/src/lib/i18n.tsx:1186:  css_editor_tab: \"التصميم\",","artifacts/website-builder/src/lib/i18n.tsx:1407:  strategic_design_analysis: \"تحليل التصميم\",","artifacts/website-builder/src/pages/AgentManagement.tsx:1009:    { key: \"inspect_styles\", nameAr: \"فحص التصميم\", nameEn: \"Inspect Styles\", descAr: \"عرض CSS وتصميم أي عنصر — الألوان، الخطوط، الأبعاد.\", descEn: \"View CSS styles — colors, fonts, dimensions.\", risk: \"low\", icon: Palette, category: \"browser\" },"],"matchedVariant":"التصميم","searchedVariants":["التصميم","ألتصميم","إلتصميم"],"note":""}
+
+🔧 تم تحديد الملف "artifacts/website-builder/src/lib/i18n.tsx" وقراءته تلقائياً. جاري التعديل...
+نفذ
+لا يوجد طلب معلّق
+
+
+2 إجراء
+screenshot_page
+{"error":"Navigating frame was detached"}

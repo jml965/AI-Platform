@@ -1819,19 +1819,27 @@ export async function executeInfraTool(toolName: string, input: any, callerRole?
         return JSON.stringify({ status: res.status, body: typeof body === "object" ? JSON.stringify(body).slice(0, 50000) : (body as string).slice(0, 50000) });
       }
       case "screenshot_page": {
-        const result = await screenshotPage(input.path, {
-          width: input.width,
-          height: input.height,
-          fullPage: input.fullPage,
-          selector: input.selector,
-        });
-        return JSON.stringify({
-          type: "screenshot",
-          message: `Screenshot captured (${result.width}x${result.height})`,
-          base64: result.base64,
-          width: result.width,
-          height: result.height,
-        });
+        try {
+          const result = await screenshotPage(input.path, {
+            width: input.width,
+            height: input.height,
+            fullPage: input.fullPage,
+            selector: input.selector,
+          });
+          return JSON.stringify({
+            type: "screenshot",
+            message: `Screenshot captured (${result.width}x${result.height})`,
+            base64: result.base64,
+            width: result.width,
+            height: result.height,
+          });
+        } catch (ssErr: any) {
+          console.error(`[Browser] screenshot_page final error: ${ssErr?.message?.slice(0, 200)}`);
+          return JSON.stringify({
+            type: "error",
+            message: `Screenshot failed: ${ssErr?.message?.slice(0, 150)}. استخدم search_text أو get_page_structure بدلاً من screenshot.`,
+          });
+        }
       }
       case "click_element": {
         const result = await clickElement(input.path, input.selector);
