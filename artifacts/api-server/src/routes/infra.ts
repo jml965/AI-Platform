@@ -1577,14 +1577,39 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
                   const ghResult = await pushFileToGitHub(extractedFile, newContent, `Direct edit: ${directOldText!.slice(0, 30)} → ${directNewText!.slice(0, 30)}`);
                   console.log(`[Agent] 🔥 DIRECT_EDIT: github=${ghResult.success}`);
 
+                  let buildNote = "";
+                  const IS_PROD = process.env.NODE_ENV === "production" || !!process.env.K_SERVICE;
+                  if (IS_PROD) {
+                    res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n🔨 جاري إعادة بناء الموقع... (قد يستغرق دقيقتين)\n` })}\n\n`);
+                    const buildKeepAlive = setInterval(() => {
+                      try { res.write(`data: ${JSON.stringify({ type: "chunk", text: "" })}\n\n`); } catch {}
+                    }, 10000);
+                    try {
+                      const { execSync: execBuild } = require("child_process");
+                      execBuild("pnpm --filter @workspace/website-builder run build", {
+                        cwd: PROJECT_ROOT,
+                        timeout: 180000,
+                        encoding: "utf-8",
+                        env: { ...process.env, NODE_ENV: "development" },
+                      });
+                      buildNote = "🔄 تم إعادة بناء الموقع — التغيير ظاهر الآن. أعد تحميل الصفحة.";
+                    } catch (buildErr: any) {
+                      console.error(`[Agent] DIRECT_EDIT build failed: ${(buildErr?.message || "").slice(0, 200)}`);
+                      buildNote = `⚠️ البناء فشل — التغيير محفوظ وسيظهر بعد الـ deploy القادم.`;
+                    } finally {
+                      clearInterval(buildKeepAlive);
+                    }
+                  }
+
                   hasEdited = true;
                   toolActionCount += 2;
-                  const successMsg = `✅ تم التعديل مباشرة!\n\n📄 الملف: ${extractedFile}\n✏️ من: "${directOldText}"\n➡️ إلى: "${directNewText}"\n\n${ghResult.success ? "📦 تم حفظ التغيير في GitHub." : `⚠️ GitHub: ${ghResult.error}`}`;
+                  const ghNote = ghResult.success ? "📦 تم حفظ التغيير في GitHub." : "";
+                  const successMsg = `✅ تم التعديل!\n\n📄 الملف: ${extractedFile}\n✏️ من: "${directOldText}"\n➡️ إلى: "${directNewText}"\n\n${buildNote}\n${ghNote}`.trim();
 
                   res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n${successMsg}\n` })}\n\n`);
                   fullReply += `\n\n${successMsg}\n`;
 
-                  try { await logAudit(agentKey, "direct_edit_executed", "edit_component", { file: extractedFile, old: directOldText, new: directNewText }, { github: ghResult.success }, "medium", "success"); } catch {}
+                  try { await logAudit(agentKey, "direct_edit_executed", "edit_component", { file: extractedFile, old: directOldText, new: directNewText }, { github: ghResult.success, build: buildNote.slice(0, 100) }, "medium", "success"); } catch {}
 
                   res.write(`data: ${JSON.stringify({ type: "done", tokensUsed: 0, cost: "0.000000", model: "direct_engine" })}\n\n`);
                   try {
