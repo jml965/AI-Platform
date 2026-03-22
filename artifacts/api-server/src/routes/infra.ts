@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { agentConfigsTable, aiApprovalsTable, aiAuditLogsTable, aiSystemSettingsTable, usersTable } from "@workspace/db/schema";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
 import { getSystemBlueprint } from "../lib/system-blueprint";
-import { INFRA_TOOLS, executeInfraTool, getInfraAccessEnabled, setInfraAccessEnabled } from "../lib/agents/strategic-agent";
+import { INFRA_TOOLS, executeInfraTool, getInfraAccessEnabled, setInfraAccessEnabled, pushFileToGitHub } from "../lib/agents/strategic-agent";
 import * as fs from "fs";
 import * as path from "path";
 const router = Router();
@@ -1561,24 +1561,22 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
                 res.write(`data: ${JSON.stringify({ type: "tool_result", name: "search_text", result: `✅ وُجد في ${extractedFile}` })}\n\n`);
 
                 try {
-                  console.log(`[Agent] 🔥 DIRECT_EDIT: fast path — file edit + GitHub push (no build wait)`);
+                  console.log(`[Agent] 🔥 DIRECT_EDIT: fast path — file edit + GitHub push`);
                   res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n⏳ جاري التعديل...\n` })}\n\n`);
 
-                  const fs = await import("fs");
-                  const path = await import("path");
                   const PROJECT_ROOT = process.cwd().replace(/\/artifacts\/api-server$/, "");
-                  const resolvedPath = path.default.resolve(PROJECT_ROOT, extractedFile);
-                  const fileContent = fs.default.readFileSync(resolvedPath, "utf-8");
+                  const resolvedPath = path.resolve(PROJECT_ROOT, extractedFile);
+                  const fileContent = fs.readFileSync(resolvedPath, "utf-8");
 
                   if (!fileContent.includes(directOldText!)) {
                     throw new Error(`old_text "${directOldText!.slice(0, 40)}" not found in file`);
                   }
 
                   const newContent = fileContent.replace(directOldText!, directNewText!);
-                  fs.default.writeFileSync(resolvedPath, newContent, "utf-8");
+                  fs.writeFileSync(resolvedPath, newContent, "utf-8");
                   console.log(`[Agent] 🔥 DIRECT_EDIT: file written`);
+                  res.write(`data: ${JSON.stringify({ type: "chunk", text: `📝 تم كتابة الملف\n` })}\n\n`);
 
-                  const { pushFileToGitHub } = await import("../lib/agents/strategic-agent");
                   const ghPath = extractedFile;
                   const ghResult = await pushFileToGitHub(ghPath, newContent, `Direct edit: ${directOldText!.slice(0, 30)} → ${directNewText!.slice(0, 30)}`);
                   console.log(`[Agent] 🔥 DIRECT_EDIT: github=${ghResult.success}`);
@@ -1586,9 +1584,10 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
                   let buildNote = "";
                   const IS_PROD = process.env.NODE_ENV === "production" || !!process.env.K_SERVICE;
                   if (IS_PROD) {
+                    res.write(`data: ${JSON.stringify({ type: "chunk", text: `🔨 جاري البناء...\n` })}\n\n`);
                     try {
-                      const { execSync } = await import("child_process");
-                      execSync("pnpm --filter @workspace/website-builder run build", { cwd: PROJECT_ROOT, timeout: 90000, encoding: "utf-8", env: { ...process.env, NODE_ENV: "development" } });
+                      const { execSync: execBuild } = require("child_process");
+                      execBuild("pnpm --filter @workspace/website-builder run build", { cwd: PROJECT_ROOT, timeout: 90000, encoding: "utf-8", env: { ...process.env, NODE_ENV: "development" } });
                       buildNote = "🔄 تم إعادة بناء الموقع — التغيير ظاهر الآن.";
                     } catch (buildErr: any) {
                       buildNote = `⚠️ البناء فشل — التغيير سيظهر بعد deploy تلقائي.\n${(buildErr?.stderr || buildErr?.message || "").slice(0, 200)}`;
