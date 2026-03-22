@@ -11,6 +11,8 @@ import app from "./app";
 import { seedRolesAndPermissions } from "./lib/seedRoles";
 import { setupCollaborationWebSocket } from "./lib/collaboration";
 import { handleSandboxWebSocketUpgrade } from "./routes/sandbox";
+import { db } from "@workspace/db";
+import { sql } from "drizzle-orm";
 
 const rawPort = process.env["PORT"];
 
@@ -29,6 +31,26 @@ if (Number.isNaN(port) || port <= 0) {
 seedRolesAndPermissions().catch((err) =>
   console.error("[Seed] Failed to seed roles:", err)
 );
+
+db.execute(sql`
+  CREATE TABLE IF NOT EXISTS ui_text_overrides (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    key TEXT NOT NULL,
+    lang TEXT NOT NULL DEFAULT 'ar',
+    value TEXT NOT NULL,
+    updated_by TEXT,
+    created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+    updated_at TIMESTAMP DEFAULT NOW() NOT NULL
+  )
+`).then(() => {
+  return db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS ui_text_overrides_key_lang_idx ON ui_text_overrides (key, lang)
+  `);
+}).then(() => {
+  console.log("[DB] ui_text_overrides table ready");
+}).catch((err: any) => {
+  console.error("[DB] Failed to create ui_text_overrides:", err.message);
+});
 
 const server = createServer(app);
 
