@@ -964,8 +964,6 @@ function HomeSidebar({ t, lang, userName, isAdmin, onSelectInfraAgent, onToggleF
       </div>
 
       <nav className="flex flex-col gap-0.5 px-2 py-3 flex-1 overflow-y-auto relative z-10">
-        {isAdmin && !isProductionSite() && <InfraAgentsSection t={t} lang={lang} onSelectAgent={onSelectInfraAgent} />}
-
         {navItems.map((item, i) => (
           <div
             key={i}
@@ -979,6 +977,8 @@ function HomeSidebar({ t, lang, userName, isAdmin, onSelectInfraAgent, onToggleF
             <span>{item.label}</span>
           </div>
         ))}
+
+        {isAdmin && !isProductionSite() && <InfraAgentsSection t={t} lang={lang} onSelectAgent={onSelectInfraAgent} />}
 
         <div className="mt-2 border-t border-white/7 pt-2">
           <Link
