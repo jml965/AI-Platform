@@ -1478,10 +1478,12 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
 
               // ═══════════════════════════════════════
               // 🔥 DIRECT EXECUTION — تنفيذ مباشر بدون Claude
-              // يستخدم AI لفهم نية المستخدم تلقائياً
+              // يستخدم regex لفهم نية المستخدم تلقائياً
               // ═══════════════════════════════════════
               let directOldText: string | null = null;
               let directNewText: string | null = null;
+              console.log(`[Agent] 🔥 DIRECT_EDIT: entering intent extraction block`);
+              await logAudit(agentKey, "direct_edit_start", "system", { userMsg: userMsg.slice(0, 100), extractedFile }, null, "low", "started");
 
               try {
                 const searchResultTexts: string[] = [];
@@ -1549,6 +1551,8 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
               } catch (intentErr: any) {
                 console.log(`[Agent] 🧠 INTENT ERROR: ${intentErr?.message?.slice(0, 200)}`);
               }
+
+              await logAudit(agentKey, "direct_edit_intent_result", "system", { directOldText, directNewText, extractedFile }, null, "low", directOldText ? "matched" : "no_match");
 
               if (directOldText && directNewText && extractedFile !== "unknown") {
                 console.log(`[Agent] 🔥 DIRECT_EDIT: "${directOldText}" → "${directNewText}" in ${extractedFile}`);
