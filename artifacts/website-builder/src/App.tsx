@@ -92,10 +92,10 @@ function Router() {
       <Route path="/templates"><AuthGuard><Templates /></AuthGuard></Route>
       <Route path="/monitoring"><AuthGuard><Monitoring /></AuthGuard></Route>
       <Route path="/notifications"><AuthGuard><NotificationSettings /></AuthGuard></Route>
-      {!isProd && <Route path="/agents"><AdminGuard><AgentManagement /></AdminGuard></Route>}
-      {!isProd && <Route path="/control-center"><AdminGuard><AIControlCenter /></AdminGuard></Route>}
+      <Route path="/agents"><AdminGuard><AgentManagement /></AdminGuard></Route>
+      <Route path="/control-center"><AdminGuard><AIControlCenter /></AdminGuard></Route>
       <Route path="/strategic"><AuthGuard><StrategicAgent /></AuthGuard></Route>
-      {!isProd && <Route path="/infra"><AdminGuard><InfraPanel /></AdminGuard></Route>}
+      <Route path="/infra"><AdminGuard><InfraPanel /></AdminGuard></Route>
       <Route component={NotFound} />
     </Switch>
   );
