@@ -1445,14 +1445,28 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     return (saved === "ar" || saved === "en") ? saved : "en";
   });
 
+  const [overrides, setOverrides] = useState<Record<string, Record<string, string>>>({ en: {}, ar: {} });
+
   useEffect(() => {
     localStorage.setItem("lang", lang);
     document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
     document.documentElement.lang = lang;
   }, [lang]);
 
+  useEffect(() => {
+    const baseUrl = (import.meta as any).env?.VITE_API_URL || "";
+    Promise.all([
+      fetch(`${baseUrl}/api/ui-texts?lang=ar`).then(r => r.ok ? r.json() : { overrides: {} }),
+      fetch(`${baseUrl}/api/ui-texts?lang=en`).then(r => r.ok ? r.json() : { overrides: {} }),
+    ]).then(([arData, enData]) => {
+      setOverrides({ ar: arData.overrides || {}, en: enData.overrides || {} });
+    }).catch(() => {});
+  }, []);
+
   const toggleLang = () => setLang((prev) => (prev === "en" ? "ar" : "en"));
-  const t = lang === "en" ? en : ar;
+  const base = lang === "en" ? en : ar;
+  const langOverrides = overrides[lang] || {};
+  const t = Object.keys(langOverrides).length > 0 ? { ...base, ...langOverrides } as Translations : base;
 
   return (
     <I18nContext.Provider value={{ lang, toggleLang, t }}>

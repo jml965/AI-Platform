@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { agentConfigsTable, aiApprovalsTable, aiAuditLogsTable, aiSystemSettingsTable, usersTable } from "@workspace/db/schema";
+import { agentConfigsTable, aiApprovalsTable, aiAuditLogsTable, aiSystemSettingsTable, usersTable, uiTextOverridesTable } from "@workspace/db/schema";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
 import { getSystemBlueprint } from "../lib/system-blueprint";
 import { INFRA_TOOLS, executeInfraTool, getInfraAccessEnabled, setInfraAccessEnabled, pushFileToGitHub } from "../lib/agents/strategic-agent";
@@ -647,6 +647,36 @@ async function seedInfraAgents() {
 seedInfraAgents();
 
 const infraSessions = new Map<string, { role: "user" | "assistant"; content: string }[]>();
+
+router.get("/ui-texts", async (req, res) => {
+  try {
+    const lang = (req.query.lang as string) || "ar";
+    const rows = await db.select().from(uiTextOverridesTable).where(eq(uiTextOverridesTable.lang, lang));
+    const overrides: Record<string, string> = {};
+    for (const row of rows) {
+      overrides[row.key] = row.value;
+    }
+    res.json({ overrides });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/ui-texts", async (req, res) => {
+  try {
+    const { key, value, lang = "ar" } = req.body;
+    if (!key || !value) return res.status(400).json({ error: "key and value required" });
+    await db.insert(uiTextOverridesTable)
+      .values({ key, value, lang })
+      .onConflictDoUpdate({
+        target: [uiTextOverridesTable.key, uiTextOverridesTable.lang],
+        set: { value, updatedAt: new Date() },
+      });
+    res.json({ success: true, key, value, lang });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 router.get("/infra/system-defaults", requireInfraAdmin, async (_req, res) => {
   try {
@@ -1556,60 +1586,50 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
 
               if (directOldText && directNewText && extractedFile !== "unknown") {
                 try {
-                  console.log(`[Agent] 🔥 DIRECT_EDIT: entering fast path block`);
+                  console.log(`[Agent] 🔥 DIRECT_EDIT: DB update path`);
                   res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n⏳ جاري التعديل...\n` })}\n\n`);
 
-                  const PROJECT_ROOT = process.cwd().replace(/\/artifacts\/api-server$/, "");
-                  const resolvedPath = path.resolve(PROJECT_ROOT, extractedFile);
-                  console.log(`[Agent] 🔥 DIRECT_EDIT: cwd=${process.cwd()}, PROJECT_ROOT=${PROJECT_ROOT}, resolvedPath=${resolvedPath}`);
+                  let i18nKey: string | null = null;
+                  try {
+                    const parsed = JSON.parse(result);
+                    if (parsed.results && parsed.results.length > 0) {
+                      const line = parsed.results[0];
+                      const keyMatch = line.match(/^\S+:\d+:\s*(\w+):\s/);
+                      if (keyMatch) i18nKey = keyMatch[1];
+                      if (!i18nKey) {
+                        const altMatch = line.match(/(\w+):\s*["'].*["']/);
+                        if (altMatch) i18nKey = altMatch[1];
+                      }
+                    }
+                  } catch {}
 
-                  const fileContent = fs.readFileSync(resolvedPath, "utf-8");
-                  console.log(`[Agent] 🔥 DIRECT_EDIT: file read OK (${fileContent.length} chars)`);
-
-                  if (!fileContent.includes(directOldText!)) {
-                    throw new Error(`old_text "${directOldText!.slice(0, 40)}" not found in file`);
+                  if (!i18nKey) {
+                    const keyGuess = directOldText!.replace(/\s+/g, "_").replace(/[^\w]/g, "").slice(0, 40);
+                    console.log(`[Agent] 🔥 DIRECT_EDIT: could not extract key, guessing from text: ${keyGuess}`);
                   }
 
-                  const newContent = fileContent.replace(directOldText!, directNewText!);
-                  fs.writeFileSync(resolvedPath, newContent, "utf-8");
-                  console.log(`[Agent] 🔥 DIRECT_EDIT: file written`);
+                  const detectedLang = /[\u0600-\u06FF]/.test(directNewText!) ? "ar" : "en";
 
-                  const ghResult = await pushFileToGitHub(extractedFile, newContent, `Direct edit: ${directOldText!.slice(0, 30)} → ${directNewText!.slice(0, 30)}`);
-                  console.log(`[Agent] 🔥 DIRECT_EDIT: github=${ghResult.success}`);
-
-                  let buildNote = "";
-                  const IS_PROD = process.env.NODE_ENV === "production" || !!process.env.K_SERVICE;
-                  if (IS_PROD) {
-                    res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n🔨 جاري إعادة بناء الموقع... (قد يستغرق دقيقتين)\n` })}\n\n`);
-                    const buildKeepAlive = setInterval(() => {
-                      try { res.write(`data: ${JSON.stringify({ type: "chunk", text: "" })}\n\n`); } catch {}
-                    }, 10000);
-                    try {
-                      const { execSync: execBuild } = require("child_process");
-                      execBuild("pnpm --filter @workspace/website-builder run build", {
-                        cwd: PROJECT_ROOT,
-                        timeout: 180000,
-                        encoding: "utf-8",
-                        env: { ...process.env, NODE_ENV: "development" },
+                  if (i18nKey) {
+                    await db.insert(uiTextOverridesTable)
+                      .values({ key: i18nKey, value: directNewText!, lang: detectedLang })
+                      .onConflictDoUpdate({
+                        target: [uiTextOverridesTable.key, uiTextOverridesTable.lang],
+                        set: { value: directNewText!, updatedAt: new Date() },
                       });
-                      buildNote = "🔄 تم إعادة بناء الموقع — التغيير ظاهر الآن. أعد تحميل الصفحة.";
-                    } catch (buildErr: any) {
-                      console.error(`[Agent] DIRECT_EDIT build failed: ${(buildErr?.message || "").slice(0, 200)}`);
-                      buildNote = `⚠️ البناء فشل — التغيير محفوظ وسيظهر بعد الـ deploy القادم.`;
-                    } finally {
-                      clearInterval(buildKeepAlive);
-                    }
+                    console.log(`[Agent] 🔥 DIRECT_EDIT: DB updated key=${i18nKey} lang=${detectedLang}`);
+                  } else {
+                    throw new Error(`Could not determine i18n key for "${directOldText!.slice(0, 40)}"`);
                   }
 
                   hasEdited = true;
                   toolActionCount += 2;
-                  const ghNote = ghResult.success ? "📦 تم حفظ التغيير في GitHub." : "";
-                  const successMsg = `✅ تم التعديل!\n\n📄 الملف: ${extractedFile}\n✏️ من: "${directOldText}"\n➡️ إلى: "${directNewText}"\n\n${buildNote}\n${ghNote}`.trim();
+                  const successMsg = `✅ تم التعديل فوراً!\n\n🔑 المفتاح: ${i18nKey}\n✏️ من: "${directOldText}"\n➡️ إلى: "${directNewText}"\n\n🔄 أعد تحميل الصفحة لترى التغيير.`;
 
                   res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n${successMsg}\n` })}\n\n`);
                   fullReply += `\n\n${successMsg}\n`;
 
-                  try { await logAudit(agentKey, "direct_edit_executed", "edit_component", { file: extractedFile, old: directOldText, new: directNewText }, { github: ghResult.success, build: buildNote.slice(0, 100) }, "medium", "success"); } catch {}
+                  try { await logAudit(agentKey, "direct_edit_executed", "edit_component", { key: i18nKey, old: directOldText, new: directNewText, lang: detectedLang }, { method: "db_override" }, "medium", "success"); } catch {}
 
                   res.write(`data: ${JSON.stringify({ type: "done", tokensUsed: 0, cost: "0.000000", model: "direct_engine" })}\n\n`);
                   try {

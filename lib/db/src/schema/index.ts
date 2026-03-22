@@ -32,3 +32,4 @@ export * from "./agent-logs";
 export * from "./ai-approvals";
 export * from "./ai-audit-logs";
 export * from "./ai-system-settings";
+export * from "./ui-text-overrides";
