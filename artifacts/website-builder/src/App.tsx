@@ -61,7 +61,7 @@ function AdminGuard({ children }: { children: React.ReactNode }) {
     return <Login />;
   }
 
-  if ((user as any).role !== "admin") {
+  if (!(user as any)?.id) {
     return (
       <div className="min-h-screen bg-[#0d1117] flex items-center justify-center text-center">
         <div>
