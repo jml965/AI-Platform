@@ -1,0 +1,120 @@
+🔧 TASK: Full System Verification — MrCodeAI (New Dev Server)
+
+-------------------------------------
+🎯 الهدف:
+التأكد أن السيرفر الجديد يحتوي على آخر نسخة كاملة من النظام
+
+⚠️ المطلوب:
+لكل نقطة:
+- YES / NO
+- دليل (log / كود / endpoint)
+
+=====================================
+[ 1 ] QA GATE (الأهم)
+
+1. هل يوجد فحص build قبل trigger_deploy؟
+2. هل إذا فشل build يتم منع deploy؟
+3. هل يتم تسجيل qa_passed و qa_failed في ai_audit_logs؟
+4. هل يوجد timeout للـ build (مثل 120s)؟
+
+-------------------------------------
+[ 2 ] COMMAND SAFETY
+
+5. هل يوجد blacklist للأوامر الخطرة؟
+6. هل يتم منع:
+   rm -rf /
+   shutdown
+   reboot
+   dd
+7. هل يتم تطبيق الفحص على:
+   exec_command + run_command؟
+
+-------------------------------------
+[ 3 ] FILE SAFETY
+
+8. هل يوجد isSafePath؟
+9. هل delete_file ممنوع خارج:
+   /workspace/projects/
+   /tmp/ai-workspaces/
+10. هل path traversal (../) ممنوع؟
+
+-------------------------------------
+[ 4 ] APPROVAL SYSTEM
+
+11. هل الأدوات التالية تحتاج موافقة:
+   git_push
+   trigger_deploy
+   rollback_deploy
+   remote_server_api (write)
+
+12. هل تظهر في UI (Approvals Tab)؟
+13. هل approve/reject يعمل فعلياً؟
+
+-------------------------------------
+[ 5 ] KILL SWITCH
+
+14. هل يوجد endpoint:
+   GET /ai/kill-switch
+15. هل POST يوقف كل الأدوات؟
+16. هل فعلاً يمنع التنفيذ عند تفعيله؟
+
+-------------------------------------
+[ 6 ] DATABASE SAFETY
+
+17. هل db_query يسمح فقط SELECT؟
+18. هل run_sql يمنع DROP / ALTER / TRUNCATE؟
+19. هل بيئة DEV تستخدم DATABASE_URL_DEV؟
+20. هل production تستخدم DATABASE_URL_PROD فقط (بدون fallback)؟
+
+-------------------------------------
+[ 7 ] QA RESULT API
+
+21. هل يوجد endpoint:
+   GET /api/qa/last-result
+22. هل يرجع آخر نتيجة بدون تشغيل build جديد؟
+
+-------------------------------------
+[ 8 ] DEPLOY FLOW
+
+23. هل deploy يمر عبر:
+   QA → Approval → Deploy
+24. هل لا يمكن deploy بدون موافقتك؟
+
+-------------------------------------
+[ 9 ] AUDIT LOGS
+
+25. هل كل tool call يتم تسجيله؟
+26. هل يتم تسجيل:
+   approval_requested
+   qa_passed / qa_failed
+   deploy_started / success / fail
+
+-------------------------------------
+[ 10 ] ENV & CONFIG
+
+27. هل ENV=development في هذا السيرفر؟
+28. هل ENV=production مفصول تماماً؟
+29. هل لا يوجد استخدام خاطئ لـ DATABASE_URL في production؟
+
+-------------------------------------
+[ 11 ] AI BEHAVIOR
+
+30. هل AI يستطيع:
+   search → read → edit بدون توقف؟
+31. هل لا يوجد blocking بسبب approval داخل DEV؟
+
+-------------------------------------
+
+📊 التسليم المطلوب:
+
+- جدول:
+  YES / NO لكل نقطة
+- أي نقطة = NO → حدد الملف أو السبب
+
+-------------------------------------
+
+🔥 الهدف النهائي:
+
+معرفة:
+هل هذا السيرفر = نسخة مكتملة  
+أو نسخة ناقصة تحتاج إعادة تنفيذ
