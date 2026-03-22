@@ -43,6 +43,7 @@ export interface User {
   displayName: string;
   avatarUrl?: string;
   locale: UserLocale;
+  role?: string;
   dailyLimitUsd?: number;
   monthlyLimitUsd?: number;
   createdAt?: string;
