@@ -2719,7 +2719,7 @@ router.get("/infra/audit-logs", requireInfraAdmin, async (req, res) => {
 
 router.get("/infra/audit-logs/stats", requireInfraAdmin, async (_req, res) => {
   try {
-    const [stats] = await db.execute(sql`
+    const result = await db.execute(sql`
       SELECT 
         COUNT(*) as total,
         COUNT(*) FILTER (WHERE status = 'success') as success_count,
@@ -2730,7 +2730,8 @@ router.get("/infra/audit-logs/stats", requireInfraAdmin, async (_req, res) => {
       FROM ai_audit_logs
       WHERE created_at > NOW() - INTERVAL '24 hours'
     `);
-    res.json(stats);
+    const rows = (result as any).rows || (Array.isArray(result) ? result : [result]);
+    res.json(rows[0] || {});
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
