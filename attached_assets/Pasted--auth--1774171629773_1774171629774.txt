@@ -1,0 +1,188 @@
+المطلوب: رفع إصلاح auth لأدوات المتصفح مع قيود أمان صارمة للإنتاج
+
+الهدف:
+- جميع أدوات المتصفح ترى نفس صفحة المستخدم الحقيقية في الإنتاج
+- لا يتم الرجوع إلى صفحة login
+- حماية الإنتاج من أي تفاعل خطير غير مقصود
+- عدم كسر النظام الحالي
+
+========================================
+1) توحيد auth في أدوات المتصفح
+========================================
+
+طبّق injectAuthCookie على هذه الأدوات كلها:
+
+- screenshotPage
+- getPageStructure
+- scrollAndScreenshot
+- clickElement
+- hoverElement
+
+لكن بشرط:
+
+IF process.env.NODE_ENV === "production"
+THEN injectAuthCookie(page)
+
+ولا يتم injectAuthCookie في dev إلا إذا كان هناك flag صريح:
+ENABLE_BROWSER_AUTH_IN_DEV=true
+
+========================================
+2) إنشاء wrapper موحد
+========================================
+
+بدل تكرار الكود في كل دالة، أنشئ helper موحد:
+
+async function prepareBrowserPage(page, toolName) {
+  const isProd = process.env.NODE_ENV === "production"
+  const allowDevAuth = process.env.ENABLE_BROWSER_AUTH_IN_DEV === "true"
+
+  if (isProd || allowDevAuth) {
+    await injectAuthCookie(page)
+  }
+
+  return page
+}
+
+ثم داخل كل أداة:
+page = await prepareBrowserPage(page, "getPageStructure")
+
+========================================
+3) منع التفاعل الخطير في الإنتاج بدون موافقة
+========================================
+
+في الإنتاج:
+- clickElement = requires approval
+- أي أداة تغيّر حالة الصفحة أو تضغط زر = requires approval
+
+أضف قاعدة:
+
+IF tool === "clickElement" AND NODE_ENV === "production"
+THEN:
+  - لا تنفذ مباشرة
+  - أنشئ approval
+  - اشرح العنصر الذي سيتم الضغط عليه
+  - انتظر موافقة صريحة
+
+يمكن استثناء العناصر الآمنة جداً فقط إذا كانت ضمن allowlist واضحة.
+
+========================================
+4) Hover و Screenshot و DOM قراءة فقط
+========================================
+
+هذه الأدوات تبقى low risk:
+- screenshotPage
+- getPageStructure
+- hoverElement
+- scrollAndScreenshot
+
+لكن تسجل في audit log أنها استخدمت authenticated browser session.
+
+========================================
+5) تسجيل واضح في Audit Log
+========================================
+
+لكل أداة متصفح سجّل:
+
+- toolName
+- usedAuth: true/false
+- environment: production/dev
+- currentPage
+- userContext/projectId إن وجد
+- status: success/blocked
+
+========================================
+6) حماية من misuse
+========================================
+
+إذا الأداة المتصفحية فتحت صفحة مختلفة عن currentPage المتوقع:
+- سجّل warning
+- أرجع رسالة واضحة
+- لا تواصل التنفيذ الأعمى
+
+مثال:
+expectedPage = /project/xxx
+actualPage = /login
+
+→ return warning: BROWSER_CONTEXT_MISMATCH
+
+========================================
+7) ربط الصفحة الحالية تلقائياً
+========================================
+
+عند استدعاء أدوات المتصفح بدون path صريح:
+- استخدم currentPage القادم من context
+- لا تستخدم "/" افتراضياً إذا كان currentPage متوفر
+
+الترتيب:
+1. input.path إذا موجود
+2. context.currentPage إذا موجود
+3. "/" فقط كـ fallback أخير
+
+========================================
+8) منع الأسئلة غير الضرورية
+========================================
+
+إذا كان:
+- currentPage معروف
+- DOM متوفر
+- auth session متوفرة
+
+فممنوع على الوكيل أن يسأل:
+- هل أنت مسجل دخول؟
+- ما الصفحة الحالية؟
+- أرسل لقطة أخرى
+
+بدلاً من ذلك:
+- ينفذ مباشرة
+
+========================================
+9) اختبارات إلزامية قبل الرفع
+========================================
+
+اختبار 1:
+- getPageStructure في الإنتاج
+- يجب أن يرى /dashboard أو /project الحالي
+- لا يرجع إلى login
+
+اختبار 2:
+- screenshotPage في الإنتاج
+- يجب أن تكون من الصفحة الحقيقية بعد auth
+
+اختبار 3:
+- hoverElement في الإنتاج
+- يجب أن يعمل مع session موثقة
+
+اختبار 4:
+- clickElement في الإنتاج
+- يجب أن يُحظر بدون approval
+
+اختبار 5:
+- path fallback
+  - بدون path
+  - مع currentPage
+  - يجب أن يستخدم currentPage تلقائياً
+
+========================================
+10) مخرجات مطلوبة
+========================================
+
+أريد منك بعد التنفيذ:
+
+1. الملفات المعدلة
+2. before/after لكل موضع مهم
+3. نتيجة الاختبارات الخمسة
+4. إثبات أن:
+   - getPageStructure لا يذهب إلى login
+   - clickElement محمي بموافقة
+   - الأدوات تستخدم currentPage الحقيقي
+5. لا أريد شرحاً نظرياً فقط
+
+========================================
+11) ممنوعات
+========================================
+
+- لا تجعل clickElement low risk في الإنتاج
+- لا تستخدم "/" كافتراضي إذا context.currentPage موجود
+- لا تكرر injectAuthCookie يدوياً في كل دالة إذا أمكن توحيده في helper
+
+ابدأ التنفيذ الآن.
