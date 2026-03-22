@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { agentConfigsTable, aiApprovalsTable, aiAuditLogsTable, usersTable } from "@workspace/db/schema";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { agentConfigsTable, aiApprovalsTable, aiAuditLogsTable, aiSystemSettingsTable, usersTable } from "@workspace/db/schema";
+import { eq, and, desc, sql, inArray } from "drizzle-orm";
 import { getSystemBlueprint } from "../lib/system-blueprint";
 import { INFRA_TOOLS, executeInfraTool, getInfraAccessEnabled, setInfraAccessEnabled } from "../lib/agents/strategic-agent";
 import * as fs from "fs";
@@ -1200,6 +1200,47 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
             }
           }
 
+          // ═══════════════════════════════════════
+          // T003: Approval Interception — high/critical tools
+          // ═══════════════════════════════════════
+          if (riskCfg.requiresApproval) {
+            const explanation = `الوكيل ${agentKey} يطلب تنفيذ ${tool.name} (مستوى الخطورة: ${riskCfg.risk})`;
+            const [newApproval] = await db.insert(aiApprovalsTable).values({
+              agentKey,
+              userId: req.user?.id,
+              tool: tool.name,
+              input: tool.input ? JSON.parse(JSON.stringify(tool.input)) : null,
+              explanation,
+              risk: riskCfg.risk,
+              category: riskCfg.category,
+              impact: `تنفيذ ${tool.name} — ${riskCfg.category}`,
+              reversible: !["trigger_deploy", "git_push", "rollback_deploy"].includes(tool.name),
+              status: "pending",
+            }).returning();
+
+            const approvalMsg = `⏳ AWAITING_APPROVAL — الأداة "${tool.name}" تتطلب موافقة يدوية.\n\n🔒 مستوى الخطورة: ${riskCfg.risk}\n📋 التفاصيل: ${JSON.stringify(tool.input).slice(0, 300)}\n\n🆔 رقم الطلب: ${newApproval.id}\n\nافتح لوحة الموافقات للقبول أو الرفض.`;
+            res.write(`data: ${JSON.stringify({ type: "approval_request", approvalId: newApproval.id, tool: tool.name, risk: riskCfg.risk, input: tool.input })}\n\n`);
+            res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n\n${approvalMsg}\n` })}\n\n`);
+            fullReply += `\n\n${approvalMsg}\n`;
+            await logAudit(agentKey, "awaiting_approval", tool.name, tool.input, { approvalId: newApproval.id }, riskCfg.risk, "pending", undefined, newApproval.id);
+            toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: approvalMsg });
+            continue;
+          }
+
+          // T003: Sandbox enforcement for system commands
+          if (riskCfg.sandboxed && (tool.name === "exec_command" || tool.name === "run_command")) {
+            const cmd = (tool.input as any)?.command || "";
+            const dangerousPatterns = ["rm -rf /", "rm -rf /*", "mkfs", "> /dev/sd", "dd if=", ":(){ :|:& };:", "chmod -R 777 /", "shutdown", "reboot", "init 0"];
+            const isDangerous = dangerousPatterns.some(p => cmd.includes(p));
+            if (isDangerous) {
+              const blocked = `⛔ SANDBOX_BLOCKED — الأمر محظور لأسباب أمنية: ${cmd.slice(0, 100)}`;
+              res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n\n${blocked}\n` })}\n\n`);
+              await logAudit(agentKey, "sandbox_blocked", tool.name, tool.input, blocked, "critical", "blocked");
+              toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: blocked });
+              continue;
+            }
+          }
+
           toolActionCount++;
 
           if (tool.name === "edit_component" || tool.name === "write_file") {
@@ -1415,12 +1456,14 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
             const hasFileMatch = !isActuallyEmpty && result && /\.(tsx|jsx|ts|js|css|html|vue|svelte)/.test(result) && result.length > 10;
             if (hasFileMatch && !targetState.found) {
               let extractedFile = "unknown";
+              let extractedLine = "";
               try {
                 const parsed = JSON.parse(result);
                 if (parsed.results && parsed.results.length > 0) {
                   const firstResult = parsed.results[0];
-                  const colonIdx = firstResult.indexOf(":");
-                  extractedFile = colonIdx > 0 ? firstResult.substring(0, colonIdx) : firstResult;
+                  const parts = firstResult.split(":");
+                  extractedFile = parts[0];
+                  if (parts.length > 2) extractedLine = parts.slice(2).join(":").trim();
                 }
               } catch {
                 const fileMatch = result.match(/([\w\-./]+\.(tsx|jsx|ts|js|css|html|vue|svelte))/);
@@ -1431,13 +1474,78 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
               targetState.mustEdit = true;
               searchFoundFile = true;
               hasReadAfterSearch = true;
-              console.log(`[Agent] search_text found → file="${targetState.file}", searchFoundFile=true`);
+              console.log(`[Agent] search_text found → file="${targetState.file}", line="${extractedLine}", searchFoundFile=true`);
+
+              // ═══════════════════════════════════════
+              // 🔥 DIRECT EXECUTION — تنفيذ مباشر بدون Claude
+              // ═══════════════════════════════════════
+              const replacePatterns = [
+                /(?:غير|بدّل|بدل|استبدل|حوّل|حول|غيّر)\s+(?:كلمة\s+)?["""]?(.+?)["""]?\s+(?:الى|إلى|ل|لـ|بـ|الي)\s+["""]?(.+?)["""]?\s*$/,
+                /(?:غير|بدّل|بدل|استبدل|حوّل|حول|غيّر)\s+(.+?)\s+(?:الى|إلى|الي)\s+(.+?)$/,
+              ];
+              let directOldText: string | null = null;
+              let directNewText: string | null = null;
+              for (const pat of replacePatterns) {
+                const m = userMsg.match(pat);
+                if (m) {
+                  directOldText = m[1].trim().replace(/^["'"""]+|["'"""]+$/g, "");
+                  directNewText = m[2].trim().replace(/^["'"""]+|["'"""]+$/g, "");
+                  break;
+                }
+              }
+
+              if (directOldText && directNewText && extractedFile !== "unknown") {
+                console.log(`[Agent] 🔥 DIRECT_EDIT: "${directOldText}" → "${directNewText}" in ${extractedFile}`);
+                res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n\n...*search_text*...\n` })}\n\n`);
+                fullReply += `\n\n...*search_text*...\n`;
+                res.write(`data: ${JSON.stringify({ type: "tool_result", name: "search_text", result: `✅ وُجد في ${extractedFile}` })}\n\n`);
+
+                try {
+                  const editResult = await executeInfraTool("edit_component", {
+                    componentPath: extractedFile.replace("artifacts/website-builder/", ""),
+                    old_text: directOldText,
+                    new_text: directNewText,
+                  }, "admin");
+
+                  const editParsed = JSON.parse(editResult);
+                  hasEdited = true;
+                  toolActionCount += 2;
+
+                  res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n\n...*edit_component*...\n` })}\n\n`);
+                  fullReply += `\n\n...*edit_component*...\n`;
+                  res.write(`data: ${JSON.stringify({ type: "tool_result", name: "edit_component", result: editResult.slice(0, 3000) })}\n\n`);
+
+                  await logAudit(agentKey, "direct_edit_executed", "edit_component", { file: extractedFile, old: directOldText, new: directNewText }, editResult?.slice(0, 500), "medium", editParsed?.success ? "success" : "failed");
+
+                  const successMsg = editParsed?.success
+                    ? `✅ تم التعديل مباشرة!\n\n📄 الملف: ${extractedFile}\n✏️ من: "${directOldText}"\n➡️ إلى: "${directNewText}"\n\n${editParsed.liveRebuilt ? "🔄 تم إعادة بناء الموقع — التغيير ظاهر الآن." : "⚠️ إعادة البناء: " + (editParsed.buildResult || "unknown")}${editParsed.githubPushed ? "\n📦 تم حفظ التغيير في GitHub." : ""}`
+                    : `⚠️ التعديل المباشر لم ينجح — ${editParsed?.error || "خطأ غير معروف"}. سأحاول بالطريقة العادية.`;
+
+                  res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n\n${successMsg}\n` })}\n\n`);
+                  fullReply += `\n\n${successMsg}\n`;
+
+                  if (editParsed?.success) {
+                    console.log(`[Agent] 🔥 DIRECT_EDIT SUCCESS: ${extractedFile}, rebuilt=${editParsed.liveRebuilt}, github=${editParsed.githubPushed}`);
+                    res.write(`data: ${JSON.stringify({ type: "done", tokensUsed: 0, cost: "0.000000", model: "direct_engine" })}\n\n`);
+
+                    const assistantContent = `${successMsg}`;
+                    await db.insert(messagesTable).values({ conversationId: conv.id, role: "user", content: message });
+                    await db.insert(messagesTable).values({ conversationId: conv.id, role: "assistant", content: assistantContent, tokenCount: 0, costUsd: "0" });
+                    await logAudit(agentKey, "session_complete_direct", "system", { file: extractedFile, old: directOldText, new: directNewText }, "direct_edit", "medium", "success");
+                    res.end();
+                    return;
+                  }
+                } catch (directErr: any) {
+                  console.log(`[Agent] DIRECT_EDIT failed, falling back to Claude: ${directErr?.message?.slice(0, 100)}`);
+                  await logAudit(agentKey, "direct_edit_failed_fallback", "edit_component", { file: extractedFile, old: directOldText, new: directNewText, error: directErr?.message?.slice(0, 200) }, null, "medium", "failed");
+                }
+              }
+              // ═══════════════════════════════════════
+              // END DIRECT EXECUTION — fallback to Claude
+              // ═══════════════════════════════════════
 
               let autoReadContent = "";
               try {
-                const readPath = extractedFile.startsWith("artifacts/website-builder/")
-                  ? extractedFile.replace("artifacts/website-builder/", "")
-                  : extractedFile;
                 const autoRead = await executeInfraTool("read_file", { path: extractedFile }, "admin");
                 const readParsed = JSON.parse(autoRead);
                 if (readParsed.content) {
@@ -2470,6 +2578,159 @@ router.get("/infra/deploy-status", requireInfraAdmin, async (req, res) => {
       created: r.created_at, url: r.html_url,
     }));
     res.json({ runs });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════
+// T002: Approval API Endpoints
+// ═══════════════════════════════════════
+
+router.get("/infra/approvals", requireInfraAdmin, async (_req, res) => {
+  try {
+    const approvals = await db.select().from(aiApprovalsTable)
+      .orderBy(desc(aiApprovalsTable.createdAt))
+      .limit(50);
+    res.json(approvals);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/infra/approvals/pending", requireInfraAdmin, async (_req, res) => {
+  try {
+    const pending = await db.select().from(aiApprovalsTable)
+      .where(eq(aiApprovalsTable.status, "pending"))
+      .orderBy(desc(aiApprovalsTable.createdAt));
+    res.json(pending);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/infra/approvals/:id/approve", requireInfraAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [approval] = await db.select().from(aiApprovalsTable).where(eq(aiApprovalsTable.id, id)).limit(1);
+    if (!approval) return res.status(404).json({ error: "طلب الموافقة غير موجود" });
+    if (approval.status !== "pending") return res.status(400).json({ error: `الطلب ${approval.status} بالفعل` });
+
+    await db.update(aiApprovalsTable).set({
+      status: "approved",
+      decidedBy: req.user?.id || "admin",
+      decidedAt: new Date(),
+    }).where(eq(aiApprovalsTable.id, id));
+
+    let executionResult: any = null;
+    try {
+      const result = await executeInfraTool(approval.tool, approval.input as any, "admin");
+      executionResult = { success: true, output: result?.slice(0, 2000) };
+    } catch (execErr: any) {
+      executionResult = { success: false, error: execErr.message?.slice(0, 500) };
+    }
+
+    await db.update(aiApprovalsTable).set({ executionResult }).where(eq(aiApprovalsTable.id, id));
+    await logAudit(approval.agentKey, "approval_executed", approval.tool, approval.input, executionResult, approval.risk, executionResult?.success ? "success" : "failed", undefined, id);
+
+    console.log(`[Approval] ✅ Approved & executed: ${approval.tool} by ${req.user?.id}`);
+    res.json({ success: true, approval: { ...approval, status: "approved" }, executionResult });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/infra/approvals/:id/reject", requireInfraAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body as { reason?: string };
+    const [approval] = await db.select().from(aiApprovalsTable).where(eq(aiApprovalsTable.id, id)).limit(1);
+    if (!approval) return res.status(404).json({ error: "طلب الموافقة غير موجود" });
+    if (approval.status !== "pending") return res.status(400).json({ error: `الطلب ${approval.status} بالفعل` });
+
+    await db.update(aiApprovalsTable).set({
+      status: "rejected",
+      decidedBy: req.user?.id || "admin",
+      decidedAt: new Date(),
+      executionResult: { rejected: true, reason: reason || "رفض يدوي" },
+    }).where(eq(aiApprovalsTable.id, id));
+
+    await logAudit(approval.agentKey, "approval_rejected", approval.tool, approval.input, { rejected: true, reason }, approval.risk, "rejected", undefined, id);
+
+    console.log(`[Approval] ❌ Rejected: ${approval.tool} by ${req.user?.id}, reason: ${reason || "none"}`);
+    res.json({ success: true, approval: { ...approval, status: "rejected" } });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════
+// T004: Kill Switch DB Persistence
+// ═══════════════════════════════════════
+
+router.post("/infra/kill-switch", requireInfraAdmin, async (req, res) => {
+  try {
+    const { enabled } = req.body as { enabled: boolean };
+    if (typeof enabled !== "boolean") return res.status(400).json({ error: "enabled must be boolean" });
+
+    await setInfraAccessEnabled(enabled);
+    await db.insert(aiSystemSettingsTable).values({ key: "infra_access_enabled", value: enabled, updatedAt: new Date() })
+      .onConflictDoUpdate({ target: aiSystemSettingsTable.key, set: { value: enabled, updatedAt: new Date() } });
+
+    await logAudit("system", enabled ? "kill_switch_off" : "kill_switch_on", "system", { enabled }, null, "critical", "success");
+    console.log(`[KillSwitch] Infrastructure access ${enabled ? "ENABLED" : "DISABLED (KILLED)"}`);
+    res.json({ enabled, message: enabled ? "✅ البنية التحتية مفعّلة" : "🔴 تم إيقاف جميع العمليات — Kill Switch مفعّل" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/infra/kill-switch", requireInfraAdmin, async (_req, res) => {
+  try {
+    const [setting] = await db.select().from(aiSystemSettingsTable)
+      .where(eq(aiSystemSettingsTable.key, "infra_access_enabled")).limit(1);
+    const enabled = setting ? setting.value === true : getInfraAccessEnabled();
+    res.json({ enabled });
+  } catch (err: any) {
+    res.json({ enabled: getInfraAccessEnabled() });
+  }
+});
+
+// ═══════════════════════════════════════
+// Audit Logs API
+// ═══════════════════════════════════════
+
+router.get("/infra/audit-logs", requireInfraAdmin, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+    const tool = req.query.tool as string;
+    const status = req.query.status as string;
+
+    let query = db.select().from(aiAuditLogsTable).orderBy(desc(aiAuditLogsTable.createdAt)).limit(limit);
+    if (tool) query = query.where(eq(aiAuditLogsTable.tool, tool)) as any;
+    if (status) query = query.where(eq(aiAuditLogsTable.status, status)) as any;
+
+    const logs = await query;
+    res.json(logs);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/infra/audit-logs/stats", requireInfraAdmin, async (_req, res) => {
+  try {
+    const [stats] = await db.execute(sql`
+      SELECT 
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE status = 'success') as success_count,
+        COUNT(*) FILTER (WHERE status = 'blocked') as blocked_count,
+        COUNT(*) FILTER (WHERE status = 'failed') as failed_count,
+        COUNT(DISTINCT tool) as unique_tools,
+        COUNT(DISTINCT agent_key) as unique_agents
+      FROM ai_audit_logs
+      WHERE created_at > NOW() - INTERVAL '24 hours'
+    `);
+    res.json(stats);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

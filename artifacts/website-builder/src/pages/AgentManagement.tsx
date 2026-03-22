@@ -1527,15 +1527,15 @@ function ApprovalsTab({ isRTL }: { isRTL: boolean }) {
 
   const fetchApprovals = async () => {
     try {
-      const r = await fetch(`${API}/ai/approvals`);
+      const r = await fetch(`${API}/infra/approvals`, { credentials: "include" });
       const d = await r.json();
-      setApprovals(d.approvals || []);
+      setApprovals(Array.isArray(d) ? d : d.approvals || []);
     } catch {} finally { setLoading(false); }
   };
 
   const fetchKillSwitch = async () => {
     try {
-      const r = await fetch(`${API}/ai/kill-switch`);
+      const r = await fetch(`${API}/infra/kill-switch`, { credentials: "include" });
       const d = await r.json();
       setKillSwitch(d.enabled);
     } catch {}
@@ -1544,18 +1544,18 @@ function ApprovalsTab({ isRTL }: { isRTL: boolean }) {
   useEffect(() => { fetchApprovals(); fetchKillSwitch(); }, []);
 
   const handleApprove = async (id: string) => {
-    await fetch(`${API}/ai/approve/${id}`, { method: "POST" });
+    await fetch(`${API}/infra/approvals/${id}/approve`, { method: "POST", credentials: "include" });
     fetchApprovals();
   };
 
   const handleReject = async (id: string) => {
-    await fetch(`${API}/ai/reject/${id}`, { method: "POST" });
+    await fetch(`${API}/infra/approvals/${id}/reject`, { method: "POST", credentials: "include" });
     fetchApprovals();
   };
 
   const toggleKillSwitch = async () => {
     const next = !killSwitch;
-    await fetch(`${API}/ai/kill-switch`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: next }) });
+    await fetch(`${API}/infra/kill-switch`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: next }), credentials: "include" });
     setKillSwitch(next);
   };
 
@@ -1656,9 +1656,9 @@ function AuditLogTab({ isRTL }: { isRTL: boolean }) {
   useEffect(() => {
     (async () => {
       try {
-        const r = await fetch(`${API}/ai/audit-logs?limit=200`);
+        const r = await fetch(`${API}/infra/audit-logs?limit=200`, { credentials: "include" });
         const d = await r.json();
-        setLogs(d.logs || []);
+        setLogs(Array.isArray(d) ? d : d.logs || []);
       } catch {} finally { setLoading(false); }
     })();
   }, []);

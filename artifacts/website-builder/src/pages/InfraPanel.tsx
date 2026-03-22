@@ -1391,7 +1391,7 @@ export default function InfraPanel() {
                   const catAr: Record<string, string> = { files: "ملفات", database: "قاعدة بيانات", system: "نظام", deploy: "نشر", security: "أمان" };
                   const handleApproval = async (approve: boolean) => {
                     try {
-                      await fetch(`/api/ai/${approve ? "approve" : "reject"}/${data.id}`, { method: "POST" });
+                      await fetch(`/api/infra/approvals/${data.approvalId || data.id}/${approve ? "approve" : "reject"}`, { method: "POST", credentials: "include" });
                       setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, content: JSON.stringify({ ...data, decided: approve ? "approved" : "rejected" }) } : m));
                     } catch {}
                   };
