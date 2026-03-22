@@ -1,0 +1,191 @@
+🔧 TASK: Hardening + AI QA Gate قبل النشر (MrCodeAI)
+
+-------------------------------------
+📍 ملاحظة:
+كل البيئات على Google Cloud (mrcodeai.com) — لا يوجد Replit إنتاجي
+
+-------------------------------------
+🎯 الهدف:
+- تقييد الأدوات الخطرة داخل DEV (sandbox)
+- منع أي تنفيذ خطر في PROD
+- إضافة طبقة QA (AI + checks) قبل أي deploy
+
+=====================================
+[ A ] HARDENING (تقييد الأدوات)
+
+1) ملف:
+/server/agent/core/infra.ts
+
+-------------------------------------
+أضف:
+
+const SAFE_ROOT = "/workspace/projects/";
+const TMP_ROOT = "/tmp/ai-workspaces/";
+
+function isSafePath(p) {
+  return p.startsWith(SAFE_ROOT) || p.startsWith(TMP_ROOT);
+}
+
+-------------------------------------
+2) delete_file:
+
+if (!isSafePath(filePath)) {
+  throw new Error("FORBIDDEN_PATH_DELETE");
+}
+
+-------------------------------------
+3) run_sql:
+
+function isSafeSQL(q) {
+  const s = q.trim().toLowerCase();
+
+  if (s.startsWith("select") || s.startsWith("explain")) return true;
+
+  if (s.startsWith("insert")) return true;
+
+  if (s.startsWith("update") && s.includes(" where ")) return true;
+
+  return false;
+}
+
+if (!isSafeSQL(query)) {
+  throw new Error("FORBIDDEN_SQL");
+}
+
+-------------------------------------
+4) run_command / exec_command:
+
+const ALLOWED_COMMANDS = [
+  "npm install",
+  "npm run build",
+  "npm run dev"
+];
+
+function isAllowedCommand(cmd) {
+  return ALLOWED_COMMANDS.some(c => cmd.startsWith(c));
+}
+
+if (!isAllowedCommand(command)) {
+  throw new Error("FORBIDDEN_COMMAND");
+}
+
+-------------------------------------
+5) set_env:
+
+if (!filePath.endsWith(".env.local")) {
+  throw new Error("FORBIDDEN_ENV_WRITE");
+}
+
+-------------------------------------
+6) install_package:
+
+if (!isSafePath(projectPath)) {
+  throw new Error("FORBIDDEN_INSTALL_PATH");
+}
+
+-------------------------------------
+🎯 النتيجة:
+DEV حر نسبياً لكن داخل sandbox
+PROD محمي
+
+=====================================
+[ B ] QA GATE (قبل النشر)
+
+1) إنشاء Agent جديد:
+
+/server/agent/agents/qa-agent.ts
+
+-------------------------------------
+2) محتوى agent:
+
+export async function runQAChecks(projectPath) {
+  const results = [];
+
+  // 1. build
+  const build = await exec("npm run build", { cwd: projectPath });
+  results.push({ step: "build", ok: build.success });
+
+  // 2. server start check
+  const server = await exec("node dist/index.js", { timeout: 5000, cwd: projectPath });
+  results.push({ step: "server_start", ok: server.success });
+
+  // 3. required files
+  const hasPackage = await exists(projectPath + "/package.json");
+  const hasEntry = await exists(projectPath + "/dist/index.js");
+
+  results.push({ step: "files", ok: hasPackage && hasEntry });
+
+  return results;
+}
+
+-------------------------------------
+3) إضافة AI تقييم (اختياري لكن مهم):
+
+export function evaluateQA(results) {
+  const failed = results.filter(r => !r.ok);
+
+  if (failed.length === 0) {
+    return { status: "PASS" };
+  }
+
+  return {
+    status: "FAIL",
+    reasons: failed.map(f => f.step)
+  };
+}
+
+-------------------------------------
+4) تعديل deploy flow:
+
+ملف:
+/server/agent/flows/deploy-flow.ts
+
+-------------------------------------
+قبل trigger_deploy:
+
+const qaResults = await runQAChecks(projectPath);
+const qaDecision = evaluateQA(qaResults);
+
+if (qaDecision.status === "FAIL") {
+  throw new Error("QA_FAILED: " + qaDecision.reasons.join(","));
+}
+
+-------------------------------------
+5) ربط مع approval:
+
+- إذا QA = PASS → يسمح بطلب الموافقة
+- إذا QA = FAIL → يمنع deploy مباشرة
+
+-------------------------------------
+6) تسجيل audit:
+
+logAudit("qa_result", qaDecision);
+
+-------------------------------------
+🎯 النتيجة:
+
+AI لا ينشر:
+❌ كود فيه أخطاء
+❌ كود لا يبني
+❌ كود لا يعمل
+
+وينشر فقط:
+✔ كود سليم
+
+=====================================
+[ C ] تحسين بسيط (اختياري قوي)
+
+- إضافة endpoint:
+
+GET /api/qa/last-result
+
+- عرض النتيجة في UI قبل الموافقة
+
+=====================================
+🔥 النتيجة النهائية:
+
+- AI يعمل بحرية في DEV ✔
+- الأدوات الخطرة مقيدة ✔
+- الإنتاج محمي ✔
+- لا يوجد deploy إلا بعد QA ✔
+- النظام جاهز للاستخدام الحقيقي ✔
