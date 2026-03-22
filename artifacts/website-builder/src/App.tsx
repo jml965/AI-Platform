@@ -21,6 +21,7 @@ import InfraPanel from "@/pages/InfraPanel";
 import NotFound from "@/pages/not-found";
 import { useGetMe } from "@workspace/api-client-react";
 import { Loader2 } from "lucide-react";
+import { isProductionSite } from "@/lib/utils";
 
 const queryClient = new QueryClient();
 
@@ -76,56 +77,25 @@ function AdminGuard({ children }: { children: React.ReactNode }) {
 }
 
 function Router() {
+  const isProd = isProductionSite();
   return (
     <Switch>
-      <Route path="/admin">
-        <AdminGuard><AdminDashboard /></AdminGuard>
-      </Route>
-      <Route path="/">
-        <AuthGuard><Dashboard /></AuthGuard>
-      </Route>
-      <Route path="/dashboard">
-        <AuthGuard><Dashboard /></AuthGuard>
-      </Route>
-      <Route path="/project/:id">
-        <AuthGuard><Builder /></AuthGuard>
-      </Route>
-      <Route path="/project/:id/analytics">
-        <AuthGuard><Analytics /></AuthGuard>
-      </Route>
-      <Route path="/billing">
-        <AuthGuard><Billing /></AuthGuard>
-      </Route>
-      <Route path="/teams">
-        <AuthGuard><Teams /></AuthGuard>
-      </Route>
-      <Route path="/qa/:projectId">
-        <AuthGuard><QualityAssurance /></AuthGuard>
-      </Route>
-      <Route path="/qa">
-        <AuthGuard><QualityAssurance /></AuthGuard>
-      </Route>
-      <Route path="/templates">
-        <AuthGuard><Templates /></AuthGuard>
-      </Route>
-      <Route path="/monitoring">
-        <AuthGuard><Monitoring /></AuthGuard>
-      </Route>
-      <Route path="/notifications">
-        <AuthGuard><NotificationSettings /></AuthGuard>
-      </Route>
-      <Route path="/agents">
-        <AdminGuard><AgentManagement /></AdminGuard>
-      </Route>
-      <Route path="/control-center">
-        <AdminGuard><AIControlCenter /></AdminGuard>
-      </Route>
-      <Route path="/strategic">
-        <AuthGuard><StrategicAgent /></AuthGuard>
-      </Route>
-      <Route path="/infra">
-        <AdminGuard><InfraPanel /></AdminGuard>
-      </Route>
+      {!isProd && <Route path="/admin"><AdminGuard><AdminDashboard /></AdminGuard></Route>}
+      <Route path="/"><AuthGuard><Dashboard /></AuthGuard></Route>
+      <Route path="/dashboard"><AuthGuard><Dashboard /></AuthGuard></Route>
+      <Route path="/project/:id"><AuthGuard><Builder /></AuthGuard></Route>
+      <Route path="/project/:id/analytics"><AuthGuard><Analytics /></AuthGuard></Route>
+      <Route path="/billing"><AuthGuard><Billing /></AuthGuard></Route>
+      <Route path="/teams"><AuthGuard><Teams /></AuthGuard></Route>
+      <Route path="/qa/:projectId"><AuthGuard><QualityAssurance /></AuthGuard></Route>
+      <Route path="/qa"><AuthGuard><QualityAssurance /></AuthGuard></Route>
+      <Route path="/templates"><AuthGuard><Templates /></AuthGuard></Route>
+      <Route path="/monitoring"><AuthGuard><Monitoring /></AuthGuard></Route>
+      <Route path="/notifications"><AuthGuard><NotificationSettings /></AuthGuard></Route>
+      {!isProd && <Route path="/agents"><AdminGuard><AgentManagement /></AdminGuard></Route>}
+      {!isProd && <Route path="/control-center"><AdminGuard><AIControlCenter /></AdminGuard></Route>}
+      <Route path="/strategic"><AuthGuard><StrategicAgent /></AuthGuard></Route>
+      {!isProd && <Route path="/infra"><AdminGuard><InfraPanel /></AdminGuard></Route>}
       <Route component={NotFound} />
     </Switch>
   );
@@ -137,7 +107,7 @@ function App() {
       <I18nProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <Router />
-          <FloatingAdminChat />
+          {!isProductionSite() && <FloatingAdminChat />}
         </WouterRouter>
       </I18nProvider>
     </QueryClientProvider>
