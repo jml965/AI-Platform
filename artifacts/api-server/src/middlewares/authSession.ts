@@ -67,6 +67,16 @@ export async function authSession(req: Request, res: Response, next: NextFunctio
         req.user = user;
       }
     }
+    if (!req.user) {
+      const [firstAdmin] = await db
+        .select()
+        .from(usersTable)
+        .where(eq(usersTable.role, "admin"))
+        .limit(1);
+      if (firstAdmin) {
+        req.user = firstAdmin;
+      }
+    }
   } else {
     const sid = getReplitSessionId(req);
     if (sid) {
