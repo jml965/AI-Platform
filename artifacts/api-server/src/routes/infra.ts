@@ -1394,18 +1394,33 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
             const isActuallyEmpty = !result || result.trim().length < 5 || noResultIndicators.some(ind => (result || "").toLowerCase().includes(ind));
             const hasFileMatch = !isActuallyEmpty && result && /\.(tsx|jsx|ts|js|css|html|vue|svelte)/.test(result) && result.length > 10;
             if (hasFileMatch && !targetState.found) {
-              const fileMatch = result.match(/([^\s]+\.(tsx|jsx|ts|js|css|html|vue|svelte))/);
+              let extractedFile = "unknown";
+              try {
+                const parsed = JSON.parse(result);
+                if (parsed.results && parsed.results.length > 0) {
+                  const firstResult = parsed.results[0];
+                  const colonIdx = firstResult.indexOf(":");
+                  extractedFile = colonIdx > 0 ? firstResult.substring(0, colonIdx) : firstResult;
+                }
+              } catch {
+                const fileMatch = result.match(/([\w\-./]+\.(tsx|jsx|ts|js|css|html|vue|svelte))/);
+                if (fileMatch) extractedFile = fileMatch[1];
+              }
               targetState.found = true;
-              targetState.file = fileMatch ? fileMatch[1] : "unknown";
+              targetState.file = extractedFile;
               targetState.mustEdit = true;
               searchFoundFile = true;
               console.log(`[Agent] search_text found → file="${targetState.file}", searchFoundFile=true`);
-              toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: result + `\n\n🔧 تم تحديد الملف "${targetState.file}". نفّذ: read_file ثم edit_component مباشرة.` });
+              const searchContent = result + `\n\n🔧 تم تحديد الملف "${targetState.file}". نفّذ: read_file ثم edit_component مباشرة.`;
+              res.write(`data: ${JSON.stringify({ type: "tool_result", name: tool.name, result: searchContent.slice(0, 5000) })}\n\n`);
+              toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: searchContent });
               continue;
             } else if (!hasFileMatch) {
               searchWithNoResults++;
               console.log(`[Agent] search_text: no results (${searchWithNoResults})`);
-              toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: (result || "لم يتم العثور على نتائج") + `\n\n💡 النص غير موجود في الكود. جرّب db_query: SELECT * FROM users WHERE display_name ILIKE '%text%'` });
+              const noResultContent = (result || "لم يتم العثور على نتائج") + `\n\n💡 النص غير موجود في الكود. جرّب بحث مختلف أو read_file مباشرة.`;
+              res.write(`data: ${JSON.stringify({ type: "tool_result", name: tool.name, result: noResultContent.slice(0, 5000) })}\n\n`);
+              toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: noResultContent });
               continue;
             }
           }
