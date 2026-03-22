@@ -47,6 +47,7 @@ export default function Login() {
       const res = await fetch(`${import.meta.env.BASE_URL}api/auth/${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(body),
       });
 
