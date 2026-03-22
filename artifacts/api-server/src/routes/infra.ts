@@ -1430,9 +1430,27 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
               targetState.file = extractedFile;
               targetState.mustEdit = true;
               searchFoundFile = true;
+              hasReadAfterSearch = true;
               console.log(`[Agent] search_text found → file="${targetState.file}", searchFoundFile=true`);
-              const searchContent = result + `\n\n🔧 تم تحديد الملف "${targetState.file}". نفّذ: read_file ثم edit_component مباشرة.`;
-              res.write(`data: ${JSON.stringify({ type: "tool_result", name: tool.name, result: searchContent.slice(0, 5000) })}\n\n`);
+
+              let autoReadContent = "";
+              try {
+                const readPath = extractedFile.startsWith("artifacts/website-builder/")
+                  ? extractedFile.replace("artifacts/website-builder/", "")
+                  : extractedFile;
+                const autoRead = await executeInfraTool("read_file", { path: extractedFile }, "admin");
+                const readParsed = JSON.parse(autoRead);
+                if (readParsed.content) {
+                  autoReadContent = `\n\n📄 AUTO_READ — محتوى الملف "${extractedFile}":\n\`\`\`\n${readParsed.content.slice(0, 8000)}\n\`\`\``;
+                  console.log(`[Agent] AUTO_READ: ${extractedFile} (${readParsed.content.length} chars)`);
+                  res.write(`data: ${JSON.stringify({ type: "tool_result", name: "read_file", result: `تم قراءة ${extractedFile} (${readParsed.content.length} حرف)` })}\n\n`);
+                }
+              } catch (readErr: any) {
+                console.log(`[Agent] AUTO_READ failed: ${readErr?.message?.slice(0, 100)}`);
+              }
+
+              const searchContent = result + `\n\n🔧 تم تحديد الملف "${targetState.file}" وقراءته تلقائياً.${autoReadContent}\n\n⚡ نفّذ edit_component مباشرة الآن — لا تبحث ولا تقرأ مرة ثانية.`;
+              res.write(`data: ${JSON.stringify({ type: "tool_result", name: tool.name, result: (result + `\n\n🔧 تم تحديد الملف "${targetState.file}" وقراءته تلقائياً. جاري التعديل...`).slice(0, 5000) })}\n\n`);
               toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: searchContent });
               continue;
             } else if (!hasFileMatch) {
