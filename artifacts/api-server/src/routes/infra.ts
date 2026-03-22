@@ -1495,6 +1495,9 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
                   }
                 } catch {}
 
+                console.log(`[Agent] 🧠 AI_INTENT: starting extraction. searchTexts=${JSON.stringify(searchResultTexts)}, userMsg="${userMsg.slice(0, 80)}"`);
+                res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n🧠 أحلل نيتك...\n` })}\n\n`);
+
                 const intentPrompt = `أنت محلل نوايا. المستخدم يريد تعديل نص في موقعه.
 
 رسالة المستخدم: "${userMsg}"
@@ -1512,25 +1515,34 @@ ${searchResultTexts.map(t => `- "${t}"`).join("\n")}
 
 أجب بـ JSON فقط بدون أي شرح.`;
 
+                const modelName = config.primaryModel?.model || "claude-sonnet-4-6";
+                console.log(`[Agent] 🧠 AI_INTENT: calling ${modelName}...`);
+
                 const intentRes = await client.messages.create({
-                  model: "claude-sonnet-4-20250514",
+                  model: modelName,
                   max_tokens: 150,
                   temperature: 0,
                   messages: [{ role: "user", content: intentPrompt }],
                 });
 
                 const intentText = intentRes.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
+                console.log(`[Agent] 🧠 AI_INTENT response: ${intentText.slice(0, 200)}`);
+
                 const intentMatch = intentText.match(/\{[\s\S]*?\}/);
                 if (intentMatch) {
                   const intent = JSON.parse(intentMatch[0]);
                   if (intent.old && intent.new) {
                     directOldText = intent.old;
                     directNewText = intent.new;
-                    console.log(`[Agent] 🧠 AI_INTENT: "${directOldText}" → "${directNewText}" (cost: ~${intentRes.usage?.input_tokens || 0}+${intentRes.usage?.output_tokens || 0} tokens)`);
+                    console.log(`[Agent] 🧠 AI_INTENT SUCCESS: "${directOldText}" → "${directNewText}" (tokens: ${intentRes.usage?.input_tokens || 0}+${intentRes.usage?.output_tokens || 0})`);
+                    res.write(`data: ${JSON.stringify({ type: "chunk", text: `✅ فهمت: "${directOldText}" → "${directNewText}"\n` })}\n\n`);
+                  } else {
+                    console.log(`[Agent] 🧠 AI_INTENT: not a simple replacement`);
                   }
                 }
               } catch (intentErr: any) {
-                console.log(`[Agent] AI_INTENT failed, skipping direct edit: ${intentErr?.message?.slice(0, 100)}`);
+                console.log(`[Agent] 🧠 AI_INTENT ERROR: ${intentErr?.message?.slice(0, 200)}`);
+                res.write(`data: ${JSON.stringify({ type: "chunk", text: `⚠️ فشل تحليل النية — أكمل بالطريقة العادية\n` })}\n\n`);
               }
 
               if (directOldText && directNewText && extractedFile !== "unknown") {
