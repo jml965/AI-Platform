@@ -810,7 +810,10 @@ function FloatingChatInner() {
               setStatusLines(prev => [...prev, event.message || event.messageEn]);
               scrollToBottom();
             }
-            else if (event.type === "done") { streamMeta = { tokensUsed: event.tokensUsed, cost: event.cost, model: event.model, models: event.models }; }
+            else if (event.type === "done") {
+              streamMeta = { tokensUsed: event.tokensUsed, cost: event.cost, model: event.model, models: event.models };
+              window.dispatchEvent(new CustomEvent("ai-edit-complete"));
+            }
             else if (event.type === "error") { streamedContent += event.message; typewriterFlush(); }
           } catch {}
         }

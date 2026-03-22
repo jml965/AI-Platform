@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 
 const en = {
   login_title: "Build your dream website",
@@ -1446,6 +1446,7 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
   });
 
   const [overrides, setOverrides] = useState<Record<string, Record<string, string>>>({ en: {}, ar: {} });
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     localStorage.setItem("lang", lang);
@@ -1453,7 +1454,7 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     document.documentElement.lang = lang;
   }, [lang]);
 
-  useEffect(() => {
+  const reloadOverrides = useCallback(() => {
     const baseUrl = (import.meta as any).env?.VITE_API_URL || "";
     Promise.all([
       fetch(`${baseUrl}/api/ui-texts?lang=ar`).then(r => r.ok ? r.json() : { overrides: {} }),
@@ -1465,21 +1466,33 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     fetch(`${baseUrl}/api/ui-styles`)
       .then(r => r.ok ? r.json() : { styles: [] })
       .then(data => {
+        let styleEl = document.getElementById("ui-style-overrides");
+        if (!styleEl) {
+          styleEl = document.createElement("style");
+          styleEl.id = "ui-style-overrides";
+          document.head.appendChild(styleEl);
+        }
         if (data.styles && data.styles.length > 0) {
           let css = "";
           for (const s of data.styles) {
             css += `${s.selector} { ${s.property}: ${s.value} !important; }\n`;
           }
-          let styleEl = document.getElementById("ui-style-overrides");
-          if (!styleEl) {
-            styleEl = document.createElement("style");
-            styleEl.id = "ui-style-overrides";
-            document.head.appendChild(styleEl);
-          }
           styleEl.textContent = css;
+        } else {
+          styleEl.textContent = "";
         }
       })
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    reloadOverrides();
+  }, [reloadOverrides, refreshKey]);
+
+  useEffect(() => {
+    const handler = () => setRefreshKey(k => k + 1);
+    window.addEventListener("ai-edit-complete", handler);
+    return () => window.removeEventListener("ai-edit-complete", handler);
   }, []);
 
   const toggleLang = () => setLang((prev) => (prev === "en" ? "ar" : "en"));
