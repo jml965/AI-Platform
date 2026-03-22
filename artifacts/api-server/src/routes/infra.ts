@@ -1248,7 +1248,10 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
 
           if (tool.name === "read_file" || tool.name === "view_page_source") {
             hasReadAfterSearch = true;
-            console.log(`[Agent] Read file after search — ready to edit`);
+            if (searchCount > 0) {
+              searchFoundFile = true;
+            }
+            console.log(`[Agent] Read file after search — ready to edit, searchFoundFile=${searchFoundFile}`);
           }
 
           if (["get_page_structure", "browse_page", "inspect_styles"].includes(tool.name)) {
@@ -1399,7 +1402,8 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
               targetState.found = true;
               targetState.file = fileMatch ? fileMatch[1] : "unknown";
               targetState.mustEdit = true;
-              console.log(`[Agent] search_text found → file="${targetState.file}"`);
+              searchFoundFile = true;
+              console.log(`[Agent] search_text found → file="${targetState.file}", searchFoundFile=true`);
               toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: result + `\n\n🔧 تم تحديد الملف "${targetState.file}". نفّذ: read_file ثم edit_component مباشرة.` });
               continue;
             } else if (!hasFileMatch) {
