@@ -1495,57 +1495,59 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
                   }
                 } catch {}
 
-                console.log(`[Agent] 🧠 AI_INTENT: starting extraction. searchTexts=${JSON.stringify(searchResultTexts)}, userMsg="${userMsg.slice(0, 80)}"`);
-                res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n🧠 أحلل نيتك...\n` })}\n\n`);
+                const replacePatterns = [
+                  /(?:غي[ّر]|بد[ّل]|استبدل|حو[ّل])\s+(?:كلمة\s+|نص\s+|عبارة\s+)?["«]?(.+?)["»]?\s+(?:ال[ىي]|بـ?|لـ?|يصير|تصير|يكون)\s+["«]?(.+?)["»]?\s*$/i,
+                  /(?:غي[ّر]|بد[ّل]|استبدل|حو[ّل])\s+(?:كلمة\s+|نص\s+|عبارة\s+)?(.+?)\s+(?:ال[ىي]|بـ?|لـ?|يصير|تصير|يكون)\s+(.+?)$/i,
+                  /(?:خلي|اجعل|سوي)\s+["«]?(.+?)["»]?\s+(?:يقول|تقول|يكتب|تكتب|يصير|تصير)\s+["«]?(.+?)["»]?\s*$/i,
+                  /["«](.+?)["»]\s*(?:→|->|=>|الى|إلى)\s*["«](.+?)["»]/i,
+                ];
 
-                const intentPrompt = `أنت محلل نوايا. المستخدم يريد تعديل نص في موقعه.
+                for (const pat of replacePatterns) {
+                  const m = userMsg.match(pat);
+                  if (m && m[1]?.trim() && m[2]?.trim()) {
+                    let oldText = m[1].trim();
+                    let newText = m[2].trim();
 
-رسالة المستخدم: "${userMsg}"
+                    if (searchResultTexts.length > 0) {
+                      const bestMatch = searchResultTexts.find(t => t.includes(oldText) || oldText.includes(t));
+                      if (bestMatch) oldText = bestMatch;
+                    }
 
-النصوص الموجودة في الكود حالياً:
-${searchResultTexts.map(t => `- "${t}"`).join("\n")}
-
-هل المستخدم يريد استبدال نص بنص آخر؟
-
-إذا نعم، أجب بـ JSON فقط:
-{"old": "النص القديم", "new": "النص الجديد"}
-
-إذا لا (الطلب ليس استبدال بسيط)، أجب:
-{"old": null, "new": null}
-
-أجب بـ JSON فقط بدون أي شرح.`;
-
-                const modelName = config.primaryModel?.model || "claude-sonnet-4-6";
-                console.log(`[Agent] 🧠 AI_INTENT: calling ${modelName}...`);
-
-                const intentPromise = client.messages.create({
-                  model: modelName,
-                  max_tokens: 150,
-                  temperature: 0,
-                  messages: [{ role: "user", content: intentPrompt }],
-                });
-                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("AI_INTENT_TIMEOUT_15s")), 15000));
-                const intentRes = await Promise.race([intentPromise, timeoutPromise]) as any;
-
-                const intentText = intentRes.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
-                console.log(`[Agent] 🧠 AI_INTENT response: ${intentText.slice(0, 200)}`);
-
-                const intentMatch = intentText.match(/\{[\s\S]*?\}/);
-                if (intentMatch) {
-                  const intent = JSON.parse(intentMatch[0]);
-                  if (intent.old && intent.new) {
-                    directOldText = intent.old;
-                    directNewText = intent.new;
-                    console.log(`[Agent] 🧠 AI_INTENT SUCCESS: "${directOldText}" → "${directNewText}" (tokens: ${intentRes.usage?.input_tokens || 0}+${intentRes.usage?.output_tokens || 0})`);
+                    directOldText = oldText;
+                    directNewText = newText;
+                    console.log(`[Agent] 🧠 REGEX_INTENT: "${directOldText}" → "${directNewText}"`);
                     res.write(`data: ${JSON.stringify({ type: "chunk", text: `✅ فهمت: "${directOldText}" → "${directNewText}"\n` })}\n\n`);
-                  } else {
-                    console.log(`[Agent] 🧠 AI_INTENT: not a simple replacement`);
+                    break;
                   }
                 }
+
+                if (!directOldText && searchResultTexts.length === 1) {
+                  const changeWords = ["غير", "بدل", "استبدل", "حول", "خلي", "سوي"];
+                  const hasChangeVerb = changeWords.some(w => userMsg.includes(w));
+                  if (hasChangeVerb) {
+                    const msgWithout = userMsg;
+                    const foundText = searchResultTexts[0];
+                    const afterPatterns = [
+                      new RegExp(`(?:ال[ىي]|بـ?|لـ?|يصير|تصير|يكون|يقول|تقول)\\s+["«]?(.+?)["»]?\\s*$`),
+                    ];
+                    for (const ap of afterPatterns) {
+                      const am = msgWithout.match(ap);
+                      if (am && am[1]?.trim()) {
+                        directOldText = foundText;
+                        directNewText = am[1].trim();
+                        console.log(`[Agent] 🧠 FUZZY_INTENT: "${directOldText}" → "${directNewText}"`);
+                        res.write(`data: ${JSON.stringify({ type: "chunk", text: `✅ فهمت: "${directOldText}" → "${directNewText}"\n` })}\n\n`);
+                        break;
+                      }
+                    }
+                  }
+                }
+
+                if (!directOldText) {
+                  console.log(`[Agent] 🧠 REGEX_INTENT: no match found in "${userMsg.slice(0, 80)}"`);
+                }
               } catch (intentErr: any) {
-                const errMsg = intentErr?.message?.slice(0, 300) || "unknown";
-                console.log(`[Agent] 🧠 AI_INTENT ERROR: ${errMsg}`);
-                res.write(`data: ${JSON.stringify({ type: "chunk", text: `⚠️ فشل تحليل النية (${errMsg.slice(0, 80)}) — أكمل بالطريقة العادية\n` })}\n\n`);
+                console.log(`[Agent] 🧠 INTENT ERROR: ${intentErr?.message?.slice(0, 200)}`);
               }
 
               if (directOldText && directNewText && extractedFile !== "unknown") {
