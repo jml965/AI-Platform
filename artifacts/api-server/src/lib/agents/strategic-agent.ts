@@ -2091,7 +2091,7 @@ export async function executeInfraTool(toolName: string, input: any, callerRole?
             variants.add(word.replace(/ا/g, "إ"));
             variants.add(word.replace(/ة/g, "ه"));
             variants.add(word.replace(/ه/g, "ة"));
-            return [...variants].filter(v => v !== word || variants.size === 1);
+            return [...variants];
           }
 
           const variants = generateVariants(searchText);
