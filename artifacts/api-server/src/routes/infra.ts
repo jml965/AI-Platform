@@ -940,7 +940,18 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
     }
 
     const conversationMessages = [
-      ...history.slice(-20),
+      ...history.slice(-6).map(m => {
+        if (m.role === "assistant" && Array.isArray(m.content)) {
+          const trimmed = m.content.map((b: any) => {
+            if (b.type === "tool_result" && typeof b.content === "string" && b.content.length > 300) {
+              return { ...b, content: b.content.slice(0, 300) + "..." };
+            }
+            return b;
+          });
+          return { ...m, content: trimmed };
+        }
+        return m;
+      }),
       { role: "user" as const, content: enrichedMessage },
     ];
 
