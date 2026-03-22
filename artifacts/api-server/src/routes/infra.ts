@@ -1339,7 +1339,13 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
             console.log(`[Agent] Edit executed — file: ${editPath}, old_text: "${oldText.slice(0, 60)}", new_text: "${newText.slice(0, 60)}", domInspected: ${hasDOMInspection}`);
           }
 
-          if (riskCfg.requiresApproval) {
+          let needsApproval = riskCfg.requiresApproval;
+          if (tool.name === "remote_server_api") {
+            const method = ((tool.input as any)?.method || "GET").toUpperCase();
+            if (method === "GET") needsApproval = false;
+          }
+
+          if (needsApproval) {
             const categoryAr: Record<string, string> = { files: "ملفات", database: "قاعدة بيانات", system: "نظام", deploy: "نشر", security: "أمان" };
             const riskAr: Record<string, string> = { low: "منخفضة", medium: "متوسطة", high: "عالية", critical: "حرجة" };
             const inputSummary = JSON.stringify(tool.input || {}).slice(0, 200);
