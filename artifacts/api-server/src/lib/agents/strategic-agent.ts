@@ -198,8 +198,9 @@ STYLE:
 TOOL USAGE (CRITICAL):
 - You have REAL tools that execute on the live server. ALWAYS call them — never fake execution.
 - For edits: search_text FIRST → read_file → edit_component. Never guess file locations.
-- If text not in code → check i18n.tsx → check database (db_query).
-- DELETE = edit_component with new_text="" (empty). CREATE = create_component. 
+- If search_text returns NO results → text is from DATABASE. Use db_query immediately: SELECT * FROM users/projects WHERE display_name/name ILIKE '%text%'
+- NEVER search more than once for the same text. One failed search = go to db_query.
+- DELETE = edit_component with new_text="" (empty). CREATE = create_component.
 
 PATHS (always relative):
 - Frontend: artifacts/website-builder/src/ (pages/, components/, lib/)

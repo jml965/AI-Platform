@@ -1120,12 +1120,9 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
           const toolStart = Date.now();
 
           if (decisionState.domTextDetected) {
-            if ((tool.name === "run_sql" || tool.name === "db_query") && !decisionState.dbAllowed) {
-              const blocked = `⛔ DECISION_ENFORCEMENT — ممنوع استخدام DB قبل استنفاد البحث في UI.\n\nالنص المكتشف: "${(decisionState.domText || "").slice(0, 50)}"\n\n✅ المطلوب أولاً:\n1. search_text (النص في الكود)\n2. search_text (i18n/ترجمة)\n3. search_text (components/layout)\n\nبعدها يُسمح بـ DB.`;
-              console.log(`[Decision] BLOCKED: ${tool.name} — DB not allowed yet. State: ui=${decisionState.uiSearchAttempted}, i18n=${decisionState.i18nSearchAttempted}, comp=${decisionState.componentSearchAttempted}`);
-              await logAudit(agentKey, "decision_blocked_db", tool.name, { input: tool.input, decisionState }, blocked, "medium", "blocked");
-              res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n\n${blocked}\n` })}\n\n`);
-              fullReply += `\n\n${blocked}\n`;
+            if (tool.name === "run_sql" && !decisionState.dbAllowed) {
+              const blocked = `⛔ run_sql (كتابة) محظور قبل البحث. استخدم db_query للقراءة أولاً.`;
+              console.log(`[Decision] BLOCKED: run_sql — DB write not allowed yet`);
               toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: blocked });
               continue;
             }
@@ -1414,7 +1411,10 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
           }
 
           if (tool.name === "search_text") {
-            const hasFileMatch = result && /\.(tsx|jsx|ts|js|css|html|vue|svelte)/.test(result) && result.length > 10;
+            const searchQuery = ((tool.input as any)?.text || "").trim();
+            const noResultIndicators = ["لم يتم", "no results", "not found", "0 matches", "لا يوجد", "no match"];
+            const isActuallyEmpty = !result || result.trim().length < 5 || noResultIndicators.some(ind => (result || "").toLowerCase().includes(ind));
+            const hasFileMatch = !isActuallyEmpty && result && /\.(tsx|jsx|ts|js|css|html|vue|svelte)/.test(result) && result.length > 10;
             if (hasFileMatch) {
               searchFoundFile = true;
               console.log(`[Agent] search_text found file match — searchFoundFile=true, DOM alternative ✓`);
