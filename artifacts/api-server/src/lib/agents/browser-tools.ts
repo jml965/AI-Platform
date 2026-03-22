@@ -94,24 +94,51 @@ async function injectAuthCookie(page: Page, url: string): Promise<void> {
   } catch {}
 }
 
+async function prepareBrowserPage(
+  pathOrUrl: string,
+  toolName: string,
+  opts?: { width?: number; height?: number; lang?: string }
+): Promise<{ page: Page; targetUrl: string }> {
+  const browser = await getBrowser();
+  const page = await browser.newPage();
+  await page.setViewport({ width: opts?.width || 1280, height: opts?.height || 720 });
+  const targetUrl = resolveUrl(pathOrUrl);
+
+  const isProd = process.env.NODE_ENV === "production";
+  const allowDevAuth = process.env.ENABLE_BROWSER_AUTH_IN_DEV === "true";
+  if (isProd || allowDevAuth) {
+    await injectAuthCookie(page, targetUrl);
+  }
+
+  if (opts?.lang) {
+    await page.evaluateOnNewDocument((l: string) => {
+      localStorage.setItem("lang", l);
+    }, opts.lang);
+  }
+
+  await page.goto(targetUrl, { waitUntil: "networkidle2", timeout: 20000 });
+  await new Promise((r) => setTimeout(r, 1500));
+
+  if (isProd) {
+    const actualUrl = page.url();
+    const expectedPath = pathOrUrl.startsWith("/") ? pathOrUrl : `/${pathOrUrl}`;
+    if (actualUrl.includes("/login") && !expectedPath.includes("/login")) {
+      console.log(`[Browser] CONTEXT_MISMATCH: ${toolName} expected="${expectedPath}" actual="${actualUrl}" — auth may have failed`);
+    }
+  }
+
+  console.log(`[Browser] ${toolName}: page="${pathOrUrl}" auth=${isProd || allowDevAuth} env=${isProd ? "production" : "dev"}`);
+  return { page, targetUrl };
+}
+
 export async function screenshotPage(
   pathOrUrl: string,
   opts?: { width?: number; height?: number; fullPage?: boolean; selector?: string }
 ): Promise<{ base64: string; width: number; height: number }> {
-  const browser = await getBrowser();
-  const page = await browser.newPage();
   const w = opts?.width || 1280;
   const h = opts?.height || 720;
+  const { page } = await prepareBrowserPage(pathOrUrl, "screenshotPage", { width: w, height: h });
   try {
-    await page.setViewport({ width: w, height: h });
-    const targetUrl = resolveUrl(pathOrUrl);
-    await injectAuthCookie(page, targetUrl);
-    await page.goto(targetUrl, {
-      waitUntil: "networkidle2",
-      timeout: 20000,
-    });
-    await new Promise((r) => setTimeout(r, 1500));
-
     let screenshotBuffer: Buffer;
     if (opts?.selector) {
       const el = await page.$(opts.selector);
@@ -137,18 +164,8 @@ export async function clickElement(
   pathOrUrl: string,
   selector: string
 ): Promise<{ success: boolean; screenshotAfter: string; message: string }> {
-  const browser = await getBrowser();
-  const page = await browser.newPage();
+  const { page } = await prepareBrowserPage(pathOrUrl, "clickElement");
   try {
-    await page.setViewport({ width: 1280, height: 720 });
-    const clickUrl = resolveUrl(pathOrUrl);
-    await injectAuthCookie(page, clickUrl);
-    await page.goto(clickUrl, {
-      waitUntil: "networkidle2",
-      timeout: 20000,
-    });
-    await new Promise((r) => setTimeout(r, 1000));
-
     const el = await page.$(selector);
     if (!el) {
       const shot = (await page.screenshot({ type: "png" })) as Buffer;
@@ -290,23 +307,8 @@ export async function getPageStructure(
   pathOrUrl: string,
   lang?: string
 ): Promise<string> {
-  const browser = await getBrowser();
-  const page = await browser.newPage();
+  const { page } = await prepareBrowserPage(pathOrUrl, "getPageStructure", { lang });
   try {
-    await page.setViewport({ width: 1280, height: 720 });
-    const targetUrl = resolveUrl(pathOrUrl);
-    await injectAuthCookie(page, targetUrl);
-    if (lang) {
-      await page.evaluateOnNewDocument((l: string) => {
-        localStorage.setItem("lang", l);
-      }, lang);
-    }
-    await page.goto(targetUrl, {
-      waitUntil: "networkidle2",
-      timeout: 20000,
-    });
-    await new Promise((r) => setTimeout(r, 1500));
-
     const structure = await page.evaluate(() => {
       const results: string[] = [];
 
@@ -370,18 +372,8 @@ export async function scrollAndScreenshot(
   direction: "down" | "up" | "to-element",
   selectorOrPixels?: string | number
 ): Promise<{ base64: string; scrollY: number; pageHeight: number }> {
-  const browser = await getBrowser();
-  const page = await browser.newPage();
+  const { page } = await prepareBrowserPage(pathOrUrl, "scrollAndScreenshot");
   try {
-    await page.setViewport({ width: 1280, height: 720 });
-    const scrollTarget = resolveUrl(pathOrUrl);
-    await injectAuthCookie(page, scrollTarget);
-    await page.goto(scrollTarget, {
-      waitUntil: "networkidle2",
-      timeout: 20000,
-    });
-    await new Promise((r) => setTimeout(r, 1000));
-
     if (direction === "to-element" && typeof selectorOrPixels === "string") {
       const el = await page.$(selectorOrPixels);
       if (el) {
@@ -420,18 +412,8 @@ export async function hoverElement(
   pathOrUrl: string,
   selector: string
 ): Promise<{ success: boolean; screenshotAfter: string; message: string }> {
-  const browser = await getBrowser();
-  const page = await browser.newPage();
+  const { page } = await prepareBrowserPage(pathOrUrl, "hoverElement");
   try {
-    await page.setViewport({ width: 1280, height: 720 });
-    const hoverUrl = resolveUrl(pathOrUrl);
-    await injectAuthCookie(page, hoverUrl);
-    await page.goto(hoverUrl, {
-      waitUntil: "networkidle2",
-      timeout: 20000,
-    });
-    await new Promise((r) => setTimeout(r, 1000));
-
     const el = await page.$(selector);
     if (!el) {
       const shot = (await page.screenshot({ type: "png" })) as Buffer;

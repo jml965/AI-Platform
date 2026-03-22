@@ -30,7 +30,7 @@ const TOOL_RISK_CONFIG: Record<string, { risk: string; category: string; require
   install_package: { risk: "high", category: "system", requiresApproval: true, sandboxed: false },
   restart_service: { risk: "medium", category: "system", requiresApproval: false, sandboxed: false },
   screenshot_page: { risk: "low", category: "browser", requiresApproval: false, sandboxed: false },
-  click_element: { risk: "medium", category: "browser", requiresApproval: false, sandboxed: false },
+  click_element: { risk: "high", category: "browser", requiresApproval: true, sandboxed: false },
   type_text: { risk: "medium", category: "browser", requiresApproval: false, sandboxed: false },
   hover_element: { risk: "low", category: "browser", requiresApproval: false, sandboxed: false },
   inspect_styles: { risk: "low", category: "browser", requiresApproval: false, sandboxed: false },
