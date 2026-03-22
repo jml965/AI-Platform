@@ -52,6 +52,27 @@ db.execute(sql`
   console.error("[DB] Failed to create ui_text_overrides:", err.message);
 });
 
+db.execute(sql`
+  CREATE TABLE IF NOT EXISTS ui_style_overrides (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    selector TEXT NOT NULL,
+    property TEXT NOT NULL,
+    value TEXT NOT NULL,
+    page TEXT DEFAULT '*',
+    updated_by TEXT,
+    created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+    updated_at TIMESTAMP DEFAULT NOW() NOT NULL
+  )
+`).then(() => {
+  return db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS ui_style_overrides_selector_prop_idx ON ui_style_overrides (selector, property)
+  `);
+}).then(() => {
+  console.log("[DB] ui_style_overrides table ready");
+}).catch((err: any) => {
+  console.error("[DB] Failed to create ui_style_overrides:", err.message);
+});
+
 const server = createServer(app);
 
 server.on("upgrade", (req, socket, head) => {

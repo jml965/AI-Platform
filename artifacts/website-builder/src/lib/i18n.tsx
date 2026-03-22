@@ -1461,6 +1461,25 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     ]).then(([arData, enData]) => {
       setOverrides({ ar: arData.overrides || {}, en: enData.overrides || {} });
     }).catch(() => {});
+
+    fetch(`${baseUrl}/api/ui-styles`)
+      .then(r => r.ok ? r.json() : { styles: [] })
+      .then(data => {
+        if (data.styles && data.styles.length > 0) {
+          let css = "";
+          for (const s of data.styles) {
+            css += `${s.selector} { ${s.property}: ${s.value} !important; }\n`;
+          }
+          let styleEl = document.getElementById("ui-style-overrides");
+          if (!styleEl) {
+            styleEl = document.createElement("style");
+            styleEl.id = "ui-style-overrides";
+            document.head.appendChild(styleEl);
+          }
+          styleEl.textContent = css;
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const toggleLang = () => setLang((prev) => (prev === "en" ? "ar" : "en"));

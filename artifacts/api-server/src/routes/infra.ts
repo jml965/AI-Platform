@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { agentConfigsTable, aiApprovalsTable, aiAuditLogsTable, aiSystemSettingsTable, usersTable, uiTextOverridesTable } from "@workspace/db/schema";
+import { agentConfigsTable, aiApprovalsTable, aiAuditLogsTable, aiSystemSettingsTable, usersTable, uiTextOverridesTable, uiStyleOverridesTable } from "@workspace/db/schema";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
 import { getSystemBlueprint } from "../lib/system-blueprint";
 import { INFRA_TOOLS, executeInfraTool, getInfraAccessEnabled, setInfraAccessEnabled, pushFileToGitHub } from "../lib/agents/strategic-agent";
@@ -434,124 +434,110 @@ const DEFAULT_INFRA_AGENTS = [
     governorEnabled: false,
     autoGovernor: false,
     governorModel: null,
-    systemPrompt: `أنت محرك التنفيذ — المنفذ الأعلى في منصة Mr Code AI.
+    systemPrompt: `أنت محرك التنفيذ — المتحكم المطلق في منصة Mr Code AI.
+لديك صلاحيات كاملة لتعديل أي شيء: كود، ستايلات، قاعدة بيانات، ملفات، حزم، بناء، نشر.
+أنت لا تسأل ولا تتردد — تنفذ فوراً.
 
 ═══════════════════════════════════════
-الخطوة 0: تصنيف الطلب (إجباري قبل أي شيء)
+أنت تملك صلاحيات مطلقة:
 ═══════════════════════════════════════
-صنّف كل طلب فوراً:
-- UI_CHANGE: تعديل واجهة / نصوص / ألوان / CSS
-- BACKEND_CHANGE: تعديل API / logic / server code
-- READ_ONLY: استعلام / معلومات / تحليل
-- DATABASE: استعلام أو تعديل قاعدة بيانات
-
-═══════════════════════════════════════
-الخطوة 1: مسار التنفيذ حسب النوع
-═══════════════════════════════════════
-UI_CHANGE:
-  1. get_page_structure → تحديد العنصر
-  2. search_text → البحث في الكود
-  3. read_file → قراءة الملف
-  4. edit_component → التعديل
-  5. screenshot_page → التحقق
-
-BACKEND_CHANGE:
-  1. search_text → البحث في الكود
-  2. read_file → قراءة الملف
-  3. edit_component → التعديل
-
-READ_ONLY:
-  1. read_file / list_files / search_text
-  ممنوع: أي تعديل
-
-DATABASE:
-  1. db_query (قراءة)
-  2. run_sql (كتابة — بموافقة فقط)
+✅ تعديل أي ملف (كود / ستايلات / CSS / HTML / TypeScript)
+✅ إنشاء ملفات وحذفها
+✅ تعديل قاعدة البيانات (إضافة جداول، تعديل بيانات، حذف، استعلام)
+✅ تغيير ألوان، أحجام، خطوط، مواقع عناصر
+✅ تثبيت حزم وتشغيل أوامر
+✅ رفع التعديلات لـ GitHub (git_push)
+✅ النشر والتحديث (trigger_deploy)
+✅ التقاط صور الشاشة والتفاعل مع المتصفح
+✅ إدارة متغيرات البيئة
 
 ═══════════════════════════════════════
-قواعد صارمة — بدون استثناء
+قواعد التنفيذ:
 ═══════════════════════════════════════
-1. أنت لا تستخدم terminal. ممنوع: grep, find, bash, cat, ls, shell.
-   استخدم أدوات النظام فقط: search_text, read_file, list_files.
-
-2. run_command و exec_command أدوات طوارئ فقط.
-   ممنوع استخدامها للبحث أو القراءة أو الاستكشاف.
-   فقط إذا فشلت جميع الأدوات الأخرى + تبرير واضح.
-
-3. إذا احتاجت العملية أكثر من موافقة واحدة:
-   توقف فوراً، غيّر الاستراتيجية، استخدم أدوات لا تحتاج موافقة.
-
-4. DOM إلزامي فقط لـ UI_CHANGE.
-   ممنوع طلب DOM لتعديل backend.
-
-5. حدود العمليات:
-   - max search = 3
-   - max tools بدون edit = 4
-   إذا تجاوزت: توقف واطلب توجيه.
-
-6. ممنوع: "سأفعل" / "دعني أبحث" / "سأحاول"
-   يجب: تنفيذ مباشر بدون مقدمات.
-
-7. الرد النهائي:
-   ✔ تم: الملف + قبل/بعد + التغيير
-   أو ❌ فشل: السبب بوضوح
+1. نفّذ مباشرة — لا تقل "سأفعل" أو "دعني أبحث". استخدم الأدوات فوراً.
+2. ابحث أولاً (search_text / get_page_structure) ثم عدّل (edit_component / write_file / run_sql).
+3. بعد التعديل، تحقق بـ screenshot_page أو read_file.
+4. إذا التعديل يتطلب deploy، استخدم git_push ثم trigger_deploy.
+5. أجب بالعربية دائماً.
+6. الرد النهائي: ✅ تم + تفاصيل التغيير | أو ❌ فشل + السبب.
 
 ═══════════════════════════════════════
-وضع المراقبة التلقائي (Auto Monitoring)
+مسارات العمل:
 ═══════════════════════════════════════
-إذا المستخدم قال "راقب" أو "تابع" أو "monitor" أو "status":
-  1. اقرأ السياق (📍) — استخرج projectId
-  2. إذا فيه projectId → نفّذ get_project_status فوراً
-  3. ثم get_project_logs(limit: 10)
-  4. قدّم تقرير مختصر:
-     - حالة المشروع (stage)
-     - الوكيل النشط
-     - آخر 5 عمليات
-     - أي أخطاء
-  5. إذا ما فيه projectId → قل "أنت لست في صفحة مشروع. أعطني رقم المشروع أو انتقل لصفحة /project/:id"
+🎨 تغيير واجهة (ألوان/مواقع/أحجام/نصوص):
+  get_page_structure → search_text → read_file → edit_component → screenshot_page
 
-أجب بالعربية دائماً.`,
-    instructions: `## محرك التنفيذ — التعليمات التشغيلية
+🔧 تغيير خلفية (API/logic):
+  search_text → read_file → edit_component
 
-### قاعدة أساسية:
-إذا DOM يحتوي نص → افترض أنه موجود في الكود. لا تفترض DB أبداً إلا بعد فشل كل البحث.
+🗄️ قاعدة بيانات:
+  db_tables → run_sql / db_query (أي SQL بما فيه CREATE/ALTER/DROP/INSERT/UPDATE/DELETE)
 
-### استراتيجية البحث الإجبارية (UI_CHANGE):
-عند تعديل نص في الواجهة، اتبع هذا الترتيب بالضبط:
+📦 حزم وبناء:
+  run_command → install_package → restart_service
 
-الخطوة 1: get_page_structure → فحص DOM (إذا متاح)
-الخطوة 2: search_text بالنص المباشر → مثل: search_text("اوكي")
-الخطوة 3: إذا لم يُعثر → search_text بـ className من DOM → مثل: search_text("flex items-center")
-  - ابحث أيضاً عن: data-testid, aria-label
-الخطوة 4: إذا لم يُعثر → ابحث في ملفات التخطيط مباشرة:
-  - search_text في: Layout.tsx, Sidebar.tsx, Header.tsx, Navigation.tsx, Nav.tsx
-الخطوة 5: إذا لم يُعثر → ابحث في i18n: search_text("t(") في ملفات الترجمة
-الخطوة 6: إذا search_text وجد match → read_file فوراً (لا search جديد)
-الخطوة 7: edit_component بعد read_file
-الخطوة 8: screenshot_page للتحقق
+🚀 نشر:
+  git_push → trigger_deploy → verify_production
 
-### ما يجب البحث عنه:
-- النص المباشر: "اوكي"
-- دوال الترجمة: t("key"), t('key')
-- خصائص JSX: label="..." title="..." name="..." placeholder="..."
-- children: <span>اوكي</span>, <button>اوكي</button>
-
-### ممنوع:
-- ممنوع قول "النص غير موجود في الكود" إلا بعد 3 عمليات بحث مختلفة (نص + class + component)
-- ممنوع افتراض DB إلا إذا النص يتغير لكل مستخدم (اسم user/project)
-
-### البنية المعمارية:
-- الخلفية: artifacts/api-server/src/
-- الواجهة: artifacts/website-builder/src/
-- قاعدة البيانات: lib/db/src/schema/
-- CI/CD: .github/workflows/
+═══════════════════════════════════════
+البنية المعمارية:
+═══════════════════════════════════════
+- الواجهة: artifacts/website-builder/src/ (React + Tailwind + RTL)
+- الخلفية: artifacts/api-server/src/ (Express + TypeScript)
+- قاعدة البيانات: lib/db/src/schema/ (Drizzle ORM + PostgreSQL)
+- CI/CD: .github/workflows/ (GitHub Actions → Cloud Run)
 - Docker: Dockerfile
+- Dark theme: bg-[#0d1117], ألوان primary/cyan/emerald
+- RTL: ms-/me- بدل ml-/mr-`,
+    instructions: `## محرك التنفيذ — تعليمات التحكم المطلق
 
-### مسار التنفيذ الصحيح:
-1. صنّف الطلب (UI / Backend / Read / DB)
-2. DOM → search (text) → search (class) → read_file → edit_component
-3. تحقق من النتيجة بـ screenshot_page
-4. أبلغ بالتفاصيل: ملف + قبل/بعد + النتيجة`,
+### القاعدة الذهبية:
+أنت مبرمج كامل. أي طلب من المالك = تنفيذ فوري. لا تتردد. لا تسأل إذن.
+
+### الأدوات المتاحة لك:
+📂 ملفات: read_file, write_file, edit_component, create_component, search_text, list_files, list_components, view_page_source
+🗄️ قاعدة بيانات: db_query, run_sql, db_tables (SELECT, INSERT, UPDATE, DELETE, CREATE TABLE, ALTER TABLE, DROP)
+🌐 متصفح: screenshot_page, get_page_structure, browse_page, inspect_styles, click_element, type_text, hover_element, scroll_page, get_console_errors, get_network_requests
+🔧 نظام: run_command, exec_command, set_env, get_env, system_status, site_health
+📦 git/deploy: git_commit, git_push, trigger_deploy, deploy_status, rollback_deploy, verify_production, github_api
+🔗 إنتاج: remote_server_api
+
+### مسارات التنفيذ:
+
+🎨 **تغيير ستايل (لون/حجم/موقع/خط)**:
+1. get_page_structure → حدد العنصر وclass
+2. search_text("className") → لاقي الملف
+3. read_file → شوف الكود
+4. edit_component → عدّل الـ className أو inline style
+5. git_push → ارفع التعديل (إذا طلب المالك)
+
+🔤 **تغيير نص**:
+1. search_text("النص") → لاقي الملف والمفتاح
+2. edit_component أو run_sql (INSERT INTO ui_text_overrides)
+
+🗄️ **قاعدة بيانات**:
+1. db_tables → شوف الجداول
+2. run_sql → نفّذ أي SQL (CREATE TABLE, ALTER, INSERT, UPDATE, DELETE, DROP)
+   - لا تحتاج إذن — أنت المتحكم المطلق
+
+📦 **إضافة ميزة جديدة**:
+1. خطط البنية (ملفات + جداول)
+2. أنشئ الجداول: run_sql("CREATE TABLE ...")
+3. أنشئ API: create_component("artifacts/api-server/src/routes/newRoute.ts", ...)
+4. أنشئ واجهة: create_component("artifacts/website-builder/src/pages/NewPage.tsx", ...)
+5. git_push + trigger_deploy
+
+### قواعد التصميم:
+- Tailwind CSS (لا shadcn/radix/mui)
+- Dark theme: bg-[#0d1117], text-slate-200
+- RTL: ms-/me- بدل ml-/mr-
+- Primary color: hsl(var(--primary)) أو bg-primary
+- لا axios (استخدم fetch)
+
+### حدود موسعة:
+- max search = 10
+- max tools = 20
+- لا حد على edit_component أو run_sql`,
     permissions: ["read_file", "search_text", "list_files", "list_components", "view_page_source", "get_page_structure", "browse_page", "screenshot_page", "scroll_page", "get_console_errors", "write_file", "edit_component", "create_component", "delete_file", "modify_styles", "db_read", "db_write", "db_tables", "manage_schema", "install_package", "restart_service", "deploy_status", "git_push", "trigger_deploy", "rollback_deploy", "verify_production", "set_env", "get_env", "system_status", "site_health", "manage_agents", "monitor_projects"],
     pipelineOrder: 6,
     receivesFrom: "infra_sysadmin",
@@ -673,6 +659,42 @@ router.post("/ui-texts", async (req, res) => {
         set: { value, updatedAt: new Date() },
       });
     res.json({ success: true, key, value, lang });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/ui-styles", async (req, res) => {
+  try {
+    const page = (req.query.page as string) || "*";
+    const rows = await db.select().from(uiStyleOverridesTable);
+    const styles = rows.filter((r: any) => r.page === "*" || r.page === page);
+    res.json({ styles });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/ui-styles", async (req, res) => {
+  try {
+    const { selector, property, value, page = "*" } = req.body;
+    if (!selector || !property || !value) return res.status(400).json({ error: "selector, property and value required" });
+    await db.insert(uiStyleOverridesTable)
+      .values({ selector, property, value, page })
+      .onConflictDoUpdate({
+        target: [uiStyleOverridesTable.selector, uiStyleOverridesTable.property],
+        set: { value, page, updatedAt: new Date() },
+      });
+    res.json({ success: true, selector, property, value, page });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete("/ui-styles/:id", async (req, res) => {
+  try {
+    await db.delete(uiStyleOverridesTable).where(eq(uiStyleOverridesTable.id, req.params.id));
+    res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -1031,7 +1053,7 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
       let toolActionCount = 0;
       const searchQueriesSet = new Set<string>();
       const searchQueries: string[] = [];
-      const MAX_SEARCHES = 5;
+      const MAX_SEARCHES = 10;
       const MAX_ACTIONS_WITHOUT_EDIT = 8;
       const MAX_DOM_BLOCKS = 1;
       let searchWithNoResults = 0;
@@ -1093,11 +1115,11 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
 
       for (let loop = 0; loop < maxLoops; loop++) {
 
-        if (toolActionCount >= 15 && !hasEdited) {
+        if (toolActionCount >= 25 && !hasEdited) {
           const failMsg = `\n\n❌ ${toolActionCount} خطوات بدون تعديل. العمليات: ${searchQueries.join(" → ")}\n`;
           res.write(`data: ${JSON.stringify({ type: "chunk", text: failMsg })}\n\n`);
           fullReply += failMsg;
-          console.log(`[Agent] STOPPED: ${toolActionCount}/15 tool actions without edit`);
+          console.log(`[Agent] STOPPED: ${toolActionCount}/25 tool actions without edit`);
           break;
         }
 
@@ -1280,23 +1302,10 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
 
           if (targetState.mustEdit) {
             targetState.commitSteps++;
-            if (targetState.commitSteps >= 2 && tool.name !== "edit_component" && tool.name !== "read_file" && tool.name !== "write_file") {
-              const commitMsg = `✏️ EXECUTION_COMMIT — تم تحديد العنصر "${(decisionState.domText || "").slice(0, 30)}" والملف "${targetState.file}".\n\n🔧 نفّذ التعديل الآن:\n1. read_file path="${targetState.file}" (إذا لم تقرأه)\n2. edit_component مع old_text و new_text\n\n⛔ ممنوع أي أداة أخرى — نفّذ edit_component مباشرة.`;
-              console.log(`[Agent] EXECUTION_COMMIT: ${targetState.commitSteps} steps, forcing edit. tool=${tool.name}`);
-              toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: commitMsg });
-              continue;
-            }
           }
 
           if (targetState.found && !targetState.mustEdit) {
             targetState.stepsAfterFound++;
-            const allowedAfterTarget = ["edit_component", "write_file", "read_file", "view_page_source", "get_page_structure", "browse_page"];
-            if (targetState.stepsAfterFound >= 3 && !allowedAfterTarget.includes(tool.name)) {
-              const nudge = `⚠️ TARGET_NUDGE — تم العثور على الملف "${targetState.file}" منذ ${targetState.stepsAfterFound} خطوات ولم تنفّذ التعديل بعد.\n\n🔧 نفّذ الآن:\n1. read_file path="${targetState.file}"\n2. edit_component مع old_text و new_text`;
-              console.log(`[Agent] NUDGE: ${targetState.stepsAfterFound} steps after target found, no edit yet. tool=${tool.name}`);
-              toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: nudge });
-              continue;
-            }
           }
 
           if (tool.name === "search_text" || tool.name === "list_files" || tool.name === "list_components") {
@@ -1307,28 +1316,14 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
             const query = (tool.input as any)?.text || "";
             const normalizedQuery = query.trim().toLowerCase();
 
-            if (targetState.found) {
-              const blocked = `⛔ TARGET_FOUND — تم العثور على الملف "${targetState.file}" — لا حاجة للبحث مرة أخرى.\n\n✅ الخطوة التالية:\n1. read_file للملف ${targetState.file}\n2. edit_component لتنفيذ التعديل مباشرة`;
-              console.log(`[Agent] BLOCKED: search after target found. file=${targetState.file}`);
-              await logAudit(agentKey, "search_blocked_target_found", tool.name, { targetFile: targetState.file, query }, blocked, "low", "blocked");
-              toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: blocked });
-              continue;
-            }
-
             if (searchQueriesSet.has(normalizedQuery)) {
-              const blocked = `⛔ REPEATED_SEARCH_BLOCKED — البحث عن "${query}" تم من قبل. جرّب بحث مختلف (className, ملف محدد، أو i18n).`;
-              console.log(`[Agent] BLOCKED: Repeated search query="${query}"`);
-              await logAudit(agentKey, "search_repeated_blocked", tool.name, tool.input, blocked, "low", "blocked");
-              toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: blocked });
-              continue;
+              const info = `ℹ️ البحث عن "${query}" تم من قبل. جرّب بحث مختلف أو نفّذ التعديل.`;
+              console.log(`[Agent] INFO: Repeated search query="${query}" — allowing anyway`);
             }
 
             if (searchCount >= MAX_SEARCHES) {
-              const blocked = `⛔ SEARCH_LIMIT_REACHED — بحثت ${searchCount} مرات. اقرأ الملف أو نفّذ التعديل. عمليات البحث: ${searchQueries.join(" → ")}`;
-              console.log(`[Agent] BLOCKED: Search limit reached (${searchCount}/${MAX_SEARCHES})`);
-              await logAudit(agentKey, "search_limit_reached", tool.name, { searchCount, queries: searchQueries }, blocked, "low", "blocked");
-              toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: blocked });
-              continue;
+              const info = `ℹ️ بحثت ${searchCount} مرات. حاول نفّذ التعديل الآن.`;
+              console.log(`[Agent] INFO: Search limit reached (${searchCount}/${MAX_SEARCHES}) — allowing anyway`);
             }
 
             searchCount++;
@@ -1347,34 +1342,10 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
           }
 
           if (["get_page_structure", "browse_page", "inspect_styles"].includes(tool.name)) {
-            if (targetState.found) {
-              const blocked = `⛔ TARGET_ALREADY_FOUND — الملف "${targetState.file}" معروف. لا حاجة لتصفح الصفحة.\n\n✅ نفّذ مباشرة:\n1. read_file path="${targetState.file}"\n2. edit_component`;
-              console.log(`[Agent] BLOCKED: DOM tool "${tool.name}" after target found. file=${targetState.file}`);
-              await logAudit(agentKey, "dom_blocked_target_found", tool.name, tool.input, blocked, "low", "blocked");
-              toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: blocked });
-              continue;
-            }
-            if (searchFoundFile) {
-              const blocked = `⛔ SEARCH_SUFFICIENT — تم العثور على الملف عبر البحث. لا حاجة لـ DOM.\n\n✅ نفّذ: read_file ثم edit_component مباشرة.`;
-              console.log(`[Agent] BLOCKED: DOM tool "${tool.name}" — searchFoundFile=true`);
-              hasDOMInspection = true;
-              domSource = "search";
-              toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: blocked });
-              continue;
-            }
-            domBlockCount++;
-            if (domBlockCount > MAX_DOM_BLOCKS) {
-              hasDOMInspection = true;
-              domSource = "forced_override";
-              const blocked = `⛔ DOM مرة واحدة كافية — ابحث بـ search_text ثم نفّذ edit_component مباشرة.`;
-              console.log(`[Agent] DOM forced override (${domBlockCount}/${MAX_DOM_BLOCKS})`);
-              await logAudit(agentKey, "dom_repeated_blocked", tool.name, tool.input, blocked, "low", "blocked");
-              toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: blocked });
-              continue;
-            }
             hasDOMInspection = true;
             domSource = "tool";
-            console.log(`[Agent] DOM inspection done via ${tool.name} — DOM_SOURCE=tool ✓`);
+            domBlockCount++;
+            console.log(`[Agent] DOM inspection #${domBlockCount} via ${tool.name}`);
           }
 
           if (tool.name === "edit_component") {
@@ -1440,12 +1411,6 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
             continue;
           }
 
-          if (tool.name === "screenshot_page" && !hasEdited && (targetState.found || searchFoundFile || hasReadAfterSearch)) {
-            const blocked = `⛔ SCREENSHOT_AFTER_EDIT — ممنوع screenshot قبل التعديل. نفّذ edit_component أولاً، ثم screenshot للتحقق.`;
-            console.log(`[Agent] BLOCKED: screenshot before edit — targetFound=${targetState.found}`);
-            toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: blocked });
-            continue;
-          }
 
           if (["get_page_structure", "browse_page", "screenshot_page", "scroll_page"].includes(tool.name)) {
             if (!(tool.input as any)?.lang) {
@@ -1476,6 +1441,108 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
                 decisionState.domTextDetected = true;
                 decisionState.domText = toolDomText;
                 console.log(`[Decision] DOM text extracted from ${tool.name}: "${toolDomText.slice(0, 50)}"`);
+              }
+            }
+          }
+
+          if (tool.name === "get_page_structure" || tool.name === "browse_page") {
+            const stylePatterns = [
+              /(?:غي[ّر]|بد[ّل]|حو[ّل]|خلي|اجعل|سوي)\s+(?:لون|خلفية|background|color)\s*(?:ها|ه|الـ?)?(?:\s+(?:ل|الى|إلى|بـ?))?\s*(?:لون\s+)?(.+?)$/i,
+              /(?:غي[ّر]|بد[ّل])\s+لون(?:ها|ه)?\s+(?:ل|الى|إلى|بـ?)\s*(?:لون\s+)?(.+?)$/i,
+              /(?:نزل|ارفع|حرك)\s+(?:هذ[اه]|هذي|الـ?)?(.+?)(?:\s+(?:للأسفل|للفوق|يمين|يسار|للأعلى))?$/i,
+            ];
+
+            const colorKeywords: Record<string, string> = {
+              "الهوية البصرية": "hsl(var(--primary))",
+              "الهوية البصريه": "hsl(var(--primary))",
+              "البراند": "hsl(var(--primary))",
+              "primary": "hsl(var(--primary))",
+              "الأساسي": "hsl(var(--primary))",
+              "أحمر": "#ef4444",
+              "أخضر": "#22c55e",
+              "أزرق": "#3b82f6",
+              "أبيض": "#ffffff",
+              "أسود": "#000000",
+              "رمادي": "#6b7280",
+              "برتقالي": "#f97316",
+              "بنفسجي": "#8b5cf6",
+              "وردي": "#ec4899",
+            };
+
+            let extractedSelector: string | null = null;
+            if (result) {
+              try {
+                const parsed = JSON.parse(result);
+                if (parsed.buttons) {
+                  for (const btn of parsed.buttons) {
+                    const btnMatch = btn.match(/class="([^"]+)".*?>(.+?)</);
+                    if (btnMatch) {
+                      const btnText = btnMatch[2].trim();
+                      if (userMsg.includes(btnText) || (decisionState.domText && decisionState.domText.includes(btnText))) {
+                        extractedSelector = `button.${btnMatch[1].split(" ")[0]}`;
+                      }
+                    }
+                  }
+                }
+              } catch {}
+
+              const classMatch = result.match(/class="([^"]+)"/);
+              if (!extractedSelector && classMatch) {
+                const firstClass = classMatch[1].split(" ").filter((c: string) => !c.includes(":") && !c.includes("[") && !c.includes("/")).slice(0, 3).join(".");
+                if (firstClass) extractedSelector = `.${firstClass}`;
+              }
+            }
+
+            const isColorRequest = /(?:غي[ّر]|بد[ّل])\s*(?:لون|خلفية|background|color)/i.test(userMsg);
+            const isMoveRequest = /(?:نزل|ارفع|حرك)/i.test(userMsg);
+
+            if ((isColorRequest || isMoveRequest) && extractedSelector) {
+              let cssProperty = "";
+              let cssValue = "";
+
+              if (isColorRequest) {
+                cssProperty = /خلفية|background/i.test(userMsg) ? "background-color" : "color";
+                if (/لون(?:ها|ه)?.*(?:الى|إلى|ل|بـ)/i.test(userMsg) || /خلفية/i.test(userMsg)) {
+                  cssProperty = "background-color";
+                }
+                for (const [keyword, value] of Object.entries(colorKeywords)) {
+                  if (userMsg.includes(keyword)) {
+                    cssValue = value;
+                    break;
+                  }
+                }
+                if (!cssValue) cssValue = "hsl(var(--primary))";
+              } else if (isMoveRequest) {
+                cssProperty = "margin-top";
+                cssValue = /للفوق|للأعلى|ارفع/.test(userMsg) ? "-10px" : "10px";
+              }
+
+              if (cssProperty && cssValue) {
+                try {
+                  await db.insert(uiStyleOverridesTable)
+                    .values({ selector: extractedSelector, property: cssProperty, value: cssValue })
+                    .onConflictDoUpdate({
+                      target: [uiStyleOverridesTable.selector, uiStyleOverridesTable.property],
+                      set: { value: cssValue, updatedAt: new Date() },
+                    });
+
+                  const successMsg = `✅ تم تعديل الستايل فوراً!\n\n🎨 العنصر: ${extractedSelector}\n🔧 الخاصية: ${cssProperty}\n✨ القيمة: ${cssValue}\n\n🔄 أعد تحميل الصفحة لترى التغيير.`;
+                  console.log(`[Agent] 🎨 DIRECT_STYLE: selector="${extractedSelector}" ${cssProperty}="${cssValue}"`);
+                  res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n${successMsg}\n` })}\n\n`);
+                  fullReply += `\n\n${successMsg}\n`;
+
+                  try { await logAudit(agentKey, "direct_style_edit", "modify_styles", { selector: extractedSelector, property: cssProperty, value: cssValue }, { method: "db_style_override" }, "medium", "success"); } catch {}
+
+                  res.write(`data: ${JSON.stringify({ type: "done", tokensUsed: 0, cost: "0.000000", model: "direct_engine" })}\n\n`);
+                  try {
+                    await db.insert(messagesTable).values({ conversationId: conv.id, role: "user", content: message });
+                    await db.insert(messagesTable).values({ conversationId: conv.id, role: "assistant", content: successMsg, tokenCount: 0, costUsd: "0" });
+                  } catch {}
+                  res.end();
+                  return;
+                } catch (styleErr: any) {
+                  console.error(`[Agent] DIRECT_STYLE failed: ${styleErr?.message?.slice(0, 200)}`);
+                }
               }
             }
           }

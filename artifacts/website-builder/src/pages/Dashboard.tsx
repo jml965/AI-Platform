@@ -939,27 +939,19 @@ function HomeSidebar({ t, lang, userName, isAdmin, onSelectInfraAgent, onToggleF
 
       <div className="p-2 flex flex-col gap-1 relative z-10">
         <button
-          className="flex items-center gap-2 w-full px-3 py-2 rounded-md text-[12px] font-semibold text-start relative overflow-hidden transition-all duration-200 hover:brightness-110 active:scale-[0.98] group/createbtn"
-          style={{
-            background: "linear-gradient(135deg, #ff0000 0%, #e60000 25%, #ff1a1a 50%, #cc0000 75%, #ff0000 100%)",
-            border: "1px solid rgba(255,0,0,0.8)",
-            boxShadow: "0 0 24px rgba(255,0,0,0.55), 0 2px 10px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,150,150,0.5), inset 0 -1px 0 rgba(120,0,0,0.3)",
-            backdropFilter: "blur(10px)",
-          }}
+          className="flex items-center gap-2 w-full px-3 py-2 rounded-md text-[12px] font-semibold text-start relative overflow-hidden transition-all duration-200 hover:brightness-110 active:scale-[0.98] group/createbtn bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/30"
         >
-          {/* Golden shimmer on hover */}
+          {/* Shimmer on hover */}
           <div
             className="absolute inset-0 opacity-0 group-hover/createbtn:opacity-100 transition-opacity duration-300 pointer-events-none"
             style={{
-              background: "linear-gradient(135deg, rgba(255,255,255,0.18) 0%, transparent 60%)",
+              background: "linear-gradient(135deg, rgba(255,255,255,0.15) 0%, transparent 60%)",
             }}
           />
-          {/* Gold sparkle dot */}
-          <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: "#fff8dc", boxShadow: "0 0 6px rgba(255,255,220,0.9)" }} />
-          <span className="text-blue-600 font-bold drop-shadow-sm">
+          <Plus className="w-3.5 h-3.5 flex-shrink-0" />
+          <span className="font-bold drop-shadow-sm">
             {t.home_create_app}
           </span>
-          <Plus className="w-3.5 h-3.5 text-[#1a0f00] ms-auto flex-shrink-0 opacity-80" />
         </button>
       </div>
 
