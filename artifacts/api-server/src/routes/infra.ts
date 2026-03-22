@@ -1561,11 +1561,24 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
                 res.write(`data: ${JSON.stringify({ type: "tool_result", name: "search_text", result: `✅ وُجد في ${extractedFile}` })}\n\n`);
 
                 try {
-                  const editResult = await executeInfraTool("edit_component", {
-                    componentPath: extractedFile.replace("artifacts/website-builder/", ""),
-                    old_text: directOldText,
-                    new_text: directNewText,
-                  }, "admin");
+                  console.log(`[Agent] 🔥 DIRECT_EDIT: calling edit_component...`);
+                  await logAudit(agentKey, "direct_edit_calling_tool", "edit_component", { file: extractedFile, old: directOldText, new: directNewText }, null, "medium", "started");
+                  res.write(`data: ${JSON.stringify({ type: "chunk", text: `\n⏳ جاري التعديل...\n` })}\n\n`);
+
+                  const keepalive = setInterval(() => {
+                    try { res.write(`: keepalive\n\n`); } catch {}
+                  }, 5000);
+
+                  let editResult: string;
+                  try {
+                    editResult = await executeInfraTool("edit_component", {
+                      componentPath: extractedFile.replace("artifacts/website-builder/", ""),
+                      old_text: directOldText,
+                      new_text: directNewText,
+                    }, "admin");
+                  } finally {
+                    clearInterval(keepalive);
+                  }
 
                   const editParsed = JSON.parse(editResult);
                   hasEdited = true;
