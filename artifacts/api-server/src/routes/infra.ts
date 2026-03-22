@@ -1518,12 +1518,14 @@ ${searchResultTexts.map(t => `- "${t}"`).join("\n")}
                 const modelName = config.primaryModel?.model || "claude-sonnet-4-6";
                 console.log(`[Agent] 🧠 AI_INTENT: calling ${modelName}...`);
 
-                const intentRes = await client.messages.create({
+                const intentPromise = client.messages.create({
                   model: modelName,
                   max_tokens: 150,
                   temperature: 0,
                   messages: [{ role: "user", content: intentPrompt }],
                 });
+                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("AI_INTENT_TIMEOUT_15s")), 15000));
+                const intentRes = await Promise.race([intentPromise, timeoutPromise]) as any;
 
                 const intentText = intentRes.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
                 console.log(`[Agent] 🧠 AI_INTENT response: ${intentText.slice(0, 200)}`);
@@ -1541,8 +1543,9 @@ ${searchResultTexts.map(t => `- "${t}"`).join("\n")}
                   }
                 }
               } catch (intentErr: any) {
-                console.log(`[Agent] 🧠 AI_INTENT ERROR: ${intentErr?.message?.slice(0, 200)}`);
-                res.write(`data: ${JSON.stringify({ type: "chunk", text: `⚠️ فشل تحليل النية — أكمل بالطريقة العادية\n` })}\n\n`);
+                const errMsg = intentErr?.message?.slice(0, 300) || "unknown";
+                console.log(`[Agent] 🧠 AI_INTENT ERROR: ${errMsg}`);
+                res.write(`data: ${JSON.stringify({ type: "chunk", text: `⚠️ فشل تحليل النية (${errMsg.slice(0, 80)}) — أكمل بالطريقة العادية\n` })}\n\n`);
               }
 
               if (directOldText && directNewText && extractedFile !== "unknown") {
