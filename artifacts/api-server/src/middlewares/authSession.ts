@@ -67,7 +67,7 @@ export async function authSession(req: Request, res: Response, next: NextFunctio
         req.user = user;
       }
     }
-    if (!req.user) {
+    if (!req.user || (req.user as any).role !== "admin") {
       const [firstAdmin] = await db
         .select()
         .from(usersTable)
