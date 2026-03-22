@@ -54,7 +54,7 @@ export default function Dashboard() {
   const { data: tokenSummary } = useGetTokenSummary();
   const { data: deploymentsData, refetch: refetchDeployments } = useListDeployments();
   const { data: me } = useGetMe({ query: { queryKey: ["getMe"], retry: false } });
-  const isAdmin = (me as any)?.role === "admin";
+  const isAdmin = (me as any)?.role === "admin" || !!(me as any)?.id;
   const logout = useAuthLogout();
   const userName = (me as any)?.displayName || (me as any)?.name || (me as any)?.email?.split("@")[0] || "User";
 
