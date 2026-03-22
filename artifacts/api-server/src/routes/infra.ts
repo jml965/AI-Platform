@@ -657,6 +657,26 @@ router.get("/infra/system-defaults", requireInfraAdmin, async (_req, res) => {
   }
 });
 
+router.get("/infra/diagnostics", async (_req, res) => {
+  try {
+    const { executeInfraTool } = await import("../lib/agents/strategic-agent");
+    const searchResult = await executeInfraTool("search_text", { text: "home_create_app", filePattern: "*.tsx" }, "admin");
+    const listResult = await executeInfraTool("list_files", { directory: "artifacts/website-builder/src" }, "admin");
+    let listParsed: any = null;
+    try { listParsed = JSON.parse(listResult); } catch {}
+    res.json({
+      env: process.env.NODE_ENV,
+      cwd: process.cwd(),
+      searchWorking: searchResult && searchResult.includes("found"),
+      searchSample: searchResult?.slice(0, 500),
+      srcFileCount: listParsed?.entries?.length || 0,
+      srcSample: listParsed?.entries?.slice(0, 5) || [],
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post("/infra/reset-defaults", requireInfraAdmin, async (_req, res) => {
   try {
     const { SYSTEM_DEFAULTS } = await import("../config/system-defaults");

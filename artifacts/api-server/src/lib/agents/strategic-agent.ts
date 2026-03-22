@@ -1189,6 +1189,9 @@ function findWorkspaceRoot(): string {
 }
 
 const PROJECT_ROOT = findWorkspaceRoot();
+console.log(`[Strategic] PROJECT_ROOT=${PROJECT_ROOT}, cwd=${process.cwd()}, NODE_ENV=${process.env.NODE_ENV}`);
+console.log(`[Strategic] website-builder/src exists: ${fs.existsSync(path.join(PROJECT_ROOT, "artifacts/website-builder/src"))}`);
+console.log(`[Strategic] pnpm-workspace.yaml exists: ${fs.existsSync(path.join(PROJECT_ROOT, "pnpm-workspace.yaml"))}`);
 
 let _infraAccessEnabled = true;
 let _killSwitchLoaded = false;
