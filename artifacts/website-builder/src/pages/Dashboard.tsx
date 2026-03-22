@@ -809,16 +809,16 @@ function InfraAgentsSection({ t, lang, onSelectAgent }: { t: any; lang: string; 
             <>
               <button
                 onClick={() => onSelectAgent(director)}
-                className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md bg-gradient-to-r from-yellow-500/10 to-transparent border border-yellow-500/20 hover:border-yellow-500/40 transition-all text-start"
+                className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md bg-gradient-to-r from-red-600/20 to-transparent border border-red-600/30 hover:border-red-500/60 transition-all text-start"
               >
-                <Crown className="w-4 h-4 text-yellow-400 flex-shrink-0" />
+                <Crown className="w-4 h-4 text-red-500 flex-shrink-0" />
                 <div className="min-w-0 flex-1">
-                  <div className="text-[11.5px] font-bold text-yellow-300 truncate">
+                  <div className="text-[11.5px] font-bold text-red-400 truncate">
                     {isRTL ? director.displayNameAr : director.displayNameEn}
                   </div>
-                  <div className="text-[9px] text-yellow-500/60 truncate">models + governor</div>
+                  <div className="text-[9px] text-red-500/60 truncate">models + governor</div>
                 </div>
-                <Settings className="w-3 h-3 text-yellow-500/30 flex-shrink-0" />
+                <Settings className="w-3 h-3 text-red-500/30 flex-shrink-0" />
               </button>
               <div className="border-t border-white/5 my-0.5" />
             </>
