@@ -1,6 +1,8 @@
 import { BaseAgent, type ModelConfig } from "./base-agent";
 import { getCodeQualityPrompt } from "./constitution";
 import { getProjectTemplate } from "./project-templates";
+import { detectTheme, getThemePromptContext, getAllThemesSummary } from "./design-system";
+import { getSectionLibraryPrompt } from "./section-library";
 import type { AgentResult, BuildContext, GeneratedFile, ProjectFramework } from "./types";
 
 const VALID_FRAMEWORKS: ProjectFramework[] = ["react-vite", "express", "nextjs", "fastapi", "static"];
@@ -122,16 +124,69 @@ FASTAPI (Python) PROJECTS:
 - Always generate the END-USER PRODUCT, never a meta-tool
 === END FORBIDDEN ===
 
-VISUAL DESIGN RULES:
-- Use beautiful, modern UI with gradients, shadows, rounded corners, and spacing
-- Use professional color palettes — not just gray/blue. Pick colors matching the website's industry
-- For hero sections: use gradient backgrounds (e.g., from-blue-600 to-purple-700) or solid vibrant colors
-- Use placeholder images from https://images.unsplash.com/photo-{id}?w=800&h=600&fit=crop for realistic visuals
-- Include proper typography hierarchy: large hero text, medium headings, readable body text
-- Add hover effects and smooth transitions on buttons and cards
-- For Arabic websites: use proper RTL layout, Arabic fonts, and culturally appropriate design
-- Add visual icons using lucide-react to enhance sections (e.g., services cards, feature lists)
-- Use Tailwind's spacing scale consistently (p-4, p-6, p-8 for sections)
+VISUAL DESIGN RULES — STRICT (follow precisely):
+
+TYPOGRAPHY HIERARCHY (mandatory):
+- Hero h1: text-5xl lg:text-7xl font-bold, line-height 1.05-1.1
+- Section h2: text-4xl lg:text-5xl font-bold
+- Card h3: text-xl lg:text-2xl font-bold
+- Body text: text-base lg:text-lg, leading-relaxed (1.6-1.8 line-height)
+- Captions/labels: text-sm, font-medium, tracking-widest uppercase for section labels
+- NEVER use text-lg for h1 or text-3xl for small labels — respect the hierarchy
+
+SPACING SYSTEM (mandatory):
+- Section vertical padding: py-20 to py-28 (NEVER less than py-16)
+- Section horizontal: px-4 sm:px-6 lg:px-8
+- Container: max-w-7xl mx-auto (for full sections), max-w-6xl for narrower, max-w-4xl for text-heavy
+- Between section title and content: mb-16
+- Between cards: gap-6 to gap-8
+- Inside cards: p-6 to p-8
+- Between heading and paragraph: mb-3 to mb-4
+- NEVER use p-2 for section padding or gap-2 for card grids
+
+COLOR RULES (mandatory):
+- EVERY website MUST have a clear primary color used consistently for: buttons, links, accents, active states
+- Background: use subtle off-whites (#fafafa, #f8fafc, #f0f9ff) NOT pure white for sections
+- Alternate section backgrounds between var(--color-background) and var(--color-surface)
+- Text: dark (#1a202c, #0f172a) for headings, muted (#64748b, #6b7280) for body
+- Gradients: use for hero backgrounds and CTA sections — bg-gradient-to-br from-{primary} to-{secondary}
+- NEVER use the same background for adjacent sections — alternate!
+
+SHADOWS & DEPTH (mandatory):
+- Cards: shadow-sm by default, shadow-xl on hover with transition-all duration-300
+- Buttons: shadow-lg, hover:shadow-xl with transform hover:-translate-y-0.5
+- Hero images: shadow-2xl
+- Use backdrop-blur-xl with bg-white/80 for glass effects on navbars
+- Add subtle colored shadows: shadow-blue-500/10, shadow-purple-500/20
+
+HOVER & ANIMATIONS (mandatory):
+- ALL buttons: hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-300
+- ALL cards: hover:shadow-xl hover:-translate-y-1 transition-all duration-300
+- Links: hover:opacity-70 or color change with transition-colors
+- Use group hover for icon scaling: group-hover:scale-110
+- Hero text: consider gradient text with bg-clip-text text-transparent
+- Add subtle background shapes: absolute positioned blurred circles (w-72 h-72 rounded-full blur-3xl opacity-10-20)
+
+IMAGES (mandatory):
+- Use realistic images from https://images.unsplash.com/photo-{relevant-id}?w={width}&h={height}&fit=crop
+- Hero images: w=1200&h=800, Product images: w=600&h=400, Avatars: use https://i.pravatar.cc/{size}?img={n}
+- ALL images must have: rounded-2xl (or rounded-xl), proper alt text, object-cover
+- Add a subtle glow behind hero images: absolute -inset-4 bg-gradient-to-r from-primary/20 rounded-3xl blur-xl
+
+STRUCTURE (mandatory):
+- EVERY website MUST have these sections minimum: Navbar, Hero, Features/Services, Testimonials or Stats, CTA, Footer
+- Each section should be its own React component
+- Navbar MUST be sticky/fixed with glass effect on scroll
+- Footer MUST have columns with links, social icons, copyright
+- Add a "floating stats" bar between hero and features (e.g., "10K+ Users | 99.9% Uptime | 150+ Countries")
+- For Arabic websites: add dir="rtl" to html, use Arabic Google Fonts (Tajawal, Cairo, Noto Kufi Arabic), mirror all layouts
+
+RTL/ARABIC SPECIFIC:
+- For Arabic content: use font-family 'Tajawal' or 'Cairo' from Google Fonts
+- Add @import url for Arabic fonts in index.css
+- Use logical properties: ms- and me- instead of ml- and mr-
+- Reverse flex directions where needed
+- Numbers can remain LTR
 
 Project Generation Rules:
 - Generate a COMPLETE, working project — not placeholder or demo code
@@ -185,12 +240,19 @@ MULTI-PAGE PROJECTS:
         ? `\n\nThe user has selected the "${context.framework}" framework. Use this framework for the project.`
         : "";
 
+      const detectedTheme = detectTheme(context.prompt);
+      const themeContext = detectedTheme
+        ? `\n\n${getThemePromptContext(detectedTheme)}`
+        : `\n\nAvailable themes (auto-detect from description):\n${getAllThemesSummary()}\n\nPick the most appropriate theme colors and fonts for this project.`;
+
+      const sectionExamples = getSectionLibraryPrompt();
+
       const { content, tokensUsed } = await this.callLLM(
         [
-          { role: "system", content: `${this.getEffectivePrompt()}\n\n${qualityRules}` },
+          { role: "system", content: `${this.getEffectivePrompt()}\n\n${qualityRules}\n${sectionExamples}` },
           {
             role: "user",
-            content: `Generate a complete project based on this description:\n\n${context.prompt}${frameworkHint}${existingFilesInfo}`,
+            content: `Generate a complete project based on this description:\n\n${context.prompt}${frameworkHint}${themeContext}${existingFilesInfo}`,
           },
         ],
         context
@@ -273,18 +335,22 @@ MULTI-PAGE PROJECTS:
         ? `\n\nAlready generated/planned files (import from them, reference them, maintain consistency):\n${previousFiles.map(f => `- ${f.filePath}`).join("\n")}`
         : "";
 
+      const detectedTheme = detectTheme(context.prompt);
+      const themeHint = detectedTheme ? `\n\nTheme: ${getThemePromptContext(detectedTheme)}` : "";
+
       const batchPrompt = `Generate ONLY the following files for batch ${batchIndex + 1}/${totalBatches}:
 ${batchFiles.map(f => `- ${f}`).join("\n")}
 
 Original project request:
 ${context.prompt}
-${previousFilesList}
+${previousFilesList}${themeHint}
 
 IMPORTANT:
 - Generate ONLY the files listed above — do not generate other files
 - Ensure imports reference files from previous batches correctly
 - Maintain consistent styling, naming, and patterns with already generated files
-- Include all necessary imports and exports`;
+- Include all necessary imports and exports
+- Follow the VISUAL DESIGN RULES strictly — professional quality output`;
 
       const { content, tokensUsed } = await this.callLLM(
         [
@@ -342,6 +408,9 @@ IMPORTANT:
         .map(n => `- ${n}`)
         .join("\n");
 
+      const detectedTheme = detectTheme(context.prompt);
+      const themeHint = detectedTheme ? `\n\nTheme: ${getThemePromptContext(detectedTheme)}` : "";
+
       const modulePrompt = `You are building the "${moduleName}" module (${moduleIndex + 1}/${totalModules}) of a large project.
 Module description: ${moduleDescription}
 
@@ -350,7 +419,7 @@ ${moduleFiles.map(f => `- ${f}`).join("\n")}
 
 Original project request:
 ${context.prompt}
-${coreFilesList}
+${coreFilesList}${themeHint}
 
 Other modules being built in parallel:
 ${otherModules}
@@ -361,7 +430,8 @@ IMPORTANT:
 - Import shared code from core files (types, contexts, layouts) — they exist
 - Do NOT generate files from other modules
 - Use consistent naming, styling (Tailwind CSS), and patterns
-- Each file must be complete — no placeholders, no TODOs`;
+- Each file must be complete — no placeholders, no TODOs
+- Follow the VISUAL DESIGN RULES strictly — match the quality of the section library examples`;
 
       const { content, tokensUsed } = await this.callLLM(
         [

@@ -22,6 +22,9 @@ The platform employs a pnpm workspace monorepo structure, separating deployable 
 - **SEO Analysis:** AI-powered analysis provides scores, suggestions, and auto-fixes for HTML.
 - **Multilingual Websites:** Supports creation of websites in up to 10 languages with AI translation and manual editing.
 - **Template System:** Offers 12 ready-made website templates across 10 categories.
+- **Professional Design System:** 15 industry-specific themes (real estate, restaurant, medical, tech, e-commerce, portfolio, education, law, fitness, travel, wedding, SaaS, beauty, construction, Arabic modern) with curated colors, fonts, shadows, and spacing. Auto-detects theme from user prompt. Includes a color palette generator (from single base color → full palette with complementary/analogous/triadic colors).
+- **Section Library:** 25+ production-quality section templates (Hero×4, Features×3, Pricing×3, Testimonials×2, FAQ×1, CTA×2, Footer×2, Navbar×1, Contact×1, Stats×1, Team×1) with real code examples injected as reference during codegen.
+- **Enhanced CodeGen Prompt:** Strict design rules for typography hierarchy (h1-h3 sizes), spacing system (section padding, card gaps, container widths), color rules (alternating backgrounds, gradient usage), shadows & depth (hover effects, glass morphism), mandatory animations (fade-in, slide, scale), image standards (Unsplash with proper sizing), and RTL/Arabic font support (Tajawal, Cairo).
 - **Plugin Store:** Enables adding pre-built components like contact forms and social share buttons.
 
 **Technical Implementations:**
