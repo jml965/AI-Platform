@@ -41,8 +41,19 @@ The platform employs a pnpm workspace monorepo structure, separating deployable 
 - **User Authentication:** Replit Auth and local email/password.
 - **Billing & Subscriptions:** Manages plans, subscriptions, invoices, and credits.
 - **Teams:** Facilitates team creation, member management, and role-based access control.
-- **Real-time Updates:** Server-Sent Events (SSE) for build process and sandbox execution updates.
+- **Real-time Updates:** Server-Sent Events (SSE) for build process, sandbox execution updates, AND live UI updates via `/api/live-updates` SSE endpoint. Frontend auto-reconnects and refreshes text/style overrides instantly when AI edits are made.
 - **Real-time Collaboration:** WebSocket-based system for simultaneous multi-user project work.
+- **Engine Enhancements (10 features):**
+  1. **Direct Engine V2:** Regex pattern matching handles simple text/color/size edits without Claude (0 cost, <1s).
+  2. **SSE Live Updates:** `/api/live-updates` broadcasts text/style/batch edits to all connected clients in real-time.
+  3. **Context Cache:** File/key mapping cache with 60s TTL for faster agent lookups.
+  4. **Batch Multi-File Editor:** `batch_edit` tool for atomic multi-file edits with auto-rollback on failure.
+  5. **Task Isolation:** File snapshots before edits; auto-rollback if any edit in a batch fails.
+  6. **Smart Schema Builder:** `create_table_smart` tool creates professional DB tables from Arabic/English natural language.
+  7. **Visual Diff:** Before/after comparison helper for edit responses.
+  8. **Smart Model Router:** Routes simple requests to direct engine (free), greetings to fast model, complex tasks to full model.
+  9. **Self-Improvement Loop:** `ai_learning_log` table records every tool execution pattern for future optimization.
+  10. **Component Library Map:** `component_map` tool scans all frontend files, caching imports/exports/relationships.
 - **Custom Domains:** Allows linking custom domains with automatic DNS verification and SSL.
 - **Infrastructure Agents Panel:** A dedicated admin panel at `/infra` for platform owner to manage and develop the platform via AI agents (System Director, Bug Fixer, Feature Builder, Security Guard, Deployment Agent). Features a Controlled AI Runtime with approval engine, audit logs, tool risk configuration, DB safety measures, and a kill switch. Includes System Awareness: page context injection (currentPage, projectId, mode), platform purpose in system blueprint, and project monitoring tools (get_project_status, get_project_logs, list_project_files) with auto-monitoring mode.
 - **Authentication:** Environment-aware authentication, requiring real auth in production and auto-injecting an admin user in development.
