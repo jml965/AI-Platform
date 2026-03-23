@@ -1175,6 +1175,50 @@ export const INFRA_TOOLS = [
       required: ["projectId"],
     },
   },
+  {
+    name: "batch_edit",
+    description: "Edit MULTIPLE files in a single atomic operation. If any edit fails, ALL edits are rolled back. Use this for changes that span multiple files (like theme changes, refactoring, adding features that touch several components).",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        edits: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              file: { type: "string", description: "File path relative to project root" },
+              old_text: { type: "string", description: "Text to find" },
+              new_text: { type: "string", description: "Replacement text" },
+            },
+            required: ["file", "old_text", "new_text"],
+          },
+          description: "Array of edits to apply atomically",
+        },
+      },
+      required: ["edits"],
+    },
+  },
+  {
+    name: "create_table_smart",
+    description: "Create a professional database table from a natural language description (Arabic or English). Automatically adds id, timestamps, indexes, and proper data types. Example: 'جدول عملاء فيه اسم ورقم وإيميل وحالة' or 'table orders with name, email, status, price'",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        description: { type: "string", description: "Natural language description of the table and its fields" },
+      },
+      required: ["description"],
+    },
+  },
+  {
+    name: "component_map",
+    description: "Scan the entire frontend codebase and return a complete map of all components, pages, and libraries with their imports and exports. Use this to understand the full architecture and find the right file for any change.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        refresh: { type: "boolean", description: "Force refresh the cache (default: false)" },
+      },
+    },
+  },
 ];
 
 function findWorkspaceRoot(): string {
@@ -2470,6 +2514,25 @@ export async function executeInfraTool(toolName: string, input: any, callerRole?
         } catch (e: any) {
           return JSON.stringify({ success: false, error: e.message });
         }
+      }
+      case "batch_edit": {
+        const { batchEditFiles } = await import("./engine-enhancements");
+        const edits = input.edits || [];
+        if (!Array.isArray(edits) || edits.length === 0) return JSON.stringify({ error: "edits array is required" });
+        const result = await batchEditFiles(edits);
+        if (result.success) {
+          const { broadcastUpdate } = await import("./engine-enhancements");
+          broadcastUpdate("batch_edit", { files: edits.map((e: any) => e.file), count: edits.length });
+        }
+        return JSON.stringify(result);
+      }
+      case "create_table_smart": {
+        const { createSmartTable } = await import("./engine-enhancements");
+        return await createSmartTable(input.description || "");
+      }
+      case "component_map": {
+        const { scanComponentLibrary } = await import("./engine-enhancements");
+        return JSON.stringify(scanComponentLibrary(input.refresh || false));
       }
       default:
         return JSON.stringify({ error: `Unknown tool: ${toolName}` });

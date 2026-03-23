@@ -51,6 +51,9 @@ const TOOL_RISK_CONFIG: Record<string, { risk: string; category: string; require
   get_project_status: { risk: "low", category: "monitoring", requiresApproval: false, sandboxed: false },
   get_project_logs: { risk: "low", category: "monitoring", requiresApproval: false, sandboxed: false },
   list_project_files: { risk: "low", category: "monitoring", requiresApproval: false, sandboxed: false },
+  batch_edit: { risk: "medium", category: "files", requiresApproval: false, sandboxed: false },
+  create_table_smart: { risk: "medium", category: "database", requiresApproval: false, sandboxed: false },
+  component_map: { risk: "low", category: "search", requiresApproval: false, sandboxed: false },
 };
 
 async function translateText(text: string, fromLang: "ar" | "en", toLang: "ar" | "en"): Promise<string> {
@@ -1229,6 +1232,9 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
       get_project_status: ["get_project_status"],
       get_project_logs: ["get_project_logs"],
       list_project_files: ["list_project_files"],
+      batch_edit: ["batch_edit"],
+      create_table_smart: ["create_table_smart"],
+      component_map: ["component_map"],
     };
 
     const agentPerms = config.permissions || [];
@@ -1249,6 +1255,45 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
     const earlyDetectedLang = /[\u0600-\u06FF]/.test(typeof message === "string" ? message : "") ? "ar" : "en";
     const userLang = context?.lang || earlyDetectedLang;
     const userCurrentPage = context?.currentPage || "/dashboard";
+
+    try {
+      const { tryDirectEngine, broadcastUpdate } = await import("../lib/agents/engine-enhancements");
+      const directResult = tryDirectEngine(message, userLang as "ar" | "en");
+      if (directResult.handled && directResult.response) {
+        if (directResult.response.startsWith("__DIRECT_TEXT_EDIT__:")) {
+          const [oldVal, newVal] = directResult.response.replace("__DIRECT_TEXT_EDIT__:", "").split("|");
+          if (oldVal && newVal) {
+            const saved = await saveBilingualOverride(oldVal, newVal, userLang as "ar" | "en");
+            const msg = `✅ تم التعديل المباشر (بدون AI)!\n\n📝 ${userLang === "ar" ? "عربي" : "English"}: "${oldVal}" → "${newVal}"\n🌍 ${saved.otherLang}: "${saved.translatedValue}"\n\n⚡ تكلفة: $0.00 | وقت: <1 ثانية`;
+            res.write(`data: ${JSON.stringify({ type: "chunk", text: msg })}\n\n`);
+            res.write(`data: ${JSON.stringify({ type: "done", tokensUsed: 0, cost: "0.000000", model: "direct_engine_v2" })}\n\n`);
+            broadcastUpdate("text_edit", { key: oldVal, value: newVal });
+            try {
+              const { recordLearning } = await import("../lib/agents/engine-enhancements");
+              await recordLearning(agentKey, "direct_edit", "text_change", { old: oldVal, new: newVal }, "success", true, 0);
+            } catch {}
+            res.end();
+            return;
+          }
+        }
+        if (directResult.response.startsWith("__DIRECT_STYLE_EDIT__:")) {
+          const [target, value] = directResult.response.replace("__DIRECT_STYLE_EDIT__:", "").split("|");
+          if (target && value) {
+            const colorMap: Record<string, string> = { "أحمر": "#ef4444", "أخضر": "#22c55e", "أزرق": "#3b82f6", "أبيض": "#ffffff", "أسود": "#000000", "برتقالي": "#f97316", "بنفسجي": "#8b5cf6", "وردي": "#ec4899", "رمادي": "#6b7280" };
+            const cssValue = colorMap[value] || value;
+            await db.insert(uiStyleOverridesTable).values({ selector: target, property: "color", value: cssValue }).onConflictDoUpdate({ target: [uiStyleOverridesTable.selector, uiStyleOverridesTable.property], set: { value: cssValue, updatedAt: new Date() } });
+            const msg = `✅ تم تعديل الستايل مباشرة!\n\n🎨 العنصر: ${target}\n✨ اللون: ${cssValue}\n⚡ تكلفة: $0.00`;
+            res.write(`data: ${JSON.stringify({ type: "chunk", text: msg })}\n\n`);
+            res.write(`data: ${JSON.stringify({ type: "done", tokensUsed: 0, cost: "0.000000", model: "direct_engine_v2" })}\n\n`);
+            broadcastUpdate("style_edit", { selector: target, value: cssValue });
+            res.end();
+            return;
+          }
+        }
+      }
+    } catch (directErr: any) {
+      console.error(`[DirectEngine] Error: ${directErr?.message?.slice(0, 200)}`);
+    }
 
     let enrichedMessage = message;
     if (context?.currentPage) {
@@ -1670,6 +1715,15 @@ ${config.permissions && Array.isArray(config.permissions) && config.permissions.
           const durationMs = Date.now() - toolStart;
 
           await logAudit(agentKey, "tool_executed", tool.name, tool.input, result?.slice(0, 1000), riskCfg.risk, "success", durationMs);
+
+          try {
+            const { recordLearning, broadcastUpdate } = await import("../lib/agents/engine-enhancements");
+            const isSuccess = !result?.includes('"error"') && !result?.includes("not found");
+            await recordLearning(agentKey, "tool_executed", tool.name, tool.input, result?.slice(0, 500) || "", isSuccess, durationMs);
+            if (tool.name === "edit_component" || tool.name === "write_file" || tool.name === "batch_edit") {
+              broadcastUpdate("text_edit", { tool: tool.name, file: (tool.input as any)?.componentPath || (tool.input as any)?.path });
+            }
+          } catch {}
 
           if (["get_page_structure", "browse_page", "inspect_styles"].includes(tool.name)) {
             const isConnectionError = result && (result.includes("Connection closed") || result.includes("error") && result.includes("timeout"));

@@ -1492,7 +1492,35 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const handler = () => setRefreshKey(k => k + 1);
     window.addEventListener("ai-edit-complete", handler);
-    return () => window.removeEventListener("ai-edit-complete", handler);
+
+    const baseUrl = (import.meta as any).env?.VITE_API_URL || "";
+    let es: EventSource | null = null;
+    let retryTimeout: any = null;
+
+    const connectSSE = () => {
+      try {
+        es = new EventSource(`${baseUrl}/api/live-updates`);
+        es.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === "text_edit" || data.type === "style_edit" || data.type === "batch_edit") {
+              setRefreshKey(k => k + 1);
+            }
+          } catch {}
+        };
+        es.onerror = () => {
+          es?.close();
+          retryTimeout = setTimeout(connectSSE, 5000);
+        };
+      } catch {}
+    };
+    connectSSE();
+
+    return () => {
+      window.removeEventListener("ai-edit-complete", handler);
+      es?.close();
+      if (retryTimeout) clearTimeout(retryTimeout);
+    };
   }, []);
 
   const toggleLang = () => setLang((prev) => (prev === "en" ? "ar" : "en"));

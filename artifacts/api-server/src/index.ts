@@ -91,7 +91,57 @@ db.execute(sql`
   console.error("[DB] Failed to create ui_edit_history:", err.message);
 });
 
+db.execute(sql`
+  CREATE TABLE IF NOT EXISTS ai_learning_log (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    agent_key TEXT NOT NULL,
+    action TEXT NOT NULL,
+    tool TEXT NOT NULL,
+    input JSONB,
+    result TEXT,
+    success INTEGER DEFAULT 1,
+    pattern TEXT,
+    learned_rule TEXT,
+    project_context TEXT,
+    duration_ms INTEGER,
+    created_at TIMESTAMP DEFAULT NOW() NOT NULL
+  )
+`).then(() => {
+  console.log("[DB] ai_learning_log table ready");
+}).catch((err: any) => {
+  console.error("[DB] Failed to create ai_learning_log:", err.message);
+});
+
 const server = createServer(app);
+
+const liveClients = new Set<import("http").ServerResponse>();
+
+app.get("/api/live-updates", (req, res) => {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
+  res.write(`data: ${JSON.stringify({ type: "connected", ts: Date.now() })}\n\n`);
+  liveClients.add(res);
+  req.on("close", () => liveClients.delete(res));
+});
+
+async function setupLiveBroadcast() {
+  try {
+    const { liveUpdateEmitter } = await import("./lib/agents/engine-enhancements");
+    liveUpdateEmitter.on("update", (data: string) => {
+      for (const client of liveClients) {
+        try { client.write(`data: ${data}\n\n`); } catch { liveClients.delete(client); }
+      }
+    });
+    console.log("[Live] SSE broadcast ready");
+  } catch (err: any) {
+    console.error("[Live] Failed to setup broadcast:", err?.message);
+  }
+}
+setupLiveBroadcast();
 
 server.on("upgrade", (req, socket, head) => {
   const url = req.url || "";
