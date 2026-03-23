@@ -14,4 +14,8 @@ export {
 } from "./planner-agent";
 export type { RunnerOutput, RunnerStatus } from "./package-runner-agent";
 export { TranslationAgent } from "./translation-agent";
+export { getComponentsByCategory, getComponentPrompt, getComponentCount, getAllComponentCategories } from "./component-library";
+export { getSmartImages, getHeroImage, getProductImages, getAvatars, extractImagesForPrompt } from "./smart-images";
+export { runVisualQa, getVisualQaPromptForFixer } from "./visual-qa";
+export type { VisualQaResult, VisualQaCheck } from "./visual-qa";
 export type { AgentType, BuildStatus, AgentResult, BuildContext, GeneratedFile, CodeReviewResult, ProjectPlan, StoredPlan, PlanStatus } from "./types";

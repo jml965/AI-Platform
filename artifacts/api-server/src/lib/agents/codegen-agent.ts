@@ -3,6 +3,8 @@ import { getCodeQualityPrompt } from "./constitution";
 import { getProjectTemplate } from "./project-templates";
 import { detectTheme, getThemePromptContext, getAllThemesSummary } from "./design-system";
 import { getSectionLibraryPrompt } from "./section-library";
+import { getComponentPrompt } from "./component-library";
+import { extractImagesForPrompt } from "./smart-images";
 import type { AgentResult, BuildContext, GeneratedFile, ProjectFramework } from "./types";
 
 const VALID_FRAMEWORKS: ProjectFramework[] = ["react-vite", "express", "nextjs", "fastapi", "static"];
@@ -246,13 +248,15 @@ MULTI-PAGE PROJECTS:
         : `\n\nAvailable themes (auto-detect from description):\n${getAllThemesSummary()}\n\nPick the most appropriate theme colors and fonts for this project.`;
 
       const sectionExamples = getSectionLibraryPrompt();
+      const componentExamples = getComponentPrompt();
+      const curatedImages = extractImagesForPrompt(context.prompt);
 
       const { content, tokensUsed } = await this.callLLM(
         [
-          { role: "system", content: `${this.getEffectivePrompt()}\n\n${qualityRules}\n${sectionExamples}` },
+          { role: "system", content: `${this.getEffectivePrompt()}\n\n${qualityRules}\n${sectionExamples}\n${componentExamples}` },
           {
             role: "user",
-            content: `Generate a complete project based on this description:\n\n${context.prompt}${frameworkHint}${themeContext}${existingFilesInfo}`,
+            content: `Generate a complete project based on this description:\n\n${context.prompt}${frameworkHint}${themeContext}${curatedImages}${existingFilesInfo}`,
           },
         ],
         context
@@ -337,13 +341,14 @@ MULTI-PAGE PROJECTS:
 
       const detectedTheme = detectTheme(context.prompt);
       const themeHint = detectedTheme ? `\n\nTheme: ${getThemePromptContext(detectedTheme)}` : "";
+      const curatedImages = extractImagesForPrompt(context.prompt);
 
       const batchPrompt = `Generate ONLY the following files for batch ${batchIndex + 1}/${totalBatches}:
 ${batchFiles.map(f => `- ${f}`).join("\n")}
 
 Original project request:
 ${context.prompt}
-${previousFilesList}${themeHint}
+${previousFilesList}${themeHint}${curatedImages}
 
 IMPORTANT:
 - Generate ONLY the files listed above — do not generate other files
@@ -410,6 +415,7 @@ IMPORTANT:
 
       const detectedTheme = detectTheme(context.prompt);
       const themeHint = detectedTheme ? `\n\nTheme: ${getThemePromptContext(detectedTheme)}` : "";
+      const curatedImages = extractImagesForPrompt(context.prompt);
 
       const modulePrompt = `You are building the "${moduleName}" module (${moduleIndex + 1}/${totalModules}) of a large project.
 Module description: ${moduleDescription}
@@ -419,7 +425,7 @@ ${moduleFiles.map(f => `- ${f}`).join("\n")}
 
 Original project request:
 ${context.prompt}
-${coreFilesList}${themeHint}
+${coreFilesList}${themeHint}${curatedImages}
 
 Other modules being built in parallel:
 ${otherModules}

@@ -9,6 +9,7 @@ import { JSDOM, VirtualConsole } from "jsdom";
 import { FixerAgent } from "./fixer-agent";
 import { FileManagerAgent } from "./filemanager-agent";
 import { getConstitution } from "./constitution";
+import { runVisualQa, type VisualQaResult } from "./visual-qa";
 import type { GeneratedFile, CodeIssue, BuildContext } from "./types";
 
 export interface QaCheckResult {
@@ -824,20 +825,23 @@ export async function runQaPipeline(
 
 async function runQaValidation(
   files: { filePath: string; content: string }[]
-): Promise<{ lint: QaCheckResult; runtime: QaCheckResult; functional: QaCheckResult; overallScore: number; status: string }> {
+): Promise<{ lint: QaCheckResult; runtime: QaCheckResult; functional: QaCheckResult; visual: VisualQaResult; overallScore: number; status: string }> {
   const lint = lintCheck(files);
   const runtime = runtimeCheck(files);
   const functional = functionalCheck(files);
+  const visual = runVisualQa(files as GeneratedFile[]);
 
   const overallScore = Math.round(
-    (lint.score * 0.35) + (runtime.score * 0.35) + (functional.score * 0.30)
+    (lint.score * 0.25) + (runtime.score * 0.25) + (functional.score * 0.25) + (visual.score * 0.25)
   );
 
-  const hasErrors = lint.status === "failed" || runtime.status === "failed" || functional.status === "failed";
-  const hasWarnings = lint.status === "warning" || runtime.status === "warning" || functional.status === "warning";
+  const hasErrors = lint.status === "failed" || runtime.status === "failed" || functional.status === "failed" || visual.status === "poor";
+  const hasWarnings = lint.status === "warning" || runtime.status === "warning" || functional.status === "warning" || visual.status === "needs-improvement";
   const status = overallScore >= 70 ? (hasWarnings ? "warning" : "passed") : (hasErrors ? "failed" : hasWarnings ? "warning" : "passed");
 
-  return { lint, runtime, functional, overallScore, status };
+  console.log(`[QA] Visual QA: ${visual.score}/100 (${visual.status}) — ${visual.checks.filter(c => c.passed).length} passed, ${visual.checks.filter(c => !c.passed).length} issues`);
+
+  return { lint, runtime, functional, visual, overallScore, status };
 }
 
 function collectFailedIssues(
@@ -919,7 +923,7 @@ export async function runQaWithRetry(
       console.log(`[QA] Build ${buildId}: QA failed (score: ${result.overallScore}), auto-fix attempt ${retryCount}/${MAX_RETRIES}`);
 
       const issues = collectFailedIssues(result.lint, result.runtime, result.functional);
-      const failedPhase = result.lint.status === "failed" ? "lint" : result.runtime.status === "failed" ? "runtime" : "functional";
+      const failedPhase = result.lint.status === "failed" ? "lint" : result.runtime.status === "failed" ? "runtime" : result.functional.status === "failed" ? "functional" : "visual";
 
       let fixed = false;
 
