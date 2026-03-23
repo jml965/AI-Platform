@@ -677,6 +677,34 @@ export default function Builder() {
     return () => es.close();
   }, [activeBuildId, isBuilding]);
 
+  useEffect(() => {
+    if (!id || !isBuilding) return;
+    const baseUrl = import.meta.env.VITE_API_URL || "";
+    const es = new EventSource(`${baseUrl}/api/preview-sse/${id}`);
+    let reloadTimer: ReturnType<typeof setTimeout> | null = null;
+
+    es.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === "file_saved") {
+          if (reloadTimer) clearTimeout(reloadTimer);
+          reloadTimer = setTimeout(() => {
+            setPreviewKey(prev => prev + 1);
+          }, 800);
+        }
+        if (data.type === "build_complete") {
+          if (reloadTimer) clearTimeout(reloadTimer);
+          setTimeout(() => setPreviewKey(prev => prev + 1), 300);
+        }
+      } catch {}
+    };
+
+    return () => {
+      es.close();
+      if (reloadTimer) clearTimeout(reloadTimer);
+    };
+  }, [id, isBuilding]);
+
   const [proxyVerified, setProxyVerified] = useState(false);
   const [proxyFailed, setProxyFailed] = useState(false);
 
@@ -741,7 +769,13 @@ export default function Builder() {
     };
   }, [sandboxProxyUrl, previewKey]);
 
-  const previewUrl = (sandboxProxyUrl && proxyVerified && !proxyFailed) ? sandboxProxyUrl : null;
+  const livePreviewUrl = useMemo(() => {
+    if (!id) return null;
+    const baseUrl = import.meta.env.VITE_API_URL || "";
+    return `${baseUrl}/api/preview/${id}`;
+  }, [id]);
+
+  const previewUrl = (sandboxProxyUrl && proxyVerified && !proxyFailed) ? sandboxProxyUrl : livePreviewUrl;
 
   const buildPreviewHtml = (): string => {
     if (!htmlFile?.content) return "";

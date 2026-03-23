@@ -70,6 +70,9 @@ if (process.env.NODE_ENV === "development") {
   });
 }
 
+import livePreviewRouter from "./routes/live-preview";
+app.use("/api", livePreviewRouter);
+
 app.use(authSession);
 
 app.use("/api", router);

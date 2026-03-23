@@ -96,6 +96,17 @@ export class FileManagerAgent {
           });
         }
         savedFiles.push(file.filePath);
+
+        try {
+          const { broadcastUpdate } = require("./engine-enhancements");
+          broadcastUpdate("file_saved", {
+            projectId,
+            filePath: file.filePath,
+            fileType: file.fileType,
+            fileCount: savedFiles.length,
+            totalFiles: files.length,
+          });
+        } catch {}
       } catch (error) {
         errors.push(
           `Failed to save ${file.filePath}: ${error instanceof Error ? error.message : String(error)}`
